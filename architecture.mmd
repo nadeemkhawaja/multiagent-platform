@@ -1,0 +1,56 @@
+graph TD
+    subgraph Frontend [React Frontend (Vite)]
+        Dashboard[Web Dashboard]
+    end
+
+    subgraph Backend [FastAPI Backend]
+        Orchestrator[Main Orchestrator]
+        DB[(SQLite DB)]
+        Scheduler[APScheduler]
+        Semaphore((LLM Semaphore))
+        
+        Agent1[Agent-1: AI-Times]
+        Agent2[Agent-2: Mailman]
+        Agent3[Agent-3: Wallstreet Wolf]
+        Agent4[Agent-4: DevDaily]
+        
+        LLMClient[LLM Client Wrapper]
+    end
+    
+    subgraph Local LLM [Local AI]
+        Ollama[Ollama / Qwen3]
+    end
+    
+    subgraph External APIs [External Services]
+        YouTube[YouTube Data API]
+        Gmail[Gmail API]
+        Yahoo[Yahoo Finance]
+        GitHub[GitHub API]
+        DevTo[Dev.to API]
+    end
+    
+    Dashboard <-->|REST API| Orchestrator
+    Orchestrator <--> DB
+    Scheduler -.->|Triggers| Agent1
+    Scheduler -.->|Triggers| Agent2
+    Scheduler -.->|Triggers| Agent3
+    Scheduler -.->|Triggers| Agent4
+    
+    Agent1 -->|Stores Data| DB
+    Agent2 -->|Stores Data| DB
+    Agent3 -->|Stores Data| DB
+    Agent4 -->|Stores Data| DB
+    
+    Agent1 <--> YouTube
+    Agent2 <--> Gmail
+    Agent3 <--> Yahoo
+    Agent4 <--> GitHub
+    Agent4 <--> DevTo
+    
+    Agent1 --> LLMClient
+    Agent2 --> LLMClient
+    Agent3 --> LLMClient
+    Agent4 --> LLMClient
+    
+    LLMClient -->|Semaphore locks request| Semaphore
+    Semaphore <--> Ollama
