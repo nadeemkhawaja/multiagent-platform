@@ -74,7 +74,7 @@ export default function AITimes({ status }) {
 
   return (
     <div>
-      <TabHeader icon="▶" color={T.red} title="AI-Times" sub="Latest AI videos · YouTube Data API v3 · last 24–48h"
+      <TabHeader icon="▶" color={T.red} title="AI-Times" sub="Latest AI videos · YouTube Data API v3 · US · English · last 7 days"
         actions={<>
           <Pill mono c={T.ink3}>digest 08:00 daily</Pill>
           <Btn size="sm" onClick={refreshNow} disabled={busy}>

@@ -19,7 +19,8 @@ async def fetch_youtube_videos(query: str, max_results: int = 5):
 
     try:
         youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-        published_after = (datetime.utcnow() - timedelta(days=2)).isoformat() + "Z"
+        # Spec: videos from the last 7 days.
+        published_after = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
 
         request = youtube.search().list(
             part="snippet",
@@ -29,7 +30,8 @@ async def fetch_youtube_videos(query: str, max_results: int = 5):
             videoDuration="medium",
             maxResults=max_results,
             publishedAfter=published_after,
-            relevanceLanguage="en"
+            relevanceLanguage="en",   # English-language results
+            regionCode="US"           # USA region focus
         )
         response = request.execute()
 

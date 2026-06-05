@@ -64,8 +64,34 @@ async def scan_inbox(service):
     return email_data
 
 
+def get_or_create_label(service, name, cache):
+    """Return a Gmail label id for `name`, creating it if needed. `cache` is primed once."""
+    if name in cache:
+        return cache[name]
+    try:
+        created = service.users().labels().create(userId='me', body={
+            'name': name,
+            'labelListVisibility': 'labelShow',
+            'messageListVisibility': 'show',
+        }).execute()
+        cache[name] = created['id']
+        return cache[name]
+    except Exception as e:
+        print(f"[Mailman] Could not create label '{name}': {e}")
+        return None
+
+
 async def classify_and_process_emails(service, emails, active_key_people):
     processed = []
+
+    # Prime the label cache with existing Gmail labels (one API call).
+    label_cache = {}
+    try:
+        for lbl in service.users().labels().list(userId='me').execute().get('labels', []):
+            label_cache[lbl['name']] = lbl['id']
+    except Exception as e:
+        print(f"[Mailman] Could not list labels: {e}")
+
     for email in emails:
         # Step 1: Classify email with LLM
         classify_prompt = (
@@ -80,15 +106,15 @@ async def classify_and_process_emails(service, emails, active_key_people):
         )
         category = category.strip().strip('"').strip("'")
 
-        # Step 2: Generate AI summary with LLM
+        # Step 2: Generate AI summary with LLM (always in English)
         summary_prompt = (
-            f"Write a concise 1-sentence summary of this email. "
+            f"Write a concise 1-sentence summary of this email in English. "
             f"Subject: {email['subject']}. From: {email['sender']}. Preview: {email['snippet'][:300]}. "
             f"Reply with only the summary sentence."
         )
         ai_summary = await generate_completion(
             summary_prompt,
-            system_prompt="You are a concise email summarizer. Output only one sentence."
+            system_prompt="You are a concise email summarizer. Always output exactly one sentence in English."
         )
         ai_summary = ai_summary.strip()
 
@@ -97,13 +123,19 @@ async def classify_and_process_emails(service, emails, active_key_people):
         is_llm = "llm" in email['subject'].lower() or "llm" in email['snippet'].lower()
         is_key = is_key_person or is_llm
 
-        # Step 4: Apply Gmail labels and stars
+        # Step 4: Apply a Gmail label per category, and star key/urgent mail
         try:
+            add_label_ids = []
+            label_id = get_or_create_label(service, f"Mailman/{category}", label_cache)
+            if label_id:
+                add_label_ids.append(label_id)
             if is_key or category.lower() in ["urgent", "action required"]:
+                add_label_ids.append('STARRED')
+            if add_label_ids:
                 service.users().messages().modify(
                     userId='me',
                     id=email['id'],
-                    body={'addLabelIds': ['STARRED']}
+                    body={'addLabelIds': add_label_ids}
                 ).execute()
         except Exception as e:
             print(f"[Mailman] Failed to apply label/star: {e}")

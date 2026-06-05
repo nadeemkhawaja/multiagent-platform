@@ -124,7 +124,7 @@ async def wallstreet_wolf_job():
         )
         commentary = await generate_completion(
             prompt,
-            system_prompt="You are a Wall Street financial analyst writing a brief daily market note."
+            system_prompt="You are a Wall Street financial analyst writing a brief daily market note in English (US markets)."
         )
 
         payload = {
