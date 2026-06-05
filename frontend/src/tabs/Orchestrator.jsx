@@ -5,7 +5,6 @@
 import { useState } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, StatusPill, Ring, Spark, SectionTitle, TabHeader, Btn } from "../theme/ui";
-import { spikeResource, crashAgent } from "../state/api";
 
 function fmtUptime(s) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
@@ -129,26 +128,6 @@ function EventLog({ s }) {
   );
 }
 
-function DemoControls({ s }) {
-  const liveAgents = s.agents.filter((a) => a.status !== "crashed");
-  return (
-    <Card pad={18} style={{ background: T.cardAlt, border: `1px dashed ${T.violet}55` }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}><span style={{ fontSize: 15 }}>🧪</span> Demo controls</div>
-          <div style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>Trigger a resource alarm or crash an agent — the orchestrator self-recovers.</div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Btn size="sm" kind="danger" onClick={() => spikeResource("cpu")}>Spike CPU &gt; 90%</Btn>
-          <Btn size="sm" kind="danger" onClick={() => spikeResource("ram")}>Spike RAM &gt; 90%</Btn>
-          <Btn size="sm" kind="danger" onClick={() => spikeResource("gpu")}>Spike GPU &gt; 90%</Btn>
-          <Btn size="sm" onClick={() => liveAgents.length && crashAgent(liveAgents[Math.floor(Math.random() * liveAgents.length)].id)}>Crash random agent</Btn>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 // ---------- Atlas layout ----------
 function MetricStrip({ s }) {
   const items = [
@@ -234,7 +213,6 @@ export default function Orchestrator({ sys, online, theme = "aria" }) {
         {theme === "atlas" ? (
           <>
             <MetricStrip s={s} />
-            <DemoControls s={s} />
             <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 16, alignItems: "start" }}>
               <AgentTable s={s} />
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -251,7 +229,6 @@ export default function Orchestrator({ sys, online, theme = "aria" }) {
               <ResCard r={s.res.disk} label="Disk" sub="root volume" />
               <ResCard r={s.res.gpu} label="GPU · LLM" sub="Qwen3 inference" />
             </div>
-            <DemoControls s={s} />
             <div style={{ display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: 16, alignItems: "stretch" }}>
               <Card pad={20}>
                 <SectionTitle sub={`${s.agents.length} managed processes · auto-restart enabled`} right={<Pill mono c={T.ink3}>{running} running</Pill>}>Agents</SectionTitle>
