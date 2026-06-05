@@ -4,8 +4,9 @@
 // ============================================================================
 import { useState, useEffect, useRef } from "react";
 import { T } from "../theme/tokens";
-import { Card, Pill, Btn, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, Btn, Spark, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
+import { EmailPreviewButton, ErrorBanner } from "../components/Common";
 import { WATCH, FX, METALS } from "../data/mock";
 
 const fmtFx = (sym = "") => {
@@ -15,7 +16,7 @@ const fmtFx = (sym = "") => {
 
 function adaptWatch(list) {
   if (!Array.isArray(list) || list.length === 0) return WATCH;
-  return list.map((s) => ({ t: s.symbol || s.t, n: s.name || s.n || s.symbol, p: Number(s.price ?? s.p) || 0, ch: Number(s.change_pct ?? s.ch) || 0 }));
+  return list.map((s) => ({ t: s.symbol || s.t, n: s.name || s.n || s.symbol, p: Number(s.price ?? s.p) || 0, ch: Number(s.change_pct ?? s.ch) || 0, h: s.history || s.h || [] }));
 }
 function adaptFx(list) {
   if (!Array.isArray(list) || list.length === 0) return FX;
@@ -55,7 +56,7 @@ function MoverBlock({ title, list, accent, badge }) {
   );
 }
 
-export default function Wolf({ status }) {
+export default function Wolf({ status, agentError }) {
   const { data, refresh } = useAgentData("wallstreet_wolf");
   const [refreshing, setRefreshing] = useState(false);
   const [watch, setWatch] = useState(WATCH);
@@ -101,9 +102,11 @@ export default function Wolf({ status }) {
         actions={<>
           <Pill mono c={T.ink3}>brief 16:30 daily</Pill>
           <Pill c={advancers >= watch.length / 2 ? T.green : T.red} bg={advancers >= watch.length / 2 ? T.greenBg : T.redBg}>{advancers}/{watch.length} advancing</Pill>
+          <EmailPreviewButton agentId="wallstreet_wolf" label="Preview brief" />
           <Btn size="sm" onClick={run} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Running…" : "Refresh"}</Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        <ErrorBanner error={agentError} />
         <Card pad={20} style={{ background: T.cardAlt, borderColor: T.line }}>
           <div style={{ display: "flex", gap: 14 }}>
             <div style={{ width: 38, height: 38, borderRadius: 11, background: T.violetBg, color: T.violet, display: "grid", placeItems: "center", fontSize: 17, flex: "0 0 auto" }}>◇</div>
@@ -125,11 +128,12 @@ export default function Wolf({ status }) {
           <SectionTitle sub="Full watchlist · live prices" right={<Pill mono c={T.ink3}>updating · 2s</Pill>}>Watchlist <span style={{ fontSize: 11, fontFamily: T.mono, color: T.ink4 }}>Block 3</span></SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 28px" }}>
             {watch.map((w) => (
-              <div key={w.t} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
+              <div key={w.t} style={{ display: "grid", gridTemplateColumns: "1fr 60px auto auto", gap: 12, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700, width: 48 }}>{w.t}</span>
                   <span style={{ fontSize: 11, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.n}</span>
                 </div>
+                <div style={{ height: 22 }}>{w.h && w.h.length > 1 ? <Spark data={w.h} w={56} h={22} color={w.ch >= 0 ? T.green : T.red} fill={false} /> : null}</div>
                 <span style={{ fontFamily: T.mono, fontSize: 12.5, textAlign: "right" }}>{w.p.toFixed(2)}</span>
                 <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: w.ch >= 0 ? T.green : T.red, textAlign: "right", minWidth: 62 }}>{w.ch >= 0 ? "+" : ""}{w.ch.toFixed(2)}%</span>
               </div>

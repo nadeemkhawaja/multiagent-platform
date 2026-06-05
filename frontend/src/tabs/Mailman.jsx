@@ -5,6 +5,7 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
+import { EmailPreviewButton, ErrorBanner } from "../components/Common";
 import { MAIL_CATS, MAILS, KEY_PEOPLE, CAT_PALETTE } from "../data/mock";
 
 function parseSender(sender = "") {
@@ -85,7 +86,7 @@ function MailRow({ m, onStar }) {
   );
 }
 
-export default function Mailman({ status }) {
+export default function Mailman({ status, agentError }) {
   const { data, refresh } = useAgentData("mailman");
   const [scanning, setScanning] = useState(false);
   const [keyPeople, setKeyPeople] = useState("");
@@ -111,12 +112,14 @@ export default function Mailman({ status }) {
       <TabHeader icon="✉" color={T.blue} title="Mailman" sub="Gmail · OAuth 2.0 · LLM inbox triage"
         actions={<>
           <Pill mono c={T.ink3}>scan every 15m</Pill>
+          <EmailPreviewButton agentId="mailman" label="Preview summary" />
           <Btn size="sm" onClick={scan} disabled={busy}>
             <span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>
             {busy ? "Scanning…" : "Scan now"}
           </Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        <ErrorBanner error={agentError} />
         {urgent > 0 && (
           <div style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "13px 18px", display: "flex", alignItems: "center", gap: 13 }}>
             <span style={{ fontSize: 18 }}>🔔</span>

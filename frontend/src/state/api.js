@@ -1,10 +1,12 @@
 // ============================================================================
-// api.js — backend client + polling hooks.
-// Works on localhost and any network IP.
+// api.js — backend client, WebSocket live state, and polling fallback.
 // ============================================================================
 import { useState, useEffect, useCallback } from "react";
 
-export const API_BASE = `http://${window.location.hostname}:5174`;
+const HOST = window.location.hostname;
+const PORT = 5174;
+export const API_BASE = `http://${HOST}:${PORT}`;
+const WS_URL = `ws://${HOST}:${PORT}/ws`;
 
 async function jsonGet(path) {
   const r = await fetch(`${API_BASE}${path}`);
@@ -20,36 +22,54 @@ async function jsonPost(path, body) {
   return r.json().catch(() => ({}));
 }
 
-// ── Orchestrator live state (polls /api/state) ──────────────────────────────
-export function useSystemState(intervalMs = 2000) {
+// ── Orchestrator live state: WebSocket primary, polling fallback ─────────────
+export function useSystemState() {
   const [state, setState] = useState(null);
   const [online, setOnline] = useState(true);
+  const [transport, setTransport] = useState("connecting");
+
   useEffect(() => {
-    let alive = true;
-    const tick = async () => {
-      try {
-        const d = await jsonGet("/api/state");
-        if (alive) { setState(d); setOnline(true); }
-      } catch {
-        if (alive) setOnline(false);
-      }
+    let ws, pollId, closed = false, gotWs = false;
+    const startPoll = () => {
+      if (pollId) return;
+      setTransport("poll");
+      const tick = async () => {
+        try { setState(await jsonGet("/api/state")); setOnline(true); }
+        catch { setOnline(false); }
+      };
+      tick();
+      pollId = setInterval(tick, 2000);
     };
-    tick();
-    const id = setInterval(tick, intervalMs);
-    return () => { alive = false; clearInterval(id); };
-  }, [intervalMs]);
-  return { state, online };
+    const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
+
+    try {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => setTransport("ws");
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "state") { gotWs = true; setState(msg.data); setOnline(true); stopPoll(); }
+        } catch { /* ignore */ }
+      };
+      ws.onclose = () => { if (!closed) startPoll(); };
+      ws.onerror = () => { startPoll(); };
+    } catch { startPoll(); }
+
+    // if WS hasn't delivered quickly, poll in the meantime
+    const safety = setTimeout(() => { if (!gotWs) startPoll(); }, 1500);
+    return () => { closed = true; clearTimeout(safety); stopPoll(); try { ws && ws.close(); } catch { /* */ } };
+  }, []);
+
+  return { state, online, transport };
 }
 
-// ── Per-agent data (polls /api/agent/{id}/data) ─────────────────────────────
+// ── Per-agent data ──────────────────────────────────────────────────────────
 export function useAgentData(agentId, intervalMs = 6000) {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
-    try {
-      const d = await jsonGet(`/api/agent/${agentId}/data`);
-      setData(d); setLoaded(true);
-    } catch { setLoaded(true); }
+    try { setData(await jsonGet(`/api/agent/${agentId}/data`)); setLoaded(true); }
+    catch { setLoaded(true); }
   }, [agentId]);
   useEffect(() => {
     refresh();
@@ -66,3 +86,11 @@ export const spikeResource = (resource) => jsonPost("/api/demo/spike", { resourc
 export const crashAgent = (agent_id) => jsonPost("/api/demo/crash", agent_id ? { agent_id } : {});
 export const aegisApprove = (id, reply) => jsonPost("/api/aegis/approve", { id, reply });
 export const aegisDismiss = (id) => jsonPost("/api/aegis/dismiss", { id });
+
+// ── Settings / schedules / health / email preview ───────────────────────────
+export const getConfig = () => jsonGet("/api/config");
+export const saveConfig = (body) => jsonPost("/api/config", body);
+export const getSchedules = () => jsonGet("/api/schedules");
+export const setSchedule = (agent, body) => jsonPost(`/api/schedules/${agent}`, body);
+export const getHealth = () => jsonGet("/api/health");
+export const emailPreview = (id) => jsonGet(`/api/agent/${id}/email-preview`);

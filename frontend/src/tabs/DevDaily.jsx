@@ -6,10 +6,11 @@ import { useState } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
+import { ErrorBanner } from "../components/Common";
 
 const ACCENT = AGENT_COLOR.devdaily;
 
-export default function DevDaily({ status }) {
+export default function DevDaily({ status, agentError }) {
   const { data, refresh } = useAgentData("devdaily");
   const d = data?.digest || {};
   const repos = d.github_repos || [];
@@ -37,6 +38,7 @@ export default function DevDaily({ status }) {
           <Btn size="sm" onClick={run} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Fetching…" : "Manual run"}</Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        <ErrorBanner error={agentError} />
         <Card pad={18}>
           <SectionTitle sub="Tune the next fetch">Configuration</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 1fr", gap: 14 }}>

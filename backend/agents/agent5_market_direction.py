@@ -20,7 +20,7 @@ import httpx
 import yfinance as yf
 
 from database import SessionLocal, AgentData
-from llm_client import generate_completion
+from llm_client import generate_completion, generate_json
 from orchestrator import orchestrator
 from email_utils import send_html_email
 
@@ -149,6 +149,7 @@ async def fetch_headlines():
 
 
 def _headline_sentiment(title):
+    """Keyword fallback used until the LLM refines sentiment."""
     t = title.lower()
     bull = ("surge", "jump", "rally", "gain", "beat", "rise", "soar", "record", "up ", "climbs")
     bear = ("fall", "drop", "miss", "slump", "plunge", "cut", "fear", "down ", "sink", "warn", "loss")
@@ -157,6 +158,29 @@ def _headline_sentiment(title):
     if any(w in t for w in bear):
         return "bear"
     return "neutral"
+
+
+async def llm_headline_sentiment(headlines):
+    """Refine each headline's sentiment to bull/bear/neutral with one LLM call."""
+    if not headlines:
+        return headlines
+    listing = "\n".join(f"[{i}] {h['t']}" for i, h in enumerate(headlines))
+    prompt = (
+        "Score each market headline's sentiment as exactly one of: bull, bear, neutral. "
+        'Return ONLY a JSON array: [{"i":<index>,"s":"bull|bear|neutral"}].\n\n' + listing
+    )
+    data = await generate_json(prompt, system_prompt="You are a markets sentiment classifier. Return only JSON.",
+                               agent_id=AGENT_ID, use_cache=False)
+    if isinstance(data, list):
+        for item in data:
+            try:
+                i = int(item.get("i"))
+                s = str(item.get("s", "")).lower()
+                if 0 <= i < len(headlines) and s in ("bull", "bear", "neutral"):
+                    headlines[i]["s"] = s
+            except (TypeError, ValueError):
+                continue
+    return headlines
 
 
 async def llm_read(sectors, futures, headlines):
@@ -198,9 +222,7 @@ def save_to_db(payload):
         db.close()
 
 
-def send_compass_email(payload):
-    if not DAILY_DIGEST_EMAIL:
-        return
+def build_compass_html(payload):
     composite = payload.get("composite", 0)
     tone = "Risk-On" if composite > 15 else "Risk-Off" if composite < -15 else "Mixed"
     color = "#16a34a" if composite > 15 else "#e5484d" if composite < -15 else "#f59e0b"
@@ -226,11 +248,28 @@ def send_compass_email(payload):
       </table>
     </body></html>
     """
+    return html
+
+
+def send_compass_email(payload):
+    if not DAILY_DIGEST_EMAIL:
+        return
+    composite = payload.get("composite", 0)
+    tone = "Risk-On" if composite > 15 else "Risk-Off" if composite < -15 else "Mixed"
     send_html_email(
         to_email=DAILY_DIGEST_EMAIL,
         subject=f"◎ Compass Brief — {tone} — {datetime.utcnow().strftime('%b %d')}",
-        html_body=html,
+        html_body=build_compass_html(payload),
     )
+
+
+def email_preview() -> str:
+    db = SessionLocal()
+    rec = db.query(AgentData).filter_by(agent_name=AGENT_ID, key="compass").first()
+    db.close()
+    if not rec:
+        return "<p>No Compass data yet — run an analysis first.</p>"
+    return build_compass_html(json.loads(rec.value))
 
 
 async def compass_job():
@@ -240,6 +279,7 @@ async def compass_job():
         futures = fetch_futures()
         levels = fetch_levels()
         headlines = await fetch_headlines()
+        headlines = await llm_headline_sentiment(headlines)
 
         composite = int(round(sum(s["bias"] for s in sectors) / len(sectors))) if sectors else 0
         read = await llm_read(sectors, futures, headlines)

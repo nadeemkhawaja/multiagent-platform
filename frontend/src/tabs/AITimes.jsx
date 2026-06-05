@@ -5,6 +5,7 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, StripedSlot } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
+import { EmailPreviewButton, ErrorBanner } from "../components/Common";
 import { AI_NEWS, AI_PEOPLE } from "../data/mock";
 
 const PALETTE = ["#e5484d", "#2f6feb", "#16a34a", "#f59e0b", "#0d9488", "#7c5cf6"];
@@ -44,6 +45,7 @@ function VideoCard({ v }) {
           {v.views && <><span style={{ color: T.ink4 }}>·</span><span style={{ fontFamily: T.mono }}>{v.views}</span></>}
           {v.date && <span style={{ marginLeft: "auto", fontFamily: T.mono, color: T.ink4 }}>{v.date}</span>}
         </div>
+        {v.why && <div style={{ marginTop: 8, fontSize: 11.5, color: T.violet, lineHeight: 1.4 }}>◇ {v.why}</div>}
       </div>
     </>
   );
@@ -57,12 +59,13 @@ function VideoCard({ v }) {
     : <div style={base} {...hov}>{inner}</div>;
 }
 
-export default function AITimes({ status }) {
+export default function AITimes({ status, agentError }) {
   const { data, refresh } = useAgentData("ai_times");
   const [refreshing, setRefreshing] = useState(false);
   const videos = data?.videos || {};
   const news = adapt(videos.news, AI_NEWS);
   const people = adapt(videos.personality, AI_PEOPLE);
+  const intro = videos.intro;
 
   const refreshNow = async () => {
     setRefreshing(true);
@@ -83,13 +86,14 @@ export default function AITimes({ status }) {
           </Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 24 }}>
+        <ErrorBanner error={agentError} />
         <Card pad={18} style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: T.redBg, color: T.red, display: "grid", placeItems: "center", fontSize: 19 }}>✉</div>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 13.5, fontWeight: 700 }}>Daily HTML digest is scheduled</div>
-            <div style={{ fontSize: 12.5, color: T.ink3, marginTop: 2 }}>10 videos (5 news · 5 personality) compiled and emailed every day at 08:00.</div>
+            <div style={{ fontSize: 12.5, color: T.ink3, marginTop: 2 }}>{intro || "10 videos (5 news · 5 personality) compiled and emailed every day at 08:00 — LLM-curated."}</div>
           </div>
-          <Pill c={T.green} bg={T.greenBg} bd="#c7eed5"><Dot c={T.green} />Digest scheduled</Pill>
+          <EmailPreviewButton agentId="ai_times" label="Preview digest" />
         </Card>
 
         <div>

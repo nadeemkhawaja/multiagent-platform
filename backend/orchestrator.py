@@ -6,9 +6,13 @@ from collections import deque
 from datetime import datetime
 from typing import Dict, Any
 
-from llm_client import get_llm_state
+import httpx
 
-# Optional NVIDIA GPU telemetry for the LLM card.
+from llm_client import get_llm_state, OLLAMA_BASE_URL
+from database import SessionLocal, ResourceSample, Event, AgentRun, AgentState, init_db
+from ws import manager
+
+# Optional NVIDIA GPU telemetry.
 try:
     import pynvml  # type: ignore
 
@@ -18,7 +22,6 @@ except Exception:
     _NVML = False
 
 
-# ── Agent presentation metadata (drives nav, cards, accent colors) ───────────
 AGENT_META = {
     "ai_times":        {"n": "AI-Times",        "glyph": "▶", "desc": "AI YouTube digest",      "schedule": "Daily · 08:00", "color": "#e5484d"},
     "mailman":         {"n": "Mailman",         "glyph": "✉", "desc": "Gmail triage",           "schedule": "Every 15 min",  "color": "#2f6feb"},
@@ -29,18 +32,10 @@ AGENT_META = {
 }
 AGENT_ORDER = list(AGENT_META.keys())
 
-# backend status → dashboard status vocabulary (running/idle/queued/crashed)
 STATUS_MAP = {
-    "running":    "running",
-    "idle":       "idle",
-    "stopped":    "idle",
-    "error":      "crashed",
-    "crashed":    "crashed",
-    "restarting": "queued",
-    "queued":     "queued",
-    "failed":     "crashed",
+    "running": "running", "idle": "idle", "stopped": "idle", "error": "crashed",
+    "crashed": "crashed", "restarting": "queued", "queued": "queued", "failed": "crashed",
 }
-
 ALARM_ACTIONS = {
     "cpu":  "Throttle Wolf's 5-min poll and pause non-critical agents until load < 75%.",
     "ram":  "Flush LLM KV-cache and reduce Qwen3 context window to free memory.",
@@ -56,23 +51,47 @@ class Orchestrator:
             aid: {"status": "stopped", "last_run": None, "error": None}
             for aid in AGENT_ORDER
         }
-        self._agent_jobs = {}        # callable references for restart
-        self._watchdog_task = None
-        self._restart_counts = {}    # restart attempts per agent
+        self._agent_jobs = {}
+        self._restart_counts = {}
         self.MAX_RESTARTS = 3
 
         self._started_at = time.time()
-        # rolling resource history for sparklines (last 24 samples)
         self._hist = {k: deque(maxlen=24) for k in ("cpu", "ram", "disk", "gpu")}
         self.events = deque(maxlen=20)
-        # demo state
-        self._spike = None           # {"resource","value","expires"}
-        self._demo_crashed = set()   # agents crashed via the demo button
+        self._last = {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "gpu": 0.0, "threads": 0}
+        self._gpu_vram_mb = 0
+        self._spike = None
+        self._demo_crashed = set()
+        self._open_runs = {}            # agent_id -> AgentRun id
+        self._persist_tick = 0
+        self._sampler_task = None
+        self._watchdog_task = None
 
-        # prime CPU sampler so the first reading isn't 0.0
         psutil.cpu_percent(interval=None)
+        init_db()            # ensure tables exist before reading history
+        self._load_history()
 
-    # ── resource sampling ────────────────────────────────────────────────
+    # ── load durable history from SQLite ─────────────────────────────────
+    def _load_history(self):
+        try:
+            db = SessionLocal()
+            rows = db.query(ResourceSample).order_by(ResourceSample.ts.desc()).limit(24).all()
+            for r in reversed(rows):
+                self._hist["cpu"].append(r.cpu); self._hist["ram"].append(r.ram)
+                self._hist["disk"].append(r.disk); self._hist["gpu"].append(r.gpu)
+            evs = db.query(Event).order_by(Event.ts.desc()).limit(20).all()
+            for e in evs:
+                self.events.append({"t": e.ts.strftime("%H:%M"), "m": e.message, "c": e.color})
+            for st in db.query(AgentState).all():
+                if st.agent_id in self.agents_status:
+                    self._restart_counts[st.agent_id] = st.restarts or 0
+                    self.agents_status[st.agent_id]["last_run"] = st.last_run.isoformat() if st.last_run else None
+                    self.agents_status[st.agent_id]["error"] = st.last_error
+            db.close()
+        except Exception as e:
+            print(f"[Orchestrator] history load skipped: {e}")
+
+    # ── GPU / VRAM ───────────────────────────────────────────────────────
     def _read_gpu(self) -> float:
         if _NVML:
             try:
@@ -80,85 +99,168 @@ class Orchestrator:
                 return float(pynvml.nvmlDeviceGetUtilizationRates(h).gpu)
             except Exception:
                 pass
-        # No NVML — approximate from whether the LLM permit is held.
         active = get_llm_state()["holder"] is not None
-        base = 60 if active else 38
-        return round(min(95, max(8, base + random.uniform(-6, 6))), 1)
+        base = 62 if active else 30
+        prev = self._last.get("gpu", base)
+        return round(min(96, max(8, prev * 0.6 + base * 0.4 + random.uniform(-5, 5))), 1)
 
-    def _sample(self) -> Dict[str, float]:
+    async def _poll_ollama_vram(self):
+        try:
+            async with httpx.AsyncClient(timeout=4) as c:
+                r = await c.get(f"{OLLAMA_BASE_URL}/api/ps")
+                if r.status_code == 200:
+                    models = r.json().get("models", [])
+                    self._gpu_vram_mb = round(sum(m.get("size_vram", 0) for m in models) / (1024 * 1024))
+        except Exception:
+            pass
+
+    # ── sampling ─────────────────────────────────────────────────────────
+    def _take_sample(self) -> Dict[str, float]:
         cpu = psutil.cpu_percent(interval=None)
         ram = psutil.virtual_memory().percent
         disk = psutil.disk_usage("/").percent
         gpu = self._read_gpu()
 
-        # apply an active demo spike (pins one resource > 90% briefly)
         if self._spike:
             if time.time() > self._spike["expires"]:
                 self.log_event(f"{ALARM_LABELS[self._spike['resource']]} recovered to normal range", "#16a34a")
                 self._spike = None
             else:
-                r = self._spike["resource"]
-                val = self._spike["value"]
-                if r == "cpu":
-                    cpu = val
-                elif r == "ram":
-                    ram = val
-                elif r == "gpu":
-                    gpu = val
-                elif r == "disk":
-                    disk = val
+                r, val = self._spike["resource"], self._spike["value"]
+                if r == "cpu": cpu = val
+                elif r == "ram": ram = val
+                elif r == "gpu": gpu = val
+                elif r == "disk": disk = val
 
-        sample = {"cpu": round(cpu, 1), "ram": round(ram, 1), "disk": round(disk, 1), "gpu": round(gpu, 1)}
-        for k, v in sample.items():
-            self._hist[k].append(v)
-        return sample
+        threads = psutil.Process().num_threads()
+        self._last = {"cpu": round(cpu, 1), "ram": round(ram, 1), "disk": round(disk, 1),
+                      "gpu": round(gpu, 1), "threads": threads}
+        for k in ("cpu", "ram", "disk", "gpu"):
+            self._hist[k].append(self._last[k])
+        return self._last
 
+    def _persist_sample(self, s):
+        try:
+            db = SessionLocal()
+            db.add(ResourceSample(cpu=s["cpu"], ram=s["ram"], disk=s["disk"], gpu=s["gpu"], threads=s["threads"]))
+            # prune to last ~1000 rows
+            self._persist_tick += 1
+            if self._persist_tick % 50 == 0:
+                ids = [r.id for r in db.query(ResourceSample.id).order_by(ResourceSample.ts.desc()).offset(1000).all()]
+                if ids:
+                    db.query(ResourceSample).filter(ResourceSample.id.in_(ids)).delete(synchronize_session=False)
+            db.commit(); db.close()
+        except Exception as e:
+            print(f"[Orchestrator] persist sample failed: {e}")
+
+    async def _sampler_loop(self):
+        while True:
+            s = self._take_sample()
+            if self._persist_tick % 5 == 0:           # persist every ~10s
+                self._persist_sample(s)
+            else:
+                self._persist_tick += 1
+            if self._persist_tick % 3 == 0:           # refresh VRAM every ~6s
+                await self._poll_ollama_vram()
+            try:
+                await manager.broadcast({"type": "state", "data": self.get_state()})
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+
+    def start_sampler(self):
+        if self._sampler_task is None:
+            self._take_sample()
+            self._sampler_task = asyncio.create_task(self._sampler_loop())
+
+    # ── back-compat: synchronous resource read for /api/system/resources ──
     def get_system_resources(self) -> Dict[str, Any]:
-        """Live resources + per-resource alarms with suggested corrective actions."""
-        s = self._sample()
+        s = self._last if self._last["cpu"] or self._hist["cpu"] else self._take_sample()
         alarms = []
         for k in ("cpu", "ram", "disk", "gpu"):
             if s[k] >= 90:
-                alarms.append({
-                    "resource": ALARM_LABELS[k],
-                    "value": s[k],
-                    "suggestion": ALARM_ACTIONS[k],
-                })
+                alarms.append({"resource": ALARM_LABELS[k], "value": s[k], "suggestion": ALARM_ACTIONS[k]})
         return {
-            "cpu_percent": s["cpu"],
-            "ram_percent": s["ram"],
-            "disk_percent": s["disk"],
-            "gpu_percent": s["gpu"],
-            "active_threads": psutil.Process().num_threads(),
-            "alarm": len(alarms) > 0,
-            "alarms": alarms,
+            "cpu_percent": s["cpu"], "ram_percent": s["ram"], "disk_percent": s["disk"],
+            "gpu_percent": s["gpu"], "active_threads": s["threads"],
+            "alarm": len(alarms) > 0, "alarms": alarms,
         }
 
-    # ── event log ────────────────────────────────────────────────────────
+    # ── events ───────────────────────────────────────────────────────────
     def log_event(self, message: str, color: str = "#5b6472"):
         self.events.appendleft({"t": datetime.now().strftime("%H:%M"), "m": message, "c": color})
+        try:
+            db = SessionLocal()
+            db.add(Event(message=message, color=color))
+            db.commit(); db.close()
+        except Exception:
+            pass
 
-    # ── agent status ─────────────────────────────────────────────────────
+    # ── agent status + run history ───────────────────────────────────────
+    def _save_agent_state(self, agent_name):
+        try:
+            db = SessionLocal()
+            st = db.query(AgentState).filter_by(agent_id=agent_name).first()
+            info = self.agents_status[agent_name]
+            lr = None
+            if info.get("last_run"):
+                try:
+                    lr = datetime.fromisoformat(info["last_run"])
+                except Exception:
+                    lr = None
+            if not st:
+                st = AgentState(agent_id=agent_name)
+                db.add(st)
+            st.restarts = self._restart_counts.get(agent_name, 0)
+            st.last_run = lr
+            st.last_error = info.get("error")
+            db.commit(); db.close()
+        except Exception:
+            pass
+
     def update_agent_status(self, agent_name: str, status: str, error: str = None):
-        if agent_name in self.agents_status:
-            prev = self.agents_status[agent_name]["status"]
-            self.agents_status[agent_name]["status"] = status
-            if status == "idle":
-                self.agents_status[agent_name]["last_run"] = datetime.utcnow().isoformat()
-                self.agents_status[agent_name]["error"] = None
-                self._restart_counts[agent_name] = 0
-                self._demo_crashed.discard(agent_name)
-            if error:
-                self.agents_status[agent_name]["error"] = error
-            if status != prev:
-                meta = AGENT_META.get(agent_name, {})
-                name = meta.get("n", agent_name)
-                if status == "running":
-                    self.log_event(f"{name} run started", "#5b6472")
-                elif status == "idle":
-                    self.log_event(f"{name} run completed", "#16a34a")
-                elif status == "error":
-                    self.log_event(f"✕ {name} crashed — orchestrator recovering", "#e5484d")
+        if agent_name not in self.agents_status:
+            return
+        prev = self.agents_status[agent_name]["status"]
+        self.agents_status[agent_name]["status"] = status
+        if status == "idle":
+            self.agents_status[agent_name]["last_run"] = datetime.utcnow().isoformat()
+            self.agents_status[agent_name]["error"] = None
+            self._restart_counts[agent_name] = 0
+            self._demo_crashed.discard(agent_name)
+        if error:
+            self.agents_status[agent_name]["error"] = error
+
+        # run-history bookkeeping
+        try:
+            db = SessionLocal()
+            if status == "running":
+                run = AgentRun(agent_id=agent_name, status="running")
+                db.add(run); db.commit()
+                self._open_runs[agent_name] = run.id
+            elif status in ("idle", "error"):
+                rid = self._open_runs.pop(agent_name, None)
+                if rid:
+                    run = db.query(AgentRun).get(rid)
+                    if run:
+                        run.finished_at = datetime.utcnow()
+                        run.status = status
+                        run.error = error
+                        db.commit()
+            db.close()
+        except Exception:
+            pass
+
+        if status != prev:
+            meta = AGENT_META.get(agent_name, {})
+            name = meta.get("n", agent_name)
+            if status == "running":
+                self.log_event(f"{name} run started", "#5b6472")
+            elif status == "idle":
+                self.log_event(f"{name} run completed", "#16a34a")
+            elif status == "error":
+                self.log_event(f"✕ {name} crashed: {error or 'error'} — recovering", "#e5484d")
+        self._save_agent_state(agent_name)
 
     def register_agent_job(self, agent_name: str, job_callable):
         self._agent_jobs[agent_name] = job_callable
@@ -166,9 +268,9 @@ class Orchestrator:
     def get_agents_status(self):
         return self.agents_status
 
-    # ── full dashboard state (matches the prototype's Sim.state shape) ────
+    # ── full dashboard state ─────────────────────────────────────────────
     def get_state(self) -> Dict[str, Any]:
-        res_block = self.get_system_resources()
+        res = self.get_system_resources()
 
         def block(k, pct):
             return {"v": pct, "hist": list(self._hist[k]) or [pct]}
@@ -180,46 +282,37 @@ class Orchestrator:
             status = STATUS_MAP.get(raw, "idle")
             running = status == "running"
             agents.append({
-                "id": aid,
-                "n": meta["n"],
-                "glyph": meta["glyph"],
-                "desc": meta["desc"],
-                "color": meta["color"],
-                "status": status,
+                "id": aid, "n": meta["n"], "glyph": meta["glyph"], "desc": meta["desc"],
+                "color": meta["color"], "status": status,
                 "cpu": random.randint(4, 18) if running else random.randint(0, 3),
                 "mem": {"ai_times": 180, "mailman": 240, "wallstreet_wolf": 210,
                         "compass": 168, "aegis": 132, "devdaily": 150}.get(aid, 140),
-                "nextS": 0,
                 "schedule": meta["schedule"],
                 "restarts": self._restart_counts.get(aid, 0),
+                "error": self.agents_status[aid].get("error"),
             })
 
         alarm = None
-        if res_block["alarms"]:
-            a = res_block["alarms"][0]
+        if res["alarms"]:
+            a = res["alarms"][0]
             rkey = a["resource"].lower().replace("memory", "ram")
             alarm = {"resource": rkey, "value": a["value"], "label": a["resource"], "action": a["suggestion"]}
 
+        llm = get_llm_state()
+        llm["vram_mb"] = self._gpu_vram_mb
         return {
             "uptimeS": int(time.time() - self._started_at),
-            "res": {
-                "cpu":  block("cpu", res_block["cpu_percent"]),
-                "ram":  block("ram", res_block["ram_percent"]),
-                "disk": block("disk", res_block["disk_percent"]),
-                "gpu":  block("gpu", res_block["gpu_percent"]),
-            },
-            "threads": res_block["active_threads"],
-            "agents": agents,
-            "llm": get_llm_state(),
-            "events": list(self.events),
-            "alarm": alarm,
+            "res": {"cpu": block("cpu", res["cpu_percent"]), "ram": block("ram", res["ram_percent"]),
+                    "disk": block("disk", res["disk_percent"]), "gpu": block("gpu", res["gpu_percent"])},
+            "threads": res["active_threads"], "agents": agents, "llm": llm,
+            "events": list(self.events), "alarm": alarm,
         }
 
-    # ── demo controls (wired to the dashboard's demo buttons) ─────────────
+    # ── demo controls ────────────────────────────────────────────────────
     def spike(self, resource: str = "cpu"):
         resource = resource if resource in ALARM_ACTIONS else "cpu"
         value = round(random.uniform(91, 97), 1)
-        self._spike = {"resource": resource, "value": value, "expires": time.time() + 10}
+        self._spike = {"resource": resource, "value": value, "expires": time.time() + 12}
         self.log_event(f"⚠ {ALARM_LABELS[resource]} exceeded 90% — alarm raised", "#e5484d")
         return {"resource": resource, "value": value}
 
@@ -232,9 +325,9 @@ class Orchestrator:
             self._demo_crashed.discard(agent_name)
             meta = AGENT_META.get(agent_name, {})
             self.log_event(f"Orchestrator restarted {meta.get('n', agent_name)} (auto-recovery)", "#16a34a")
+            self._save_agent_state(agent_name)
 
     def crash(self, agent_name: str):
-        """Demo crash: flip an agent to crashed; the orchestrator self-recovers ~4s later."""
         if agent_name not in self.agents_status:
             return {"error": "Agent not found"}
         self._demo_crashed.add(agent_name)
@@ -248,22 +341,23 @@ class Orchestrator:
             pass
         return {"status": f"Crashed {agent_name}"}
 
-    # ── watchdog: restart genuinely crashed agents (non-demo) ─────────────
+    # ── watchdog ─────────────────────────────────────────────────────────
     async def _watchdog_loop(self):
         while True:
             await asyncio.sleep(10)
             for agent_name, info in self.agents_status.items():
                 if info["status"] == "error" and agent_name in self._demo_crashed:
-                    continue  # demo crashes recover on their own timer
+                    continue
                 if info["status"] == "error" and agent_name in self._agent_jobs:
                     attempts = self._restart_counts.get(agent_name, 0)
                     if attempts >= self.MAX_RESTARTS:
                         if info["status"] != "failed":
-                            print(f"[Watchdog] '{agent_name}' failed {attempts} times. Manual restart required.")
+                            print(f"[Watchdog] '{agent_name}' failed {attempts}x. Manual restart required.")
                             self.agents_status[agent_name]["status"] = "failed"
+                            self.log_event(f"{AGENT_META.get(agent_name, {}).get('n', agent_name)} disabled after {attempts} failures", "#e5484d")
                         continue
                     self._restart_counts[agent_name] = attempts + 1
-                    print(f"[Watchdog] Restarting '{agent_name}' (attempt {attempts + 1}/{self.MAX_RESTARTS})...")
+                    print(f"[Watchdog] Restarting '{agent_name}' ({attempts + 1}/{self.MAX_RESTARTS})...")
                     self.update_agent_status(agent_name, "restarting")
                     try:
                         asyncio.create_task(self._agent_jobs[agent_name]())

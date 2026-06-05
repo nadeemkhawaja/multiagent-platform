@@ -13,6 +13,7 @@ import Wolf from "./tabs/Wolf";
 import Compass from "./tabs/Compass";
 import Aegis from "./tabs/Aegis";
 import DevDaily from "./tabs/DevDaily";
+import Settings from "./tabs/Settings";
 
 const NAV = [
   { id: "orchestrator", label: "Orchestrator", glyph: "◇" },
@@ -23,6 +24,7 @@ const NAV = [
   { id: "aegis", label: "Aegis", glyph: "❖" },
   { id: "devdaily", label: "DevDaily", glyph: "⌥" },
 ];
+const SETTINGS_ITEM = { id: "settings", label: "Settings", glyph: "⚙" };
 const TABS = { ai_times: AITimes, mailman: Mailman, wallstreet_wolf: Wolf, compass: Compass, aegis: Aegis, devdaily: DevDaily };
 const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
 
@@ -44,7 +46,7 @@ function NavItem({ item, active, onClick, badge }) {
   );
 }
 
-function Sidebar({ tab, setTab, theme, setTheme, mode, setMode, sys, online }) {
+function Sidebar({ tab, setTab, theme, setTheme, mode, setMode, sys, online, transport }) {
   const agents = sys?.agents || [];
   const res = sys?.res;
   const statusOf = (id) => agents.find((a) => a.id === id)?.status;
@@ -63,6 +65,7 @@ function Sidebar({ tab, setTab, theme, setTheme, mode, setMode, sys, online }) {
       <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 12px 8px" }}>System</div>
       <NavItem item={NAV[0]} active={tab === "orchestrator"} onClick={() => setTab("orchestrator")}
         badge={<Dot c={anyAlarm ? T.red : online ? T.green : T.amber} s={7} />} />
+      <NavItem item={SETTINGS_ITEM} active={tab === "settings"} onClick={() => setTab("settings")} />
 
       <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "16px 12px 8px" }}>Agents</div>
       {NAV.slice(1).map((it) => {
@@ -78,7 +81,7 @@ function Sidebar({ tab, setTab, theme, setTheme, mode, setMode, sys, online }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <Dot c={online ? T.green : T.amber} s={7} />
           <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink2 }}>{(sys?.llm?.model) || "Qwen3"} · local</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: T.mono, color: T.ink4 }}>Ollama</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: T.mono, color: T.ink4 }}>{transport === "ws" ? "live · ws" : transport === "poll" ? "poll" : "…"}</span>
         </div>
         <div style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono, lineHeight: 1.6 }}>
           {res ? <>CPU {Math.round(res.cpu.v)}% · RAM {Math.round(res.ram.v)}% · GPU {Math.round(res.gpu.v)}%<br /></> : <>connecting…<br /></>}
@@ -95,7 +98,7 @@ export default function App() {
   const [mode, setMode] = useState(() => localStorage.getItem("om_mode") || "light");
   applyMode(mode); // mutate shared tokens before children render
 
-  const { state: sys, online } = useSystemState();
+  const { state: sys, online, transport } = useSystemState();
 
   useEffect(() => { localStorage.setItem("om_tab", tab); }, [tab]);
   useEffect(() => { localStorage.setItem("om_theme", theme); }, [theme]);
@@ -105,18 +108,20 @@ export default function App() {
     document.documentElement.style.colorScheme = mode;
   }, [mode]);
 
-  const status = sys?.agents?.find((a) => a.id === tab)?.status;
+  const agent = sys?.agents?.find((a) => a.id === tab);
   let content;
   if (tab === "orchestrator") {
     content = <Orchestrator sys={sys} online={online} theme={theme} />;
+  } else if (tab === "settings") {
+    content = <Settings />;
   } else {
     const TabEl = TABS[tab];
-    content = <TabEl key={tab} status={status} />;
+    content = <TabEl key={tab} status={agent?.status} agentError={agent?.error} />;
   }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, fontFamily: T.sans, color: T.ink }}>
-      <Sidebar tab={tab} setTab={setTab} theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} sys={sys} online={online} />
+      <Sidebar tab={tab} setTab={setTab} theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} sys={sys} online={online} transport={transport} />
       <div style={{ flex: 1, minWidth: 0 }}>{content}</div>
     </div>
   );

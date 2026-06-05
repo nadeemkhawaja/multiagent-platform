@@ -16,7 +16,7 @@ from datetime import datetime
 
 import httpx
 
-from database import SessionLocal, AgentData
+from database import SessionLocal, AgentData, get_config
 from llm_client import generate_completion
 from orchestrator import orchestrator
 from email_utils import send_html_email
@@ -136,6 +136,14 @@ def _stats(mentions):
     return {"mentions": len(mentions), "net_sentiment": net, "high_risk": high, "avg_response": "12m"}
 
 
+def post_reply(mention):
+    """Stub for posting an approved reply via the source's official API.
+    Real posting requires per-source OAuth (Reddit/X/etc.); we keep it human-in-the-loop
+    and only mark intent here. Wire each source's authenticated client to actually post."""
+    print(f"[Aegis] (stub) Would post approved reply to {mention.get('src')} · {mention.get('sub')}")
+    return True
+
+
 def approve_mention(mention_id, reply=None):
     payload = _load()
     if not payload:
@@ -145,6 +153,7 @@ def approve_mention(mention_id, reply=None):
             m["status"] = "approved"
             if reply:
                 m["reply"] = reply
+            m["posted"] = post_reply(m)
     payload["stats"] = _stats(payload["mentions"])
     _save(payload)
     return {"status": "approved", "id": mention_id}
@@ -162,17 +171,16 @@ def dismiss_mention(mention_id):
     return {"status": "dismissed", "id": mention_id}
 
 
-def send_digest(payload, brand):
-    if not DAILY_DIGEST_EMAIL:
-        return
-    stats = payload["stats"]
+def build_digest_html(payload, brand=None):
+    brand = brand or payload.get("brand", AEGIS_BRAND)
+    stats = payload.get("stats", _stats(payload.get("mentions", [])))
     rows = "".join(
         f"<li style='margin-bottom:8px'><b style='color:"
         f"{'#e5484d' if m['risk'] == 'high' else '#f59e0b' if m['risk'] == 'med' else '#8a909c'}'>"
         f"[{m['risk'].upper()}]</b> {m['src']} · {m['sub']} — {m['text'][:140]}…</li>"
-        for m in payload["mentions"][:8]
+        for m in payload.get("mentions", [])[:8]
     )
-    html = f"""
+    return f"""
     <html><body style='font-family:Hanken Grotesk,Arial,sans-serif;background:#f6f7f9;color:#16181d;padding:24px'>
       <h2>❖ Aegis — Reputation Digest for "{brand}"</h2>
       <p style='color:#8a909c;font-size:12px'>{datetime.utcnow().strftime('%A, %B %d %Y — %H:%M UTC')}</p>
@@ -181,15 +189,28 @@ def send_digest(payload, brand):
       <p style='color:#8a909c;font-size:12px'>Suggested replies await your approval in the dashboard — nothing is auto-posted.</p>
     </body></html>
     """
+
+
+def send_digest(payload, brand):
+    if not DAILY_DIGEST_EMAIL:
+        return
+    stats = payload["stats"]
     send_html_email(
         to_email=DAILY_DIGEST_EMAIL,
         subject=f"❖ Aegis Digest — {stats['high_risk']} high-risk — {datetime.utcnow().strftime('%b %d')}",
-        html_body=html,
+        html_body=build_digest_html(payload, brand),
     )
 
 
+def email_preview() -> str:
+    payload = _load()
+    if not payload:
+        return "<p>No Aegis data yet — scan sources first.</p>"
+    return build_digest_html(payload)
+
+
 async def aegis_job(brand_override: str = None):
-    brand = (brand_override or AEGIS_BRAND).strip() or AEGIS_BRAND
+    brand = (brand_override or get_config("aegis_brand", AEGIS_BRAND) or AEGIS_BRAND).strip() or AEGIS_BRAND
     orchestrator.update_agent_status(AGENT_ID, "running")
     try:
         raw = (await fetch_reddit(brand)) + (await fetch_hn(brand))

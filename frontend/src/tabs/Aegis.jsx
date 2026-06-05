@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent, aegisApprove, aegisDismiss } from "../state/api";
+import { EmailPreviewButton, ErrorBanner } from "../components/Common";
 import { MENTIONS } from "../data/mock";
 
 const risk = (k) => ({
@@ -36,7 +37,7 @@ function computeStats(mentions) {
   return { mentions: mentions.length, net_sentiment: net, high_risk: high, avg_response: "12m" };
 }
 
-export default function Aegis({ status }) {
+export default function Aegis({ status, agentError }) {
   const { data, refresh } = useAgentData("aegis");
   const live = data?.aegis;
   const mentions = live?.mentions?.length ? live.mentions : MENTIONS;
@@ -75,9 +76,11 @@ export default function Aegis({ status }) {
       <TabHeader icon="❖" color={T.teal} title="Aegis" sub="Reputation guardian · Reddit + Hacker News mentions · LLM-scored"
         actions={<>
           <Pill mono c={T.ink3}>digest 18:00 daily</Pill>
+          <EmailPreviewButton agentId="aegis" label="Preview digest" />
           <Btn size="sm" onClick={scan} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Scanning…" : "Scan sources"}</Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        <ErrorBanner error={agentError} />
         {highCount > 0 && (
           <div style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "13px 18px", display: "flex", alignItems: "center", gap: 13 }}>
             <span style={{ fontSize: 18 }}>🛡</span>

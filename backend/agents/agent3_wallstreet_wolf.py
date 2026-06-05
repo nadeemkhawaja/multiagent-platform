@@ -3,15 +3,15 @@ import json
 from datetime import datetime
 import yfinance as yf
 
-from database import SessionLocal, AgentData
+from database import SessionLocal, AgentData, get_config
 from llm_client import generate_completion
 from orchestrator import orchestrator
 from email_utils import send_html_email
 
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 
-# Watchlist of 20+ stocks
-WATCHLIST = [
+# Watchlist of 20+ stocks (US). User can override via Settings → watchlist.
+DEFAULT_WATCHLIST = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "NFLX",
     "JPM", "V", "WMT", "JNJ", "PG", "MA", "HD", "UNH", "DIS", "BAC", "PYPL", "ADBE"
 ]
@@ -20,7 +20,14 @@ METALS = ["GC=F", "SI=F"]  # Gold, Silver
 CURRENCIES = ["EURUSD=X", "GBPUSD=X", "JPY=X"]
 
 
+def get_watchlist():
+    raw = get_config("watchlist", "")
+    syms = [s.strip().upper() for s in str(raw).replace("\n", ",").split(",") if s.strip()]
+    return syms if len(syms) >= 20 else DEFAULT_WATCHLIST
+
+
 async def fetch_market_data():
+    WATCHLIST = get_watchlist()
     all_symbols = WATCHLIST + METALS + CURRENCIES
     tickers = yf.Tickers(" ".join(all_symbols))
 
@@ -52,11 +59,7 @@ async def fetch_market_data():
     return data
 
 
-def send_market_email(top_gainers, top_losers, metals, currencies, commentary):
-    """Sends the daily market brief HTML email."""
-    if not DAILY_DIGEST_EMAIL:
-        return
-
+def build_market_html(top_gainers, top_losers, metals, currencies, commentary):
     html_content = f"""
     <html>
       <head>
@@ -93,8 +96,25 @@ def send_market_email(top_gainers, top_losers, metals, currencies, commentary):
       </body>
     </html>
     """
+    return html_content
 
-    send_html_email(DAILY_DIGEST_EMAIL, "Wallstreet Wolf Daily Market Brief", html_content)
+
+def send_market_email(top_gainers, top_losers, metals, currencies, commentary):
+    if not DAILY_DIGEST_EMAIL:
+        return
+    html = build_market_html(top_gainers, top_losers, metals, currencies, commentary)
+    send_html_email(DAILY_DIGEST_EMAIL, "Wallstreet Wolf Daily Market Brief", html)
+
+
+def email_preview() -> str:
+    db = SessionLocal()
+    rec = db.query(AgentData).filter_by(agent_name="wallstreet_wolf", key="market_data").first()
+    db.close()
+    if not rec:
+        return "<p>No market data yet — run Wallstreet Wolf first.</p>"
+    p = json.loads(rec.value)
+    return build_market_html(p.get("top_gainers", []), p.get("top_losers", []),
+                             p.get("metals", []), p.get("currencies", []), p.get("commentary", ""))
 
 
 async def wallstreet_wolf_job():
@@ -103,7 +123,8 @@ async def wallstreet_wolf_job():
         market_data = await fetch_market_data()
 
         # Separate stocks, metals, currencies
-        stocks_only = [d for d in market_data if d["symbol"] in WATCHLIST]
+        watchlist = get_watchlist()
+        stocks_only = [d for d in market_data if d["symbol"] in watchlist]
         stocks_only.sort(key=lambda x: x["change_pct"], reverse=True)
 
         top_gainers = stocks_only[:5]

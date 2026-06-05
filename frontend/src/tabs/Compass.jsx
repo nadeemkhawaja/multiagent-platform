@@ -5,6 +5,7 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
+import { EmailPreviewButton, ErrorBanner } from "../components/Common";
 import { SECTORS, NEWS, FUTURES, LEVELS } from "../data/mock";
 
 const biasColor = (b) => (b === "bull" ? T.green : b === "bear" ? T.red : "#94a3b8");
@@ -73,7 +74,7 @@ function LevelLadder({ f }) {
   );
 }
 
-export default function Compass({ status }) {
+export default function Compass({ status, agentError }) {
   const { data, refresh } = useAgentData("compass");
   const [running, setRunning] = useState(false);
   const c = data?.compass || {};
@@ -103,9 +104,11 @@ export default function Compass({ status }) {
       <TabHeader icon="◎" color={T.amber} title="Compass" sub="Market bias engine + key levels · pre-market brief"
         actions={<>
           <Pill mono c={T.ink3}>brief 07:00 daily</Pill>
+          <EmailPreviewButton agentId="compass" label="Preview brief" />
           <Btn size="sm" kind="soft" onClick={run} disabled={busy}>{busy ? "Analyzing…" : "Run analysis"}</Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        <ErrorBanner error={agentError} />
         <Card pad={22} style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 28, alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12.5, color: T.ink3, fontWeight: 600 }}>Today's composite bias</div>
