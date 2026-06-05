@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -18,7 +19,8 @@ DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 KEY_PEOPLE = os.getenv("KEY_PEOPLE", "").split(",") if os.getenv("KEY_PEOPLE") else []
 
 
-async def authenticate_gmail():
+def _authenticate_gmail_sync():
+    """Blocking OAuth flow. Runs in a worker thread so it never blocks the event loop."""
     creds = None
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -34,6 +36,11 @@ async def authenticate_gmail():
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
     return creds
+
+
+async def authenticate_gmail():
+    # Offload blocking network/file/local-server I/O to a thread.
+    return await asyncio.to_thread(_authenticate_gmail_sync)
 
 
 async def scan_inbox(service):
@@ -57,7 +64,7 @@ async def scan_inbox(service):
     return email_data
 
 
-async def classify_and_process_emails(service, emails):
+async def classify_and_process_emails(service, emails, active_key_people):
     processed = []
     for email in emails:
         # Step 1: Classify email with LLM
@@ -85,8 +92,10 @@ async def classify_and_process_emails(service, emails):
         )
         ai_summary = ai_summary.strip()
 
-        # Step 3: Check if from key person
-        is_key = any(kp.strip().lower() in email['sender'].lower() for kp in KEY_PEOPLE if kp.strip())
+        # Step 3: Check if from key person or mentions LLM
+        is_key_person = any(kp.strip().lower() in email['sender'].lower() for kp in active_key_people if kp.strip())
+        is_llm = "llm" in email['subject'].lower() or "llm" in email['snippet'].lower()
+        is_key = is_key_person or is_llm
 
         # Step 4: Apply Gmail labels and stars
         try:
@@ -163,9 +172,10 @@ def send_daily_summary_email(processed_emails, breakdown):
     send_html_email(DAILY_DIGEST_EMAIL, "Mailman Daily Email Summary", html_content)
 
 
-async def mailman_job():
+async def mailman_job(key_people_override: str = None, send_email: bool = True):
     orchestrator.update_agent_status("mailman", "running")
     try:
+        active_key_people = [p.strip() for p in key_people_override.split(",")] if key_people_override else KEY_PEOPLE
         creds = await authenticate_gmail()
         if not creds:
             orchestrator.update_agent_status("mailman", "error", "Missing Gmail Credentials")
@@ -173,7 +183,7 @@ async def mailman_job():
 
         service = build('gmail', 'v1', credentials=creds)
         emails = await scan_inbox(service)
-        processed_emails = await classify_and_process_emails(service, emails)
+        processed_emails = await classify_and_process_emails(service, emails, active_key_people)
 
         # Calculate breakdown
         breakdown = {}
@@ -191,9 +201,14 @@ async def mailman_job():
         db.commit()
         db.close()
 
-        # Send daily summary email
-        send_daily_summary_email(processed_emails, breakdown)
+        # Conditionally send daily summary email
+        if send_email:
+            send_daily_summary_email(processed_emails, breakdown)
 
         orchestrator.update_agent_status("mailman", "idle")
+    except asyncio.CancelledError:
+        orchestrator.update_agent_status("mailman", "idle")
+        print("[Mailman] Job was manually cancelled.")
+        raise
     except Exception as e:
         orchestrator.update_agent_status("mailman", "error", str(e))

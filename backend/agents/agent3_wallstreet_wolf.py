@@ -107,16 +107,19 @@ async def wallstreet_wolf_job():
         stocks_only.sort(key=lambda x: x["change_pct"], reverse=True)
 
         top_gainers = stocks_only[:5]
-        top_losers = stocks_only[-5:]
+        top_losers = stocks_only[-5:][::-1]  # worst performer first
 
         metals = [d for d in market_data if d["symbol"] in [m for m in METALS]]
         currencies = [d for d in market_data if d["symbol"] in [c for c in CURRENCIES]]
 
+        gainer_strs = [f"{s['symbol']} (+{s['change_pct']}%)" for s in top_gainers]
+        loser_strs = [f"{s['symbol']} ({s['change_pct']}%)" for s in top_losers]
+
         # Generate LLM Commentary
         prompt = (
             f"Write a concise 3-sentence daily market commentary. "
-            f"Top gainers today: {', '.join([f'{s[\"symbol\"]} (+{s[\"change_pct\"]}%)' for s in top_gainers])}. "
-            f"Top losers: {', '.join([f'{s[\"symbol\"]} ({s[\"change_pct\"]}%)' for s in top_losers])}. "
+            f"Top gainers today: {', '.join(gainer_strs)}. "
+            f"Top losers: {', '.join(loser_strs)}. "
             f"Gold: ${metals[0]['price'] if metals else 'N/A'}, Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
         )
         commentary = await generate_completion(

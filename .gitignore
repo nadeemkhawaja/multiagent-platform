@@ -48,3 +48,8 @@ dist-ssr/
 client_secret.json
 credentials.json
 token.json
+
+# Runtime artifacts
+logs/
+backend/email_logs/
+.platform.pids

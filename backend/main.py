@@ -14,50 +14,50 @@ from agents.agent1_ai_times import ai_times_job
 from agents.agent2_mailman import mailman_job
 from agents.agent3_wallstreet_wolf import wallstreet_wolf_job
 from agents.agent4_devdaily import devdaily_job
+from agents.agent5_market_direction import compass_job
+from agents.agent6_aegis import aegis_job, approve_mention, dismiss_mention
 
 scheduler = AsyncIOScheduler()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     init_db()
 
-    # Register agent jobs for watchdog restart capability
     orchestrator.register_agent_job("ai_times", ai_times_job)
     orchestrator.register_agent_job("mailman", mailman_job)
     orchestrator.register_agent_job("wallstreet_wolf", wallstreet_wolf_job)
+    orchestrator.register_agent_job("compass", compass_job)
+    orchestrator.register_agent_job("aegis", aegis_job)
     orchestrator.register_agent_job("devdaily", devdaily_job)
 
-    # Schedule agents
-    scheduler.add_job(ai_times_job, 'cron', hour=8, minute=0, id='ai_times')
-    scheduler.add_job(mailman_job, 'interval', minutes=15, id='mailman')
-    scheduler.add_job(wallstreet_wolf_job, 'cron', hour=17, minute=0, id='wallstreet_wolf')
-    scheduler.add_job(devdaily_job, 'cron', hour=9, minute=0, id='devdaily')
+    # Schedules (match the design's cadence)
+    scheduler.add_job(ai_times_job,         'cron',     hour=8,  minute=0,  id='ai_times')
+    scheduler.add_job(mailman_job,          'interval', minutes=15,         id='mailman')
+    scheduler.add_job(wallstreet_wolf_job,  'interval', minutes=5,          id='wallstreet_wolf')
+    scheduler.add_job(compass_job,          'interval', minutes=30,         id='compass')
+    scheduler.add_job(aegis_job,            'interval', minutes=10,         id='aegis')
+    scheduler.add_job(devdaily_job,         'cron',     hour=9,  minute=0,  id='devdaily')
 
     scheduler.start()
-
-    # Start watchdog for automatic crashed agent restart
     orchestrator.start_watchdog()
 
     yield
-    # Shutdown
     scheduler.shutdown()
 
 
 app = FastAPI(title="Auto-Scheduling Platform Orchestrator", lifespan=lifespan)
 
-# Security: Restrict CORS to the frontend origin only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ─── System Endpoints ───────────────────────────────────────────────
+# ─── System Endpoints ────────────────────────────────────────────────
 
 @app.get("/api/system/resources")
 async def get_system_resources():
@@ -69,7 +69,41 @@ async def get_agents_status():
     return orchestrator.get_agents_status()
 
 
-# ─── Agent Data Endpoints ───────────────────────────────────────────
+@app.get("/api/state")
+async def get_state():
+    """Full orchestrator snapshot consumed by the dashboard (res, agents, llm, events, alarm)."""
+    return orchestrator.get_state()
+
+
+# ─── Demo Endpoints (drive the dashboard's alarm/crash buttons) ──────
+
+class SpikeRequest(BaseModel):
+    resource: Optional[str] = "cpu"
+
+
+class CrashRequest(BaseModel):
+    agent_id: Optional[str] = None
+
+
+@app.post("/api/demo/spike")
+async def demo_spike(req: Optional[SpikeRequest] = None):
+    r = (req.resource if req else None) or "cpu"
+    return orchestrator.spike(r)
+
+
+@app.post("/api/demo/crash")
+async def demo_crash(req: Optional[CrashRequest] = None):
+    import random
+    aid = req.agent_id if req else None
+    if not aid:
+        live = [k for k, v in orchestrator.get_agents_status().items() if v["status"] != "error"]
+        aid = random.choice(live) if live else None
+    if not aid:
+        return {"error": "no agent to crash"}
+    return orchestrator.crash(aid)
+
+
+# ─── Agent Data Endpoints ────────────────────────────────────────────
 
 @app.get("/api/agent/{agent_name}/data")
 async def get_agent_data(agent_name: str):
@@ -86,39 +120,78 @@ async def get_agent_data(agent_name: str):
     return data
 
 
-# ─── Agent Trigger Endpoints ────────────────────────────────────────
+# ─── Agent Trigger Endpoints ─────────────────────────────────────────
+running_tasks = {}
 
-class DevDailyConfig(BaseModel):
+
+class AgentTriggerConfig(BaseModel):
     language: Optional[str] = ""
     count: Optional[int] = 5
     topic: Optional[str] = ""
+    key_people: Optional[str] = ""
+    send_email: Optional[bool] = False
+    brand: Optional[str] = ""
 
 
 @app.post("/api/agent/{agent_name}/trigger")
-async def trigger_agent(agent_name: str, config: Optional[DevDailyConfig] = None):
+async def trigger_agent(agent_name: str, config: Optional[AgentTriggerConfig] = None):
+    cfg = config or AgentTriggerConfig()
+
+    if agent_name in running_tasks and not running_tasks[agent_name].done():
+        running_tasks[agent_name].cancel()
+
     if agent_name == "devdaily":
-        cfg = config or DevDailyConfig()
-        asyncio.create_task(devdaily_job(
-            language=cfg.language,
-            count=cfg.count,
-            topic=cfg.topic
+        task = asyncio.create_task(devdaily_job(
+            language=cfg.language, count=cfg.count, topic=cfg.topic
         ))
-        return {"status": f"Triggered {agent_name} with config: lang={cfg.language}, count={cfg.count}, topic={cfg.topic}"}
+    elif agent_name == "mailman":
+        task = asyncio.create_task(mailman_job(
+            key_people_override=cfg.key_people, send_email=cfg.send_email
+        ))
+    elif agent_name == "aegis":
+        task = asyncio.create_task(aegis_job(brand_override=cfg.brand or None))
+    else:
+        job_map = {
+            "ai_times":        ai_times_job,
+            "wallstreet_wolf": wallstreet_wolf_job,
+            "compass":         compass_job,
+        }
+        if agent_name in job_map:
+            task = asyncio.create_task(job_map[agent_name]())
+        else:
+            return {"error": "Agent not found"}
 
-    job_map = {
-        "ai_times": ai_times_job,
-        "mailman": mailman_job,
-        "wallstreet_wolf": wallstreet_wolf_job,
-    }
-
-    if agent_name in job_map:
-        asyncio.create_task(job_map[agent_name]())
-        return {"status": f"Triggered {agent_name}"}
-
-    return {"error": "Agent not found"}
+    running_tasks[agent_name] = task
+    return {"status": f"Triggered {agent_name}"}
 
 
-# ─── LLM Test Endpoint ──────────────────────────────────────────────
+@app.post("/api/agent/{agent_name}/stop")
+async def stop_agent(agent_name: str):
+    if agent_name in running_tasks and not running_tasks[agent_name].done():
+        running_tasks[agent_name].cancel()
+        orchestrator.update_agent_status(agent_name, "idle")
+        return {"status": f"Stopped {agent_name}"}
+    return {"status": f"{agent_name} is not running"}
+
+
+# ─── Aegis Actions (human-in-the-loop reply approval) ────────────────
+
+class AegisReply(BaseModel):
+    id: str
+    reply: Optional[str] = None
+
+
+@app.post("/api/aegis/approve")
+async def aegis_approve(req: AegisReply):
+    return approve_mention(req.id, req.reply)
+
+
+@app.post("/api/aegis/dismiss")
+async def aegis_dismiss(req: AegisReply):
+    return dismiss_mention(req.id)
+
+
+# ─── LLM Test Endpoint ───────────────────────────────────────────────
 
 from llm_client import generate_completion
 
@@ -135,4 +208,4 @@ async def test_llm(request: PromptRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=5174, reload=True)

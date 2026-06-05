@@ -1,0 +1,156 @@
+// ============================================================================
+// tab-compass.jsx — Compass: market bias engine + key support/resistance levels
+// ============================================================================
+const biasColor = (b) => (b === "bull" ? T.green : b === "bear" ? T.red : "#94a3b8");
+const biasLabel = (b) => (b === "bull" ? "Bullish" : b === "bear" ? "Bearish" : "Neutral");
+
+function BiasMeter({ score, h = 10 }) {
+  // score -100..100  →  0..100 position
+  const pos = (score + 100) / 2;
+  const col = score > 15 ? T.green : score < -15 ? T.red : "#94a3b8";
+  return (
+    <div style={{ position: "relative", height: h, borderRadius: h, background: T.trackGrad, marginTop: 6 }}>
+      <div style={{ position: "absolute", left: `calc(${pos}% - ${h}px)`, top: -2, width: h + 4, height: h + 4, borderRadius: "50%", background: T.card, border: `3px solid ${col}`, boxShadow: "0 1px 4px rgba(0,0,0,.15)" }} />
+    </div>
+  );
+}
+
+function SectorRow({ s }) {
+  const col = s.bias > 15 ? T.green : s.bias < -15 ? T.red : "#94a3b8";
+  return (
+    <div style={{ padding: "12px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, width: 110 }}>{s.k}</span>
+        <div style={{ flex: 1 }}><BiasMeter score={s.bias} /></div>
+        <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: col, width: 48, textAlign: "right" }}>{s.bias > 0 ? "+" : ""}{s.bias}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 5, marginLeft: 120, textWrap: "pretty" }}>{s.why}</div>
+    </div>
+  );
+}
+
+function LevelLadder({ f }) {
+  const ticks = [
+    { k: "R2", v: f.r2, c: T.red }, { k: "R1", v: f.r1, c: T.red },
+    { k: "Pivot", v: f.piv, c: "#94a3b8" },
+    { k: "S1", v: f.s1, c: T.green }, { k: "S2", v: f.s2, c: T.green },
+  ];
+  const min = f.s2, max = f.r2, span = max - min;
+  const y = (v) => 100 - ((v - min) / span) * 100;
+  return (
+    <Card pad={18}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: T.mono }}>{f.t}</div>
+          <div style={{ fontSize: 11.5, color: T.ink3 }}>{f.n}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontFamily: T.mono, fontSize: 18, fontWeight: 700 }}>{f.px.toLocaleString()}</div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: biasColor(f.bias) }}>{biasLabel(f.bias)} bias</span>
+        </div>
+      </div>
+      <div style={{ position: "relative", height: 150, marginLeft: 6 }}>
+        {/* track */}
+        <div style={{ position: "absolute", left: 44, top: 0, bottom: 0, width: 2, background: T.line }} />
+        {ticks.map((t) => (
+          <div key={t.k} style={{ position: "absolute", left: 0, right: 0, top: `calc(${y(t.v)}% - 8px)`, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 36, textAlign: "right", fontFamily: T.mono, fontSize: 9.5, fontWeight: 700, color: t.c }}>{t.k}</span>
+            <span style={{ width: 9, height: 9, borderRadius: 9, background: T.card, border: `2px solid ${t.c}`, flex: "0 0 auto" }} />
+            <span style={{ flex: 1, height: 1, borderTop: `1px dashed ${t.c}55` }} />
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.ink2 }}>{t.v.toLocaleString()}</span>
+          </div>
+        ))}
+        {/* current price marker */}
+        <div style={{ position: "absolute", left: 40, right: 0, top: `calc(${y(f.px)}% - 9px)`, display: "flex", alignItems: "center" }}>
+          <span style={{ background: biasColor(f.bias), color: "#fff", fontFamily: T.mono, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 5, boxShadow: "0 1px 4px rgba(0,0,0,.18)" }}>▸ {f.px.toLocaleString()}</span>
+          <span style={{ flex: 1, height: 2, background: biasColor(f.bias) }} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CompassTab() {
+  const overall = Math.round(SECTORS.reduce((a, s) => a + s.bias, 0) / SECTORS.length);
+  const sentChip = (s) => {
+    const map = { bull: [T.green, T.greenBg, "Bullish"], bear: [T.red, T.redBg, "Bearish"], neutral: ["#64748b", "#f1f5f9", "Neutral"] };
+    const [c, bg, t] = map[s];
+    return <span style={{ fontSize: 10.5, fontWeight: 700, color: c, background: bg, padding: "3px 8px", borderRadius: 6 }}>{t}</span>;
+  };
+  return (
+    <div>
+      <TabHeader icon="◎" color={T.amber} title="Compass" sub="Market bias engine + key levels · pre-market brief"
+        actions={<>
+          <Pill mono c={T.ink3}>brief 07:00 daily</Pill>
+          <Btn size="sm" kind="soft">Run analysis</Btn>
+        </>} />
+      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* overall bias hero */}
+        <Card pad={22} style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 28, alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 12.5, color: T.ink3, fontWeight: 600 }}>Today's composite bias</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
+              <span style={{ fontSize: 38, fontWeight: 800, letterSpacing: -1.5, color: overall > 15 ? T.green : overall < -15 ? T.red : "#64748b" }}>{overall > 15 ? "Risk-On" : overall < -15 ? "Risk-Off" : "Mixed"}</span>
+            </div>
+            <div style={{ marginTop: 10 }}><BiasMeter score={overall} h={12} /></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.mono, fontSize: 10.5, color: T.ink4, marginTop: 5 }}><span>BEARISH</span><span>{overall > 0 ? "+" : ""}{overall}</span><span>BULLISH</span></div>
+          </div>
+          <div style={{ borderLeft: `1px solid ${T.line2}`, paddingLeft: 28 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: T.violet, marginBottom: 4, display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>◇ Qwen3 read</div>
+            <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, textWrap: "pretty" }}>
+              Tone leans <b>constructive</b> on semis strength and cooling inflation expectations, but consumer softness caps conviction. Treat rallies into <b>/ES 5967</b> as fade-prone until breadth confirms; <b>/NQ</b> holds its bullish structure above the 21,470 pivot. Two setups to watch: <b>NVDA</b> continuation over 1,308 and <b>TSLA</b> breakdown below 338.
+            </div>
+          </div>
+        </Card>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 16, alignItems: "start" }}>
+          <Card pad={20}>
+            <SectionTitle sub="Directional lean by sector (−100 to +100)">Sector bias</SectionTitle>
+            {SECTORS.map((s) => <SectorRow key={s.k} s={s} />)}
+          </Card>
+          <Card pad={20}>
+            <SectionTitle sub="LLM-scored headlines driving today's read" right={<Pill mono c={T.ink3}>live feed</Pill>}>News sentiment</SectionTitle>
+            {NEWS.map((n, i) => (
+              <div key={i} style={{ padding: "11px 0", borderBottom: i < NEWS.length - 1 ? `1px solid ${T.line2}` : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: T.ink2, fontFamily: T.mono }}>{n.src}</span>
+                  <span style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono }}>{n.min}</span>
+                  <span style={{ marginLeft: "auto" }}>{sentChip(n.s)}</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.4, textWrap: "pretty" }}>{n.t}</div>
+              </div>
+            ))}
+          </Card>
+        </div>
+
+        {/* Key levels — futures */}
+        <div>
+          <SectionTitle sub="Intraday support & resistance · pivot-based">Key levels — Futures</SectionTitle>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {FUTURES.map((f) => <LevelLadder key={f.t} f={f} />)}
+          </div>
+        </div>
+
+        {/* Key levels — stocks table */}
+        <Card pad={20}>
+          <SectionTitle sub="Pivot · R1 · S1 for the 10 majors">Key levels — Stocks</SectionTitle>
+          <div style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(4, 1fr) 90px", padding: "8px 6px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
+            <span>Symbol</span><span style={{ textAlign: "right" }}>Last</span><span style={{ textAlign: "right" }}>Pivot</span><span style={{ textAlign: "right" }}>R1</span><span style={{ textAlign: "right" }}>S1</span><span style={{ textAlign: "right" }}>Bias</span>
+          </div>
+          {LEVELS.map((l) => (
+            <div key={l.t} style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(4, 1fr) 90px", padding: "11px 6px", alignItems: "center", borderBottom: `1px solid ${T.line2}`, fontFamily: T.mono, fontSize: 12.5 }}>
+              <span style={{ fontWeight: 700, fontFamily: T.sans }}>{l.t}</span>
+              <span style={{ textAlign: "right", fontWeight: 600 }}>{l.px.toLocaleString()}</span>
+              <span style={{ textAlign: "right", color: T.ink3 }}>{l.piv.toLocaleString()}</span>
+              <span style={{ textAlign: "right", color: T.red }}>{l.r1.toLocaleString()}</span>
+              <span style={{ textAlign: "right", color: T.green }}>{l.s1.toLocaleString()}</span>
+              <span style={{ textAlign: "right" }}><span style={{ fontSize: 10.5, fontFamily: T.sans, fontWeight: 700, color: biasColor(l.bias), background: biasColor(l.bias) + "18", padding: "3px 8px", borderRadius: 6 }}>{biasLabel(l.bias)}</span></span>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+window.CompassTab = CompassTab;

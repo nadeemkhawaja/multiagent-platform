@@ -25,9 +25,11 @@ async def fetch_youtube_videos(query: str, max_results: int = 5):
             part="snippet",
             q=query,
             type="video",
-            order="date",
+            order="viewCount",
+            videoDuration="medium",
             maxResults=max_results,
-            publishedAfter=published_after
+            publishedAfter=published_after,
+            relevanceLanguage="en"
         )
         response = request.execute()
 
@@ -37,7 +39,7 @@ async def fetch_youtube_videos(query: str, max_results: int = 5):
                 "title": item["snippet"]["title"],
                 "channel": item["snippet"]["channelTitle"],
                 "date": item["snippet"]["publishedAt"],
-                "thumbnail": item["snippet"]["thumbnails"]["default"]["url"],
+                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"],
                 "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
             })
         return videos
