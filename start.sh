@@ -38,6 +38,22 @@ FRONTEND_PID=$!
 
 echo "$BACKEND_PID $FRONTEND_PID" > "$PID_FILE"
 
+# 6. Open the dashboard in the default browser once the frontend is reachable
+DASH_URL="http://localhost:5173"
+open_browser() {
+  if command -v open >/dev/null 2>&1; then open "$DASH_URL"          # macOS
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$DASH_URL" # Linux
+  elif command -v start >/dev/null 2>&1; then start "$DASH_URL"       # Windows/Git Bash
+  fi
+}
+(
+  for _ in $(seq 1 30); do
+    curl -s --max-time 1 "$DASH_URL" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  open_browser
+) &
+
 # Clean shutdown of both children on exit
 cleanup() {
   kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
