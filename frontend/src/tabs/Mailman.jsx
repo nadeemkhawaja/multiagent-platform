@@ -5,8 +5,12 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner } from "../components/Common";
-import { MAIL_CATS, MAILS, KEY_PEOPLE, CAT_PALETTE } from "../data/mock";
+import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
+
+const CAT_PALETTE = {
+  Urgent: "#e5484d", "Action Required": "#f59e0b", "Follow-Up": "#7c5cf6",
+  Personal: "#0d9488", Newsletter: "#2f6feb", Notification: "#94a3b8", Other: "#c0c6d0",
+};
 
 function parseSender(sender = "") {
   const m = sender.match(/^(.*?)\s*<(.+?)>$/);
@@ -15,7 +19,7 @@ function parseSender(sender = "") {
 }
 
 function adaptEmails(list) {
-  if (!Array.isArray(list) || list.length === 0) return MAILS;
+  if (!Array.isArray(list) || list.length === 0) return [];
   return list.map((e, i) => {
     const { from, email } = parseSender(e.sender || e.from || "");
     return {
@@ -33,7 +37,7 @@ function adaptEmails(list) {
 }
 
 function adaptCats(breakdown) {
-  if (!breakdown || Object.keys(breakdown).length === 0) return MAIL_CATS;
+  if (!breakdown || Object.keys(breakdown).length === 0) return [];
   return Object.entries(breakdown).map(([k, n]) => ({ k, n, c: CAT_PALETTE[k] || "#94a3b8" }));
 }
 
@@ -143,25 +147,33 @@ export default function Mailman({ status, agentError }) {
           </div>
         </Card>
 
-        <CatBar cats={cats} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, alignItems: "start" }}>
-          <Card pad={20}>
-            <SectionTitle sub="Auto-labeled, starred & summarized" right={<Pill mono c={T.ink3}>{mails.length} emails</Pill>}>Inbox</SectionTitle>
-            {mails.map((m) => <MailRow key={m.id} m={m} onStar={onStar} />)}
-          </Card>
-          <Card pad={20}>
-            <SectionTitle sub="Always alert on these senders">Key people</SectionTitle>
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {(keyPeople ? keyPeople.split(",").map((s) => s.trim()).filter(Boolean) : KEY_PEOPLE).map((p) => (
-                <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 9px", borderRadius: 9, background: T.cardAlt, border: `1px solid ${T.line2}` }}>
-                  <span style={{ width: 26, height: 26, borderRadius: 26, background: T.violet + "1a", color: T.violet, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700 }}>{p.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{p}</span>
-                  <Dot c={T.green} s={7} />
+        {mails.length === 0 ? (
+          <EmptyState icon="✉" title="No inbox scan yet"
+            hint="Click Scan now to triage your Gmail inbox with the LLM (requires Gmail OAuth)." />
+        ) : (
+          <>
+            <CatBar cats={cats} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, alignItems: "start" }}>
+              <Card pad={20}>
+                <SectionTitle sub="Auto-labeled, starred & summarized" right={<Pill mono c={T.ink3}>{mails.length} emails</Pill>}>Inbox</SectionTitle>
+                {mails.map((m) => <MailRow key={m.id} m={m} onStar={onStar} />)}
+              </Card>
+              <Card pad={20}>
+                <SectionTitle sub="Always alert on these senders">Key people</SectionTitle>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {(keyPeople ? keyPeople.split(",").map((s) => s.trim()).filter(Boolean) : []).map((p) => (
+                    <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 9px", borderRadius: 9, background: T.cardAlt, border: `1px solid ${T.line2}` }}>
+                      <span style={{ width: 26, height: 26, borderRadius: 26, background: T.violet + "1a", color: T.violet, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700 }}>{p.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{p}</span>
+                      <Dot c={T.green} s={7} />
+                    </div>
+                  ))}
+                  {!keyPeople && <div style={{ fontSize: 12, color: T.ink4 }}>Set key people in Settings or the config above.</div>}
                 </div>
-              ))}
+              </Card>
             </div>
-          </Card>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

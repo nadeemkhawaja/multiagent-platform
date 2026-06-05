@@ -1,7 +1,7 @@
 // Shared UI bits: email-preview modal trigger + agent error banner.
 import { useState } from "react";
 import { T } from "../theme/tokens";
-import { Btn } from "../theme/ui";
+import { Btn, Card } from "../theme/ui";
 import { emailPreview } from "../state/api";
 
 export function EmailPreviewButton({ agentId, label = "Preview email" }) {
@@ -28,6 +28,16 @@ export function EmailPreviewButton({ agentId, label = "Preview email" }) {
         </div>
       )}
     </>
+  );
+}
+
+export function EmptyState({ icon = "∅", title, hint }) {
+  return (
+    <Card pad={44} style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 30, opacity: 0.45 }}>{icon}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, marginTop: 10 }}>{title}</div>
+      {hint && <div style={{ fontSize: 12.5, color: T.ink3, marginTop: 5 }}>{hint}</div>}
+    </Card>
   );
 }
 

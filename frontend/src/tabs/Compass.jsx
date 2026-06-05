@@ -5,8 +5,7 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner } from "../components/Common";
-import { SECTORS, NEWS, FUTURES, LEVELS } from "../data/mock";
+import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
 
 const biasColor = (b) => (b === "bull" ? T.green : b === "bear" ? T.red : "#94a3b8");
 const biasLabel = (b) => (b === "bull" ? "Bullish" : b === "bear" ? "Bearish" : "Neutral");
@@ -78,11 +77,12 @@ export default function Compass({ status, agentError }) {
   const { data, refresh } = useAgentData("compass");
   const [running, setRunning] = useState(false);
   const c = data?.compass || {};
-  const sectors = c.sectors?.length ? c.sectors : SECTORS;
-  const news = c.news?.length ? c.news : NEWS;
-  const futures = c.futures?.length ? c.futures : FUTURES;
-  const levels = c.levels?.length ? c.levels : LEVELS;
-  const overall = c.composite ?? Math.round(sectors.reduce((a, s) => a + s.bias, 0) / sectors.length);
+  const sectors = c.sectors || [];
+  const news = c.news || [];
+  const futures = c.futures || [];
+  const levels = c.levels || [];
+  const empty = !sectors.length && !news.length && !futures.length && !levels.length;
+  const overall = c.composite ?? (sectors.length ? Math.round(sectors.reduce((a, s) => a + s.bias, 0) / sectors.length) : 0);
   const read = c.read;
 
   const sentChip = (s) => {
@@ -109,6 +109,11 @@ export default function Compass({ status, agentError }) {
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />
+        {empty ? (
+          <EmptyState icon="◎" title="No analysis yet"
+            hint="Click Run analysis to compute sector bias, pivot key levels for /ES, /NQ & the 10 majors, and a Qwen3 read." />
+        ) : (
+        <>
         <Card pad={22} style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 28, alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12.5, color: T.ink3, fontWeight: 600 }}>Today's composite bias</div>
@@ -169,6 +174,8 @@ export default function Compass({ status, agentError }) {
             </div>
           ))}
         </Card>
+        </>
+        )}
       </div>
     </div>
   );

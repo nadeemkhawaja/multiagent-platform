@@ -5,13 +5,12 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, StripedSlot } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner } from "../components/Common";
-import { AI_NEWS, AI_PEOPLE } from "../data/mock";
+import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
 
 const PALETTE = ["#e5484d", "#2f6feb", "#16a34a", "#f59e0b", "#0d9488", "#7c5cf6"];
 
-function adapt(list, fallback) {
-  if (!Array.isArray(list) || list.length === 0) return fallback;
+function adapt(list) {
+  if (!Array.isArray(list) || list.length === 0) return [];
   return list.map((v, i) => ({
     id: v.id || v.video_id || i,
     title: v.title || "Untitled",
@@ -63,9 +62,10 @@ export default function AITimes({ status, agentError }) {
   const { data, refresh } = useAgentData("ai_times");
   const [refreshing, setRefreshing] = useState(false);
   const videos = data?.videos || {};
-  const news = adapt(videos.news, AI_NEWS);
-  const people = adapt(videos.personality, AI_PEOPLE);
+  const news = adapt(videos.news);
+  const people = adapt(videos.personality);
   const intro = videos.intro;
+  const empty = news.length === 0 && people.length === 0;
 
   const refreshNow = async () => {
     setRefreshing(true);
@@ -96,18 +96,25 @@ export default function AITimes({ status, agentError }) {
           <EmailPreviewButton agentId="ai_times" label="Preview digest" />
         </Card>
 
-        <div>
-          <SectionTitle sub="Top from the AI news cycle" right={<Pill mono c={T.ink3}>{news.length} videos</Pill>}>📰 AI News</SectionTitle>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
-            {news.slice(0, 5).map((v) => <VideoCard key={v.id} v={v} />)}
-          </div>
-        </div>
-        <div>
-          <SectionTitle sub="Interviews & long-form conversations" right={<Pill mono c={T.ink3}>{people.length} videos</Pill>}>🎙 Personality &amp; Interviews</SectionTitle>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
-            {people.slice(0, 5).map((v) => <VideoCard key={v.id} v={v} />)}
-          </div>
-        </div>
+        {empty ? (
+          <EmptyState icon="▶" title="No videos yet"
+            hint="Click Refresh to fetch the latest US/English AI videos from YouTube (last 7 days)." />
+        ) : (
+          <>
+            <div>
+              <SectionTitle sub="Top from the AI news cycle" right={<Pill mono c={T.ink3}>{news.length} videos</Pill>}>📰 AI News</SectionTitle>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
+                {news.slice(0, 5).map((v) => <VideoCard key={v.id} v={v} />)}
+              </div>
+            </div>
+            <div>
+              <SectionTitle sub="Interviews & long-form conversations" right={<Pill mono c={T.ink3}>{people.length} videos</Pill>}>🎙 Personality &amp; Interviews</SectionTitle>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
+                {people.slice(0, 5).map((v) => <VideoCard key={v.id} v={v} />)}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

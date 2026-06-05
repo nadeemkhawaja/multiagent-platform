@@ -6,8 +6,7 @@ import { useState, useEffect } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent, aegisApprove, aegisDismiss } from "../state/api";
-import { EmailPreviewButton, ErrorBanner } from "../components/Common";
-import { MENTIONS } from "../data/mock";
+import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
 
 const risk = (k) => ({
   high: { t: "High risk", c: T.red, bg: T.redBg },
@@ -40,7 +39,7 @@ function computeStats(mentions) {
 export default function Aegis({ status, agentError }) {
   const { data, refresh } = useAgentData("aegis");
   const live = data?.aegis;
-  const mentions = live?.mentions?.length ? live.mentions : MENTIONS;
+  const mentions = live?.mentions || [];
   const stats = live?.stats || computeStats(mentions);
 
   const [sel, setSel] = useState(mentions[0]?.id);
@@ -112,6 +111,10 @@ export default function Aegis({ status, agentError }) {
           ))}
         </div>
 
+        {mentions.length === 0 ? (
+          <EmptyState icon="❖" title="No mentions yet"
+            hint="Click Scan sources to monitor Reddit + Hacker News for your brand and score each mention with the LLM." />
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr", gap: 16, alignItems: "start" }}>
           <Card pad={20}>
             <SectionTitle sub="Sorted by risk · LLM-scored">Mention feed</SectionTitle>
@@ -178,6 +181,7 @@ export default function Aegis({ status, agentError }) {
             </Card>
           )}
         </div>
+        )}
       </div>
     </div>
   );

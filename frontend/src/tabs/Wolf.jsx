@@ -6,8 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Btn, Spark, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner } from "../components/Common";
-import { WATCH, FX, METALS } from "../data/mock";
+import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
 
 const fmtFx = (sym = "") => {
   const s = sym.replace("=X", "");
@@ -15,15 +14,15 @@ const fmtFx = (sym = "") => {
 };
 
 function adaptWatch(list) {
-  if (!Array.isArray(list) || list.length === 0) return WATCH;
+  if (!Array.isArray(list) || list.length === 0) return [];
   return list.map((s) => ({ t: s.symbol || s.t, n: s.name || s.n || s.symbol, p: Number(s.price ?? s.p) || 0, ch: Number(s.change_pct ?? s.ch) || 0, h: s.history || s.h || [] }));
 }
 function adaptFx(list) {
-  if (!Array.isArray(list) || list.length === 0) return FX;
+  if (!Array.isArray(list) || list.length === 0) return [];
   return list.map((s) => ({ p: fmtFx(s.symbol || s.p), v: Number(s.price ?? s.v) || 0, ch: Number(s.change_pct ?? s.ch) || 0 }));
 }
 function adaptMetals(list) {
-  if (!Array.isArray(list) || list.length === 0) return METALS;
+  if (!Array.isArray(list) || list.length === 0) return [];
   return list.map((s) => {
     const gold = (s.symbol || "").includes("GC") || s.p === "Gold";
     return { p: gold ? "Gold" : "Silver", sym: gold ? "XAU/USD" : "XAG/USD", v: Number(s.price ?? s.v) || 0, ch: Number(s.change_pct ?? s.ch) || 0 };
@@ -59,7 +58,7 @@ function MoverBlock({ title, list, accent, badge }) {
 export default function Wolf({ status, agentError }) {
   const { data, refresh } = useAgentData("wallstreet_wolf");
   const [refreshing, setRefreshing] = useState(false);
-  const [watch, setWatch] = useState(WATCH);
+  const [watch, setWatch] = useState([]);
   const seeded = useRef(null);
 
   const md = data?.market_data || {};
@@ -101,12 +100,17 @@ export default function Wolf({ status, agentError }) {
       <TabHeader icon="$" color={T.green} title="Wallstreet Wolf" sub="Yahoo Finance · live watchlist · gainers / losers / FX / metals"
         actions={<>
           <Pill mono c={T.ink3}>brief 16:30 daily</Pill>
-          <Pill c={advancers >= watch.length / 2 ? T.green : T.red} bg={advancers >= watch.length / 2 ? T.greenBg : T.redBg}>{advancers}/{watch.length} advancing</Pill>
+          {watch.length > 0 && <Pill c={advancers >= watch.length / 2 ? T.green : T.red} bg={advancers >= watch.length / 2 ? T.greenBg : T.redBg}>{advancers}/{watch.length} advancing</Pill>}
           <EmailPreviewButton agentId="wallstreet_wolf" label="Preview brief" />
           <Btn size="sm" onClick={run} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Running…" : "Refresh"}</Btn>
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />
+        {watch.length === 0 ? (
+          <EmptyState icon="$" title="No market data yet"
+            hint="Click Refresh to pull live Yahoo Finance prices for the watchlist, FX and metals." />
+        ) : (
+        <>
         <Card pad={20} style={{ background: T.cardAlt, borderColor: T.line }}>
           <div style={{ display: "flex", gap: 14 }}>
             <div style={{ width: 38, height: 38, borderRadius: 11, background: T.violetBg, color: T.violet, display: "grid", placeItems: "center", fontSize: 17, flex: "0 0 auto" }}>◇</div>
@@ -173,6 +177,8 @@ export default function Wolf({ status, agentError }) {
             ))}
           </Card>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
