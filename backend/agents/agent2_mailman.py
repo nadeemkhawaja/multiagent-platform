@@ -60,22 +60,13 @@ async def scan_inbox(service, max_results=10):
     return email_data
 
 
-def get_or_create_label(service, name, cache):
-    if name in cache:
-        return cache[name]
-    try:
-        created = service.users().labels().create(userId='me', body={
-            'name': name, 'labelListVisibility': 'labelShow', 'messageListVisibility': 'show',
-        }).execute()
-        cache[name] = created['id']
-        return cache[name]
-    except Exception as e:
-        print(f"[Mailman] Could not create label '{name}': {e}")
-        return None
+async def classify_and_process_emails(emails, active_key_people):
+    """One batched LLM call classifies + summarizes all emails (in English).
 
-
-async def classify_and_process_emails(service, emails, active_key_people):
-    """One batched LLM call classifies + summarizes all emails (in English)."""
+    Read-only: this never writes labels or stars back to Gmail. The categories
+    are used only for the dashboard and the daily digest email — the user's
+    actual mailbox is left untouched.
+    """
     if not emails:
         return []
 
@@ -100,14 +91,6 @@ async def classify_and_process_emails(service, emails, active_key_people):
             except (TypeError, ValueError):
                 continue
 
-    # prime label cache once
-    label_cache = {}
-    try:
-        for lbl in service.users().labels().list(userId='me').execute().get('labels', []):
-            label_cache[lbl['name']] = lbl['id']
-    except Exception as e:
-        print(f"[Mailman] Could not list labels: {e}")
-
     processed = []
     for i, email in enumerate(emails):
         info = by_index.get(i, {})
@@ -116,19 +99,6 @@ async def classify_and_process_emails(service, emails, active_key_people):
             category = "Other"
         ai_summary = str(info.get("summary", "")).strip()
         is_key = any(kp.lower() in email['sender'].lower() for kp in active_key_people)
-
-        try:
-            add_label_ids = []
-            label_id = get_or_create_label(service, f"Mailman/{category}", label_cache)
-            if label_id:
-                add_label_ids.append(label_id)
-            if is_key or category.lower() in ["urgent", "action required"]:
-                add_label_ids.append('STARRED')
-            if add_label_ids:
-                service.users().messages().modify(userId='me', id=email['id'],
-                                                  body={'addLabelIds': add_label_ids}).execute()
-        except Exception as e:
-            print(f"[Mailman] Failed to apply label/star: {e}")
 
         processed.append({"subject": email['subject'], "sender": email['sender'], "category": category,
                           "is_key": is_key, "snippet": email['snippet'], "ai_summary": ai_summary})
@@ -190,7 +160,7 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True):
 
         service = build('gmail', 'v1', credentials=creds)
         emails = await scan_inbox(service)
-        processed_emails = await classify_and_process_emails(service, emails, active_key_people)
+        processed_emails = await classify_and_process_emails(emails, active_key_people)
 
         breakdown = {}
         for e in processed_emails:
