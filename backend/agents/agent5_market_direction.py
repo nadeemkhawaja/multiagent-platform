@@ -14,6 +14,7 @@ Stored in SQLite under agent_name="compass", key="compass".
 import os
 import re
 import json
+import asyncio
 from datetime import datetime
 
 import httpx
@@ -82,17 +83,27 @@ def _last_session(sym):
         return None, None, None, None
 
 
-def fetch_sectors():
+def _fetch_sectors_sync():
     sectors = []
     try:
         tickers = yf.Tickers(" ".join(SECTOR_ETFS.keys()))
         for sym, name in SECTOR_ETFS.items():
             try:
                 info = tickers.tickers[sym].fast_info
-                price = float(info.last_price)
-                prev = float(info.previous_close)
+                price = info.last_price
+                prev = info.previous_close
+                # Fall back to history if fast_info returns None (weekends, API gaps)
+                if price is None or prev is None:
+                    hist = tickers.tickers[sym].history(period="5d")
+                    if hist.empty:
+                        continue
+                    closes = hist["Close"].tolist()
+                    if price is None:
+                        price = closes[-1]
+                    if prev is None:
+                        prev = closes[-2] if len(closes) >= 2 else closes[-1]
+                price, prev = float(price), float(prev)
                 chg_pct = ((price - prev) / prev * 100) if prev else 0.0
-                # map a daily % move to a -100..100 directional lean
                 score = int(max(-100, min(100, round(chg_pct * 28))))
                 tone = "firm" if score > 15 else "soft" if score < -15 else "mixed"
                 sectors.append({
@@ -100,14 +111,14 @@ def fetch_sectors():
                     "bias": score,
                     "why": f"{name} {tone} — {sym} {'+' if chg_pct >= 0 else ''}{chg_pct:.2f}% on the session.",
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Compass] {sym} sector error: {e}")
     except Exception as e:
         print(f"[Compass] Sector fetch error: {e}")
     return sectors
 
 
-def fetch_futures():
+def _fetch_futures_sync():
     out = []
     for sym, (label, name) in FUTURES.items():
         px, h, l, c = _last_session(sym)
@@ -118,7 +129,7 @@ def fetch_futures():
     return out
 
 
-def fetch_levels():
+def _fetch_levels_sync():
     out = []
     for sym in MAJORS:
         px, h, l, c = _last_session(sym)
@@ -276,14 +287,24 @@ def email_preview() -> str:
 async def compass_job():
     orchestrator.update_agent_status(AGENT_ID, "running")
     try:
-        sectors = fetch_sectors()
-        futures = fetch_futures()
-        levels = fetch_levels()
+        # Run all three blocking yfinance fetches in parallel threads
+        sectors, futures, levels = await asyncio.gather(
+            asyncio.to_thread(_fetch_sectors_sync),
+            asyncio.to_thread(_fetch_futures_sync),
+            asyncio.to_thread(_fetch_levels_sync),
+        )
         headlines = await fetch_headlines()
-        headlines = await llm_headline_sentiment(headlines)
+        try:
+            headlines = await llm_headline_sentiment(headlines)
+        except Exception as e:
+            print(f"[Compass] Headline sentiment LLM failed: {e}")
 
         composite = int(round(sum(s["bias"] for s in sectors) / len(sectors))) if sectors else 0
-        read = await llm_read(sectors, futures, headlines)
+        try:
+            read = await llm_read(sectors, futures, headlines)
+        except Exception as e:
+            print(f"[Compass] LLM read failed: {e}")
+            read = ""
 
         payload = {
             "sectors": sectors,
