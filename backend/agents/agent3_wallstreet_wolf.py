@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from datetime import datetime
 import yfinance as yf
 
@@ -26,7 +27,8 @@ def get_watchlist():
     return syms if len(syms) >= 20 else DEFAULT_WATCHLIST
 
 
-async def fetch_market_data():
+def _fetch_market_data_sync():
+    """Synchronous yfinance fetch — called via asyncio.to_thread to avoid blocking the event loop."""
     WATCHLIST = get_watchlist()
     all_symbols = WATCHLIST + METALS + CURRENCIES
     tickers = yf.Tickers(" ".join(all_symbols))
@@ -39,24 +41,21 @@ async def fetch_market_data():
 
             last_price = info.last_price
             prev_close = info.previous_close
+            hist = ticker.history(period="5d")
+            history_prices = hist['Close'].tolist() if not hist.empty else []
 
             # Fall back to historical close if fast_info returns None (weekends, API gaps)
             if last_price is None or prev_close is None:
-                hist = ticker.history(period="5d")
-                if hist.empty:
+                if not history_prices:
                     print(f"[WallstreetWolf] No data available for {sym}, skipping")
                     continue
-                closes = hist['Close'].tolist()
                 if last_price is None:
-                    last_price = closes[-1]
+                    last_price = history_prices[-1]
                 if prev_close is None:
-                    prev_close = closes[-2] if len(closes) >= 2 else closes[-1]
+                    prev_close = history_prices[-2] if len(history_prices) >= 2 else history_prices[-1]
 
             change = last_price - prev_close
             change_pct = (change / prev_close) * 100 if prev_close else 0
-
-            hist = ticker.history(period="5d")
-            history_prices = hist['Close'].tolist() if not hist.empty else []
 
             data.append({
                 "symbol": sym,
@@ -69,6 +68,10 @@ async def fetch_market_data():
             print(f"[WallstreetWolf] Failed to fetch data for {sym}: {e}")
 
     return data
+
+
+async def fetch_market_data():
+    return await asyncio.to_thread(_fetch_market_data_sync)
 
 
 def build_market_html(top_gainers, top_losers, metals, currencies, commentary):
@@ -148,17 +151,21 @@ async def wallstreet_wolf_job():
         gainer_strs = [f"{s['symbol']} (+{s['change_pct']}%)" for s in top_gainers]
         loser_strs = [f"{s['symbol']} ({s['change_pct']}%)" for s in top_losers]
 
-        # Generate LLM Commentary
-        prompt = (
-            f"Write a concise 3-sentence daily market commentary. "
-            f"Top gainers today: {', '.join(gainer_strs)}. "
-            f"Top losers: {', '.join(loser_strs)}. "
-            f"Gold: ${metals[0]['price'] if metals else 'N/A'}, Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
-        )
-        commentary = await generate_completion(
-            prompt,
-            system_prompt="You are a Wall Street financial analyst writing a brief daily market note in English (US markets)."
-        )
+        # Generate LLM commentary — isolated so a failure doesn't abort the data save
+        commentary = ""
+        try:
+            prompt = (
+                f"Write a concise 3-sentence daily market commentary. "
+                f"Top gainers today: {', '.join(gainer_strs)}. "
+                f"Top losers: {', '.join(loser_strs)}. "
+                f"Gold: ${metals[0]['price'] if metals else 'N/A'}, Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
+            )
+            commentary = await generate_completion(
+                prompt,
+                system_prompt="You are a Wall Street financial analyst writing a brief daily market note in English (US markets)."
+            )
+        except Exception as e:
+            print(f"[WallstreetWolf] LLM commentary failed: {e}")
 
         payload = {
             "watchlist": stocks_only,
