@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent, aegisApprove, aegisDismiss } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
 
 const risk = (k) => ({
   high: { t: "High risk", c: T.red, bg: T.redBg },
@@ -76,7 +76,7 @@ export default function Aegis({ status, agentError }) {
         actions={<>
           <Pill mono c={T.ink3}>digest 18:00 daily</Pill>
           <EmailPreviewButton agentId="aegis" label="Preview digest" />
-          <Btn size="sm" onClick={scan} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Scanning…" : "Scan sources"}</Btn>
+          <AgentControls agentId="aegis" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan sources" runningLabel="Scanning…" />
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />

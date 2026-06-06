@@ -4,9 +4,9 @@
 // ============================================================================
 import { useState } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
-import { Card, Pill, Btn, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { ErrorBanner } from "../components/Common";
+import { ErrorBanner, AgentControls } from "../components/Common";
 
 const ACCENT = AGENT_COLOR.devdaily;
 
@@ -35,7 +35,7 @@ export default function DevDaily({ status, agentError }) {
       <TabHeader icon="⌥" color={ACCENT} title="DevDaily" sub="GitHub trending + Dev.to · LLM learning digest"
         actions={<>
           <Pill mono c={T.ink3}>digest 09:00 daily</Pill>
-          <Btn size="sm" onClick={run} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Fetching…" : "Manual run"}</Btn>
+          <AgentControls agentId="devdaily" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Fetching…" />
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />

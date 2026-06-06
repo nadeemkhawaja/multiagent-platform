@@ -2,7 +2,33 @@
 import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Btn, Card } from "../theme/ui";
-import { emailPreview } from "../state/api";
+import { emailPreview, stopAgent } from "../state/api";
+
+// Run / Stop / Restart controls shared by every agent tab.
+// `onRun` is the tab's own trigger handler (builds any per-agent config);
+// `busy` reflects whether the agent is currently running.
+export function AgentControls({ agentId, onRun, busy, refresh, runLabel = "Manual run", runningLabel = "Running…" }) {
+  const [stopping, setStopping] = useState(false);
+  const stop = async () => {
+    setStopping(true);
+    try { await stopAgent(agentId); refresh && refresh(); }
+    finally { setTimeout(() => setStopping(false), 600); }
+  };
+  const restart = async () => {
+    await stopAgent(agentId);
+    onRun();
+  };
+  return (
+    <>
+      <Btn size="sm" onClick={onRun} disabled={busy}>
+        <span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>
+        {busy ? runningLabel : runLabel}
+      </Btn>
+      <Btn size="sm" kind="danger" onClick={stop} disabled={!busy || stopping}>■ {stopping ? "Stopping…" : "Stop"}</Btn>
+      <Btn size="sm" kind="ghost" onClick={restart} disabled={busy}>⟲ Restart</Btn>
+    </>
+  );
+}
 
 export function EmailPreviewButton({ agentId, label = "Preview email" }) {
   const [html, setHtml] = useState(null);

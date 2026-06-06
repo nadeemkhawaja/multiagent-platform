@@ -3,9 +3,9 @@
 // ============================================================================
 import { useState } from "react";
 import { T } from "../theme/tokens";
-import { Card, Pill, Btn, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
 
 const biasColor = (b) => (b === "bull" ? T.green : b === "bear" ? T.red : "#94a3b8");
 const biasLabel = (b) => (b === "bull" ? "Bullish" : b === "bear" ? "Bearish" : "Neutral");
@@ -105,7 +105,7 @@ export default function Compass({ status, agentError }) {
         actions={<>
           <Pill mono c={T.ink3}>brief 07:00 daily</Pill>
           <EmailPreviewButton agentId="compass" label="Preview brief" />
-          <Btn size="sm" kind="soft" onClick={run} disabled={busy}>{busy ? "Analyzing…" : "Run analysis"}</Btn>
+          <AgentControls agentId="compass" onRun={run} busy={busy} refresh={refresh} runLabel="Run analysis" runningLabel="Analyzing…" />
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />

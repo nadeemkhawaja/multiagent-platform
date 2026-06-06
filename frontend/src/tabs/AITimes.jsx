@@ -3,9 +3,9 @@
 // ============================================================================
 import { useState } from "react";
 import { T } from "../theme/tokens";
-import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, StripedSlot } from "../theme/ui";
+import { Card, Pill, Dot, SectionTitle, TabHeader, StripedSlot } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
 
 const PALETTE = ["#e5484d", "#2f6feb", "#16a34a", "#f59e0b", "#0d9488", "#7c5cf6"];
 
@@ -80,10 +80,7 @@ export default function AITimes({ status, agentError }) {
       <TabHeader icon="▶" color={T.red} title="AI-Times" sub="Latest AI videos · YouTube Data API v3 · US · English · last 7 days"
         actions={<>
           <Pill mono c={T.ink3}>digest 08:00 daily</Pill>
-          <Btn size="sm" onClick={refreshNow} disabled={busy}>
-            <span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>
-            {busy ? "Refreshing…" : "Refresh"}
-          </Btn>
+          <AgentControls agentId="ai_times" onRun={refreshNow} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Refreshing…" />
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 24 }}>
         <ErrorBanner error={agentError} />

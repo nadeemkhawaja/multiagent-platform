@@ -3,9 +3,9 @@
 // ============================================================================
 import { useState } from "react";
 import { T } from "../theme/tokens";
-import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, Dot, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
 
 const CAT_PALETTE = {
   Urgent: "#e5484d", "Action Required": "#f59e0b", "Follow-Up": "#7c5cf6",
@@ -117,10 +117,7 @@ export default function Mailman({ status, agentError }) {
         actions={<>
           <Pill mono c={T.ink3}>scan every 15m</Pill>
           <EmailPreviewButton agentId="mailman" label="Preview summary" />
-          <Btn size="sm" onClick={scan} disabled={busy}>
-            <span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>
-            {busy ? "Scanning…" : "Scan now"}
-          </Btn>
+          <AgentControls agentId="mailman" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />

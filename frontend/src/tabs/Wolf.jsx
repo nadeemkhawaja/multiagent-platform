@@ -4,9 +4,9 @@
 // ============================================================================
 import { useState, useEffect, useRef } from "react";
 import { T } from "../theme/tokens";
-import { Card, Pill, Btn, Spark, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, Spark, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
 
 const fmtFx = (sym = "") => {
   const s = sym.replace("=X", "");
@@ -102,7 +102,7 @@ export default function Wolf({ status, agentError }) {
           <Pill mono c={T.ink3}>brief 16:30 daily</Pill>
           {watch.length > 0 && <Pill c={advancers >= watch.length / 2 ? T.green : T.red} bg={advancers >= watch.length / 2 ? T.greenBg : T.redBg}>{advancers}/{watch.length} advancing</Pill>}
           <EmailPreviewButton agentId="wallstreet_wolf" label="Preview brief" />
-          <Btn size="sm" onClick={run} disabled={busy}><span style={{ display: "inline-block", animation: busy ? "omSpin .8s linear infinite" : "none" }}>↻</span>{busy ? "Running…" : "Refresh"}</Btn>
+          <AgentControls agentId="wallstreet_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Running…" />
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />
