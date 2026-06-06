@@ -39,10 +39,22 @@ async def fetch_market_data():
 
             last_price = info.last_price
             prev_close = info.previous_close
+
+            # Fall back to historical close if fast_info returns None (weekends, API gaps)
+            if last_price is None or prev_close is None:
+                hist = ticker.history(period="5d")
+                if hist.empty:
+                    print(f"[WallstreetWolf] No data available for {sym}, skipping")
+                    continue
+                closes = hist['Close'].tolist()
+                if last_price is None:
+                    last_price = closes[-1]
+                if prev_close is None:
+                    prev_close = closes[-2] if len(closes) >= 2 else closes[-1]
+
             change = last_price - prev_close
             change_pct = (change / prev_close) * 100 if prev_close else 0
 
-            # Fetch 5-day historical data for sparkline/context
             hist = ticker.history(period="5d")
             history_prices = hist['Close'].tolist() if not hist.empty else []
 

@@ -60,13 +60,50 @@ async def scan_inbox(service, max_results=10):
     return email_data
 
 
-async def classify_and_process_emails(emails, active_key_people):
-    """One batched LLM call classifies + summarizes all emails (in English).
+async def ensure_labels(service) -> dict:
+    """Return category → Gmail label ID, creating Mailman/* labels as needed."""
+    def _list():
+        return service.users().labels().list(userId='me').execute().get('labels', [])
 
-    Read-only: this never writes labels or stars back to Gmail. The categories
-    are used only for the dashboard and the daily digest email — the user's
-    actual mailbox is left untouched.
-    """
+    existing = await asyncio.to_thread(_list)
+    label_map = {l['name']: l['id'] for l in existing}
+    result = {}
+    for cat in CATEGORIES:
+        label_name = f"Mailman/{cat}"
+        if label_name not in label_map:
+            def _create(n=label_name):
+                body = {'name': n, 'labelListVisibility': 'labelShow', 'messageListVisibility': 'show'}
+                return service.users().labels().create(userId='me', body=body).execute()
+            new_label = await asyncio.to_thread(_create)
+            result[cat] = new_label['id']
+        else:
+            result[cat] = label_map[label_name]
+    return result
+
+
+async def apply_labels_and_stars(service, processed_emails, label_ids):
+    """Apply Mailman/* category labels and star key/urgent emails via Gmail API."""
+    for email in processed_emails:
+        msg_id = email.get('id')
+        if not msg_id:
+            continue
+        add_labels = []
+        cat = email['category']
+        if cat in label_ids:
+            add_labels.append(label_ids[cat])
+        if email['is_key'] or cat == 'Urgent':
+            add_labels.append('STARRED')
+        if not add_labels:
+            continue
+        def _modify(mid=msg_id, al=add_labels):
+            return service.users().messages().modify(
+                userId='me', id=mid, body={'addLabelIds': al, 'removeLabelIds': []}
+            ).execute()
+        await asyncio.to_thread(_modify)
+
+
+async def classify_and_process_emails(emails, active_key_people):
+    """One batched LLM call classifies + summarizes all emails (in English)."""
     if not emails:
         return []
 
@@ -100,8 +137,9 @@ async def classify_and_process_emails(emails, active_key_people):
         ai_summary = str(info.get("summary", "")).strip()
         is_key = any(kp.lower() in email['sender'].lower() for kp in active_key_people)
 
-        processed.append({"subject": email['subject'], "sender": email['sender'], "category": category,
-                          "is_key": is_key, "snippet": email['snippet'], "ai_summary": ai_summary})
+        processed.append({"id": email['id'], "subject": email['subject'], "sender": email['sender'],
+                          "category": category, "is_key": is_key, "snippet": email['snippet'],
+                          "ai_summary": ai_summary})
     return processed
 
 
@@ -162,6 +200,9 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True):
         emails = await scan_inbox(service)
         processed_emails = await classify_and_process_emails(emails, active_key_people)
 
+        label_ids = await ensure_labels(service)
+        await apply_labels_and_stars(service, processed_emails, label_ids)
+
         breakdown = {}
         for e in processed_emails:
             breakdown[e['category']] = breakdown.get(e['category'], 0) + 1
@@ -180,7 +221,7 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True):
             send_daily_summary_email(processed_emails, breakdown)
 
         orchestrator.update_agent_status("mailman", "idle")
-        print(f"[Mailman] Done — {len(processed_emails)} emails classified (1 batched LLM call)")
+        print(f"[Mailman] Done — {len(processed_emails)} emails classified, labeled, and starred")
     except asyncio.CancelledError:
         orchestrator.update_agent_status("mailman", "idle")
         print("[Mailman] Job was manually cancelled.")
