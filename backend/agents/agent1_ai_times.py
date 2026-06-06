@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import asyncio
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 
@@ -11,6 +12,9 @@ from email_utils import send_html_email
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL")
+# Cap the (slow) local-LLM curation. If Qwen3 doesn't return in time we fall back
+# to YouTube's own view-count ranking so a run always finishes promptly.
+CURATE_TIMEOUT = float(os.getenv("AI_TIMES_CURATE_TIMEOUT", "60"))
 
 
 def _iso_duration(s: str) -> str:
@@ -68,42 +72,56 @@ async def fetch_candidates(query: str, n: int = 12):
 
 
 async def curate(news_cand, people_cand):
-    """LLM picks the best 5 per set, dedupes, writes a 'why it matters' + a digest intro."""
+    """LLM does the editorial work — picks the best 5 per set, dedupes near-identical
+    topics, and writes one digest intro sentence. To stay fast on local hardware it
+    returns only the chosen indices (no per-video blurbs), which keeps generation short.
+    """
     def fmt(lst):
         return "\n".join(f"[{i}] {v['title']} — {v['channel']}" for i, v in enumerate(lst)) or "(none)"
 
     prompt = (
         "You are the editor of a US English AI-news video digest. From each candidate list, choose the 5 "
-        "MOST newsworthy, non-duplicate videos. Return ONLY JSON of the form: "
-        '{"intro":"one engaging sentence","news":[{"i":<index>,"why":"<=12 words"}],'
-        '"personality":[{"i":<index>,"why":"<=12 words"}]}. Pick exactly 5 in each list.\n\n'
+        "MOST newsworthy videos, avoiding near-duplicate topics. Return ONLY compact JSON of the form: "
+        '{"intro":"one engaging sentence","news":[<index>,<index>,<index>,<index>,<index>],'
+        '"personality":[<index>,<index>,<index>,<index>,<index>]}. '
+        "Each array holds exactly 5 candidate indices. Do not add any other keys or text.\n\n"
         f"NEWS CANDIDATES:\n{fmt(news_cand)}\n\nPERSONALITY CANDIDATES:\n{fmt(people_cand)}"
     )
-    data = await generate_json(prompt, system_prompt="You are a precise news editor. Return only JSON.",
-                               agent_id="ai_times", use_cache=False)
+    llm_ok = True
+    try:
+        data = await asyncio.wait_for(
+            generate_json(prompt, system_prompt="You are a precise news editor. Return only JSON.",
+                          agent_id="ai_times", use_cache=False),
+            timeout=CURATE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        print(f"[AI-Times] Curate LLM exceeded {CURATE_TIMEOUT:.0f}s — using view-count ranking instead")
+        data = None
+        llm_ok = False
 
     def pick(cands, key):
-        out = []
+        out, seen = [], set()
+        # Accept either a list of indices [3,1,7] or legacy [{"i":3}, ...].
         if isinstance(data, dict) and isinstance(data.get(key), list):
             for item in data[key]:
                 try:
-                    i = int(item.get("i"))
-                    if 0 <= i < len(cands):
-                        out.append({**cands[i], "why": str(item.get("why", ""))[:120]})
+                    i = int(item.get("i")) if isinstance(item, dict) else int(item)
                 except (TypeError, ValueError):
                     continue
-        # fallback / top-up to 5
-        seen = {v["url"] for v in out}
+                if 0 <= i < len(cands) and cands[i]["url"] not in seen:
+                    out.append(dict(cands[i]))
+                    seen.add(cands[i]["url"])
+        # fallback / top-up to 5 using candidate order (YouTube view-count rank)
         for v in cands:
             if len(out) >= 5:
                 break
             if v["url"] not in seen:
-                out.append({**v, "why": v.get("why", "")})
+                out.append(dict(v))
                 seen.add(v["url"])
         return out[:5]
 
     intro = data.get("intro", "") if isinstance(data, dict) else ""
-    return intro, pick(news_cand, "news"), pick(people_cand, "personality")
+    return intro, pick(news_cand, "news"), pick(people_cand, "personality"), llm_ok
 
 
 def build_digest_html(news_videos, personality_videos, intro=""):
@@ -137,11 +155,13 @@ def build_digest_html(news_videos, personality_videos, intro=""):
 
 
 def send_digest_email(news_videos, personality_videos, intro=""):
+    """Returns (sent: bool, recipient: str). sent=False if no recipient/credentials."""
     if not DAILY_DIGEST_EMAIL:
         print("[AI-Times] No DAILY_DIGEST_EMAIL configured.")
-        return
-    send_html_email(DAILY_DIGEST_EMAIL, "AI-Times Daily Digest",
-                    build_digest_html(news_videos, personality_videos, intro))
+        return False, ""
+    sent = send_html_email(DAILY_DIGEST_EMAIL, "AI-Times Daily Digest",
+                           build_digest_html(news_videos, personality_videos, intro))
+    return bool(sent), DAILY_DIGEST_EMAIL
 
 
 def email_preview() -> str:
@@ -155,10 +175,19 @@ def email_preview() -> str:
 async def ai_times_job():
     orchestrator.update_agent_status("ai_times", "running")
     try:
-        news_cand = await fetch_candidates("AI news", 12)
-        people_cand = await fetch_candidates("AI personality interview", 12)
-        intro, news_videos, personality_videos = await curate(news_cand, people_cand)
+        # 1) Fetch both candidate pools concurrently (was sequential — ~2x faster).
+        orchestrator.set_progress("ai_times", "Fetching latest AI videos from YouTube…")
+        news_cand, people_cand = await asyncio.gather(
+            fetch_candidates("AI news", 8),
+            fetch_candidates("AI personality interview", 8),
+        )
 
+        # 2) Curate with the local LLM (the slow step — serialized Qwen3 inference).
+        orchestrator.set_progress("ai_times", f"Curating top 5 + 5 with Qwen3 (up to {CURATE_TIMEOUT:.0f}s)…")
+        intro, news_videos, personality_videos, llm_ok = await curate(news_cand, people_cand)
+
+        # 3) Persist the snapshot.
+        orchestrator.set_progress("ai_times", "Saving digest…")
         db = SessionLocal()
         existing = db.query(AgentData).filter_by(agent_name="ai_times", key="videos").first()
         val = json.dumps({"news": news_videos, "personality": personality_videos,
@@ -170,8 +199,18 @@ async def ai_times_job():
         db.commit()
         db.close()
 
-        send_digest_email(news_videos, personality_videos, intro)
+        # 4) Email the HTML digest.
+        orchestrator.set_progress("ai_times", "Sending digest email…")
+        sent, recipient = send_digest_email(news_videos, personality_videos, intro)
+
+        n, m = len(news_videos), len(personality_videos)
+        rank = "LLM-curated" if llm_ok else "view-ranked (LLM timed out)"
+        if sent:
+            result = f"✓ Digest emailed to {recipient} · {n} news + {m} personality · {rank}"
+        else:
+            result = f"✓ Digest ready · {n} news + {m} personality · {rank} · email skipped (no recipient/SMTP configured)"
+        orchestrator.set_progress("ai_times", None, result=result)
         orchestrator.update_agent_status("ai_times", "idle")
-        print(f"[AI-Times] Done — {len(news_videos)} news + {len(personality_videos)} personality (LLM-curated)")
+        print(f"[AI-Times] Done — {n} news + {m} personality · {rank} · emailed={sent}")
     except Exception as e:
         orchestrator.update_agent_status("ai_times", "error", str(e))

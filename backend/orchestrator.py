@@ -48,7 +48,8 @@ ALARM_LABELS = {"cpu": "CPU", "ram": "Memory", "gpu": "GPU", "disk": "Disk"}
 class Orchestrator:
     def __init__(self):
         self.agents_status = {
-            aid: {"status": "stopped", "last_run": None, "error": None}
+            aid: {"status": "stopped", "last_run": None, "error": None,
+                  "progress": None, "result": None}
             for aid in AGENT_ORDER
         }
         self._agent_jobs = {}
@@ -218,11 +219,30 @@ class Orchestrator:
         except Exception:
             pass
 
+    def set_progress(self, agent_name: str, message: str, result: str = None):
+        """Live, human-readable progress for the agent's own tab (e.g. 'Curating
+        with Qwen3…'). Pushed to the UI immediately over the WebSocket."""
+        if agent_name not in self.agents_status:
+            return
+        self.agents_status[agent_name]["progress"] = message
+        if result is not None:
+            self.agents_status[agent_name]["result"] = result
+        try:
+            asyncio.create_task(manager.broadcast({"type": "state", "data": self.get_state()}))
+        except RuntimeError:
+            pass  # no running loop (e.g. called from a sync context)
+
     def update_agent_status(self, agent_name: str, status: str, error: str = None):
         if agent_name not in self.agents_status:
             return
         prev = self.agents_status[agent_name]["status"]
         self.agents_status[agent_name]["status"] = status
+        if status == "running":
+            # fresh run — clear the previous outcome and show a starting state
+            self.agents_status[agent_name]["result"] = None
+            self.agents_status[agent_name]["progress"] = "Starting…"
+        if status in ("idle", "error", "failed"):
+            self.agents_status[agent_name]["progress"] = None
         if status == "idle":
             self.agents_status[agent_name]["last_run"] = datetime.utcnow().isoformat()
             self.agents_status[agent_name]["error"] = None
@@ -290,6 +310,8 @@ class Orchestrator:
                 "schedule": meta["schedule"],
                 "restarts": self._restart_counts.get(aid, 0),
                 "error": self.agents_status[aid].get("error"),
+                "progress": self.agents_status[aid].get("progress"),
+                "result": self.agents_status[aid].get("result"),
             })
 
         alarm = None

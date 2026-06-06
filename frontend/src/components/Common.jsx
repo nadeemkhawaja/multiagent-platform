@@ -67,6 +67,27 @@ export function EmptyState({ icon = "∅", title, hint }) {
   );
 }
 
+// Live progress (while running) + completion result (when done) for an agent tab.
+// `progress` and `result` come from the orchestrator state via App.jsx.
+export function ProgressBanner({ running, progress, result }) {
+  if (running && progress) {
+    return (
+      <div style={{ background: T.violetBg, border: `1px solid ${T.violet}44`, borderRadius: 12, padding: "11px 16px", display: "flex", alignItems: "center", gap: 11, fontSize: 12.5, color: T.violet, fontWeight: 600 }}>
+        <span style={{ display: "inline-block", animation: "omSpin .8s linear infinite", fontSize: 14 }}>↻</span>
+        {progress}
+      </div>
+    );
+  }
+  if (!running && result) {
+    return (
+      <div style={{ background: T.greenBg, border: `1px solid ${T.green}44`, borderRadius: 12, padding: "11px 16px", display: "flex", alignItems: "center", gap: 11, fontSize: 12.5, color: T.green, fontWeight: 600 }}>
+        <span style={{ fontSize: 14 }}>✓</span> {result.replace(/^✓\s*/, "")}
+      </div>
+    );
+  }
+  return null;
+}
+
 export function ErrorBanner({ error }) {
   if (!error) return null;
   return (

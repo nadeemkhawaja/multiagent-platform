@@ -116,7 +116,7 @@ export default function App() {
     content = <Settings />;
   } else {
     const TabEl = TABS[tab];
-    content = <TabEl key={tab} status={agent?.status} agentError={agent?.error} />;
+    content = <TabEl key={tab} status={agent?.status} agentError={agent?.error} progress={agent?.progress} result={agent?.result} />;
   }
 
   return (

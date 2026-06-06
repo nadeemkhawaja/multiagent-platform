@@ -84,6 +84,10 @@ async def generate_completion(
                     {"role": "user", "content": prompt},
                 ],
                 "stream": False,
+                # Disable Qwen3's hidden <think> reasoning block. The inline
+                # "/no_think" hint is unreliable on this model; this Ollama flag
+                # actually suppresses it, cutting ~100–1300 wasted tokens per call.
+                "think": False,
             }
             if json_mode:
                 payload["format"] = "json"

@@ -1,11 +1,11 @@
 // ============================================================================
 // AITimes.jsx — AI YouTube digest (5 news + 5 personality). Wired to backend.
 // ============================================================================
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, SectionTitle, TabHeader, StripedSlot } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, ProgressBanner } from "../components/Common";
 
 const PALETTE = ["#e5484d", "#2f6feb", "#16a34a", "#f59e0b", "#0d9488", "#7c5cf6"];
 
@@ -58,7 +58,7 @@ function VideoCard({ v }) {
     : <div style={base} {...hov}>{inner}</div>;
 }
 
-export default function AITimes({ status, agentError }) {
+export default function AITimes({ status, agentError, progress, result }) {
   const { data, refresh } = useAgentData("ai_times");
   const [refreshing, setRefreshing] = useState(false);
   const videos = data?.videos || {};
@@ -70,10 +70,16 @@ export default function AITimes({ status, agentError }) {
   const refreshNow = async () => {
     setRefreshing(true);
     await triggerAgent("ai_times");
-    setTimeout(refresh, 4000); setTimeout(refresh, 10000);
     setTimeout(() => setRefreshing(false), 1500);
   };
   const busy = refreshing || status === "running";
+
+  // When the backend run finishes (running → idle), pull the fresh digest in.
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    if (prevStatus.current === "running" && status !== "running") refresh();
+    prevStatus.current = status;
+  }, [status, refresh]);
 
   return (
     <div>
@@ -84,6 +90,7 @@ export default function AITimes({ status, agentError }) {
         </>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 24 }}>
         <ErrorBanner error={agentError} />
+        <ProgressBanner running={status === "running"} progress={progress} result={result} />
         <Card pad={18} style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: T.redBg, color: T.red, display: "grid", placeItems: "center", fontSize: 19 }}>✉</div>
           <div style={{ flex: 1, minWidth: 200 }}>
