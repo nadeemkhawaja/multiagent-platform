@@ -160,7 +160,8 @@ def send_digest_email(news_videos, personality_videos, intro=""):
         print("[AI-Times] No DAILY_DIGEST_EMAIL configured.")
         return False, ""
     sent = send_html_email(DAILY_DIGEST_EMAIL, "AI-Times Daily Digest",
-                           build_digest_html(news_videos, personality_videos, intro))
+                           build_digest_html(news_videos, personality_videos, intro),
+                           sender_name="AI-Times Agent")
     return bool(sent), DAILY_DIGEST_EMAIL
 
 

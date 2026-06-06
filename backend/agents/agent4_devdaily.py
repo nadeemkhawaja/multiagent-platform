@@ -112,7 +112,7 @@ def send_devdaily_email(github_repos, devto_articles, llm_summary):
     </html>
     """
 
-    send_html_email(DAILY_DIGEST_EMAIL, "DevDaily Developer Digest", html_content)
+    send_html_email(DAILY_DIGEST_EMAIL, "DevDaily Developer Digest", html_content, sender_name="DevDaily Agent")
 
 
 async def devdaily_job(language: str = "", count: int = 5, topic: str = ""):

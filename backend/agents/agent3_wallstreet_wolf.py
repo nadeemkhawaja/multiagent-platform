@@ -118,7 +118,7 @@ def send_market_email(top_gainers, top_losers, metals, currencies, commentary):
     if not DAILY_DIGEST_EMAIL:
         return
     html = build_market_html(top_gainers, top_losers, metals, currencies, commentary)
-    send_html_email(DAILY_DIGEST_EMAIL, "Wallstreet Wolf Daily Market Brief", html)
+    send_html_email(DAILY_DIGEST_EMAIL, "Wallstreet Wolf Daily Market Brief", html, sender_name="Wallstreet Wolf Agent")
 
 
 def email_preview() -> str:

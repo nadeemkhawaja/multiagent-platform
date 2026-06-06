@@ -176,7 +176,8 @@ def send_daily_summary_email(processed_emails, breakdown):
     if not DAILY_DIGEST_EMAIL:
         return
     send_html_email(DAILY_DIGEST_EMAIL, "Mailman Daily Email Summary",
-                    build_summary_html(processed_emails, breakdown))
+                    build_summary_html(processed_emails, breakdown),
+                    sender_name="Mailman Agent")
 
 
 def email_preview() -> str:

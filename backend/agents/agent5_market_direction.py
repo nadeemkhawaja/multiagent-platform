@@ -260,6 +260,7 @@ def send_compass_email(payload):
         to_email=DAILY_DIGEST_EMAIL,
         subject=f"◎ Compass Brief — {tone} — {datetime.utcnow().strftime('%b %d')}",
         html_body=build_compass_html(payload),
+        sender_name="Compass Agent",
     )
 
 

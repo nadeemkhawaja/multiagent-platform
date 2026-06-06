@@ -199,6 +199,7 @@ def send_digest(payload, brand):
         to_email=DAILY_DIGEST_EMAIL,
         subject=f"❖ Aegis Digest — {stats['high_risk']} high-risk — {datetime.utcnow().strftime('%b %d')}",
         html_body=build_digest_html(payload, brand),
+        sender_name="Aegis Agent",
     )
 
 

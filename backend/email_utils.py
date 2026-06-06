@@ -15,7 +15,7 @@ SMTP_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
 
 
-def send_html_email(to_email: str, subject: str, html_body: str) -> bool:
+def send_html_email(to_email: str, subject: str, html_body: str, sender_name: str = "Multi-Agent Platform") -> bool:
     """
     Sends an HTML email via Gmail SMTP.
     Requires SMTP_APP_PASSWORD set in .env (a Gmail App Password).
@@ -29,7 +29,7 @@ def send_html_email(to_email: str, subject: str, html_body: str) -> bool:
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = SMTP_EMAIL
+        msg["From"] = f'"{sender_name}" <{SMTP_EMAIL}>'
         msg["To"] = to_email
 
         msg.attach(MIMEText(html_body, "html"))
