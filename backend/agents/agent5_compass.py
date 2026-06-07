@@ -1,6 +1,6 @@
 """
-Agent-4: Compass — Market Bias Engine + Key Levels
-==================================================
+Agent-4: Wallstreet Compass — Market Bias Engine + Key Levels
+=============================================================
 Real external data via Yahoo Finance:
   • Sector directional bias from the 6 sector ETFs (XLK/XLE/XLF/XLV/XLY/XLI)
   • Classic floor-trader pivot levels (Pivot / R1-R2 / S1-S2) for /ES & /NQ futures
@@ -245,7 +245,7 @@ def build_compass_html(payload):
     )
     html = f"""
     <html><body style='font-family:Hanken Grotesk,Arial,sans-serif;background:#f6f7f9;color:#16181d;padding:24px'>
-      <h2 style='letter-spacing:-.3px'>◎ Compass — Pre-Market Brief</h2>
+      <h2 style='letter-spacing:-.3px'>◎ Wallstreet Compass — Pre-Market Brief</h2>
       <p style='color:#8a909c;font-size:12px'>{datetime.utcnow().strftime('%A, %B %d %Y — %H:%M UTC')}</p>
       <div style='text-align:center;margin:18px 0;padding:18px;border:1px solid {color};border-radius:12px'>
         <div style='font-size:30px;font-weight:800;color:{color}'>{tone}</div>
@@ -269,9 +269,9 @@ def send_compass_email(payload):
     tone = "Risk-On" if composite > 15 else "Risk-Off" if composite < -15 else "Mixed"
     send_html_email(
         to_email=DAILY_DIGEST_EMAIL,
-        subject=f"◎ Compass Brief — {tone} — {datetime.utcnow().strftime('%b %d')}",
+        subject=f"◎ Wallstreet Compass Brief — {tone} — {datetime.utcnow().strftime('%b %d')}",
         html_body=build_compass_html(payload),
-        sender_name="Compass Agent",
+        sender_name="Wallstreet Compass Agent",
     )
 
 
@@ -280,7 +280,7 @@ def email_preview() -> str:
     rec = db.query(AgentData).filter_by(agent_name=AGENT_ID, key="compass").first()
     db.close()
     if not rec:
-        return "<p>No Compass data yet — run an analysis first.</p>"
+        return "<p>No Wallstreet Compass data yet — run an analysis first.</p>"
     return build_compass_html(json.loads(rec.value))
 
 

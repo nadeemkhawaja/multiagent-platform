@@ -101,7 +101,7 @@ export default function Compass({ status, agentError }) {
 
   return (
     <div>
-      <TabHeader icon="◎" color={T.amber} title="Compass" sub="Market bias engine + key levels · pre-market brief"
+      <TabHeader icon="◎" color={T.amber} title="Wallstreet Compass" sub="Market bias engine + key levels · pre-market brief"
         actions={<>
           <Pill mono c={T.ink3}>brief 07:00 daily</Pill>
           <EmailPreviewButton agentId="compass" label="Preview brief" />

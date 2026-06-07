@@ -24,11 +24,11 @@ except Exception:
 
 AGENT_META = {
     "ai_times":        {"n": "AI-Times",        "glyph": "▶", "desc": "AI YouTube digest",      "schedule": "Daily · 08:00", "color": "#e5484d"},
-    "mailman":         {"n": "Mailman",         "glyph": "✉", "desc": "Gmail triage",           "schedule": "Every 15 min",  "color": "#2f6feb"},
-    "wallstreet_wolf": {"n": "Wallstreet Wolf", "glyph": "$", "desc": "Market tracker",         "schedule": "Every 5 min",   "color": "#16a34a"},
-    "compass":         {"n": "Compass",         "glyph": "◎", "desc": "Bias & key levels",      "schedule": "Every 30 min",  "color": "#f59e0b"},
-    "aegis":           {"n": "Aegis",           "glyph": "❖", "desc": "Reputation guardian",    "schedule": "Every 10 min",  "color": "#0d9488"},
-    "devdaily":        {"n": "DevDaily",        "glyph": "⌥", "desc": "GitHub & Dev.to digest", "schedule": "Daily · 09:00", "color": "#7c5cf6"},
+    "mailman":         {"n": "Mailman",            "glyph": "✉", "desc": "Gmail triage",           "schedule": "Every 60 min",  "color": "#2f6feb"},
+    "wallstreet_wolf": {"n": "Wallstreet Wolf",    "glyph": "$", "desc": "Market tracker",         "schedule": "Every 60 min",  "color": "#16a34a"},
+    "compass":         {"n": "Wallstreet Compass", "glyph": "◎", "desc": "Bias & key levels",      "schedule": "Every 60 min",  "color": "#f59e0b"},
+    "aegis":           {"n": "Aegis",              "glyph": "❖", "desc": "Reputation guardian",    "schedule": "Every 60 min",  "color": "#0d9488"},
+    "devdaily":        {"n": "Dev Hunt",           "glyph": "⌥", "desc": "GitHub & Dev.to digest", "schedule": "Daily · 09:00", "color": "#7c5cf6"},
 }
 AGENT_ORDER = list(AGENT_META.keys())
 

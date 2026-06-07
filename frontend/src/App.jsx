@@ -20,9 +20,9 @@ const NAV = [
   { id: "ai_times", label: "AI-Times", glyph: "▶" },
   { id: "mailman", label: "Mailman", glyph: "✉" },
   { id: "wallstreet_wolf", label: "Wallstreet Wolf", glyph: "$" },
-  { id: "compass", label: "Compass", glyph: "◎" },
+  { id: "compass", label: "Wallstreet Compass", glyph: "◎" },
   { id: "aegis", label: "Aegis", glyph: "❖" },
-  { id: "devdaily", label: "DevDaily", glyph: "⌥" },
+  { id: "devdaily", label: "Dev Hunt", glyph: "⌥" },
 ];
 const SETTINGS_ITEM = { id: "settings", label: "Settings", glyph: "⚙" };
 const TABS = { ai_times: AITimes, mailman: Mailman, wallstreet_wolf: Wolf, compass: Compass, aegis: Aegis, devdaily: DevDaily };

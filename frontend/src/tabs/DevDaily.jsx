@@ -32,7 +32,7 @@ export default function DevDaily({ status, agentError }) {
 
   return (
     <div>
-      <TabHeader icon="⌥" color={ACCENT} title="DevDaily" sub="GitHub trending + Dev.to · LLM learning digest"
+      <TabHeader icon="⌥" color={ACCENT} title="Dev Hunt" sub="GitHub trending + Dev.to · LLM learning digest"
         actions={<>
           <Pill mono c={T.ink3}>digest 09:00 daily</Pill>
           <AgentControls agentId="devdaily" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Fetching…" />
