@@ -32,10 +32,10 @@ JOBS = {
 }
 DEFAULT_SCHEDULES = {
     "ai_times":        {"type": "cron", "hour": 8, "minute": 0},
-    "mailman":         {"type": "interval", "minutes": 15},
-    "wallstreet_wolf": {"type": "interval", "minutes": 5},
-    "compass":         {"type": "interval", "minutes": 30},
-    "aegis":           {"type": "interval", "minutes": 10},
+    "mailman":         {"type": "interval", "minutes": 60},
+    "wallstreet_wolf": {"type": "interval", "minutes": 60},
+    "compass":         {"type": "interval", "minutes": 60},
+    "aegis":           {"type": "interval", "minutes": 60},
     "devdaily":        {"type": "cron", "hour": 9, "minute": 0},
 }
 PREVIEW = {

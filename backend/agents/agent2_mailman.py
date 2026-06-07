@@ -89,19 +89,16 @@ async def ensure_labels(service) -> dict:
 
 
 async def apply_labels_and_stars(service, processed_emails, label_ids):
-    """Apply Mailman/* category labels and star key/urgent emails via Gmail API."""
+    """Star + label only Urgent or key-person mail — the 'alert on key people'
+    set — so Mailman doesn't tag every routine email in the user's real inbox."""
     for email in processed_emails:
         msg_id = email.get('id')
-        if not msg_id:
-            continue
-        add_labels = []
         cat = email['category']
+        if not msg_id or not (email['is_key'] or cat == 'Urgent'):
+            continue
+        add_labels = ['STARRED']
         if cat in label_ids:
             add_labels.append(label_ids[cat])
-        if email['is_key'] or cat == 'Urgent':
-            add_labels.append('STARRED')
-        if not add_labels:
-            continue
         def _modify(mid=msg_id, al=add_labels):
             return service.users().messages().modify(
                 userId='me', id=mid, body={'addLabelIds': al, 'removeLabelIds': []}
@@ -239,7 +236,8 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True):
             send_daily_summary_email(processed_emails, breakdown)
 
         orchestrator.update_agent_status("mailman", "idle")
-        print(f"[Mailman] Done — {len(processed_emails)} emails classified, labeled, and starred")
+        flagged = sum(1 for e in processed_emails if e['is_key'] or e['category'] == 'Urgent')
+        print(f"[Mailman] Done — {len(processed_emails)} emails classified, {flagged} starred/labeled (urgent or key-person)")
     except asyncio.CancelledError:
         orchestrator.update_agent_status("mailman", "idle")
         print("[Mailman] Job was manually cancelled.")
