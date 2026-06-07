@@ -11,10 +11,12 @@ from email_utils import send_html_email
 
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 
-# Watchlist of 20+ stocks (US). User can override via Settings → watchlist.
+# Watchlist of 20 user-curated stocks — mega-cap tech, semiconductors/AI infra,
+# and crypto-adjacent names. User can override via Settings → watchlist (needs 20+).
 DEFAULT_WATCHLIST = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "NFLX",
-    "JPM", "V", "WMT", "JNJ", "PG", "MA", "HD", "UNH", "DIS", "BAC", "PYPL", "ADBE"
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NFLX",       # mega-cap tech
+    "NVDA", "AMD", "INTC", "AVGO", "QCOM", "MU", "SMCI", "CSCO",   # chips & AI infra
+    "DELL", "BABA", "PLTR", "GBTC", "COIN",                        # hardware, China tech, crypto
 ]
 
 METALS = ["GC=F", "SI=F"]  # Gold, Silver

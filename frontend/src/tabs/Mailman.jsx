@@ -1,16 +1,21 @@
 // ============================================================================
 // Mailman.jsx — Gmail triage: category breakdown + AI-summarized inbox.
 // ============================================================================
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Dot, SectionTitle, TabHeader } from "../theme/ui";
-import { useAgentData, triggerAgent } from "../state/api";
+import { useAgentData, triggerAgent, getConfig } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
 
 const CAT_PALETTE = {
   Urgent: "#e5484d", "Action Required": "#f59e0b", "Follow-Up": "#7c5cf6",
   Personal: "#0d9488", Newsletter: "#2f6feb", Notification: "#94a3b8", Other: "#c0c6d0",
 };
+
+// Dashboard surfaces only what needs eyes-on — Urgent / Action Required mail, or
+// anything from the configured key-people list — not every routine email scanned.
+const NOTABLE_CATS = ["Urgent", "Action Required"];
+const isNotable = (m) => m.key || NOTABLE_CATS.includes(m.cat);
 
 function parseSender(sender = "") {
   const m = sender.match(/^(.*?)\s*<(.+?)>$/);
@@ -94,12 +99,19 @@ export default function Mailman({ status, agentError }) {
   const { data, refresh } = useAgentData("mailman");
   const [scanning, setScanning] = useState(false);
   const [keyPeople, setKeyPeople] = useState("");
+  const [configuredKeyPeople, setConfiguredKeyPeople] = useState("");
   const [sendEmail, setSendEmail] = useState(false);
   const [starOverride, setStarOverride] = useState({});
+
+  // The input below is a per-scan override; the panel should still show the
+  // people actually configured (Settings → Key people / KEY_PEOPLE) by default.
+  useEffect(() => { getConfig().then((c) => setConfiguredKeyPeople(c?.key_people || "")).catch(() => {}); }, []);
+  const keyPeopleList = (keyPeople || configuredKeyPeople).split(",").map((s) => s.trim()).filter(Boolean);
 
   const cats = adaptCats(data?.emails?.breakdown);
   const baseMails = adaptEmails(data?.emails?.emails);
   const mails = baseMails.map((m) => (m.id in starOverride ? { ...m, star: starOverride[m.id] } : m));
+  const shown = mails.filter(isNotable);
   const urgent = mails.filter((m) => m.cat === "Urgent").length;
   const onStar = (id) => setStarOverride((o) => ({ ...o, [id]: !mails.find((m) => m.id === id)?.star }));
 
@@ -115,7 +127,7 @@ export default function Mailman({ status, agentError }) {
     <div>
       <TabHeader icon="✉" color={T.blue} title="Mailman" sub="Gmail · OAuth 2.0 · LLM inbox triage"
         actions={<>
-          <Pill mono c={T.ink3}>scan every 15m</Pill>
+          <Pill mono c={T.ink3}>scan every 60m</Pill>
           <EmailPreviewButton agentId="mailman" label="Preview summary" />
           <AgentControls agentId="mailman" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
@@ -152,20 +164,25 @@ export default function Mailman({ status, agentError }) {
             <CatBar cats={cats} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, alignItems: "start" }}>
               <Card pad={20}>
-                <SectionTitle sub="Auto-labeled, starred & summarized" right={<Pill mono c={T.ink3}>{mails.length} emails</Pill>}>Inbox</SectionTitle>
-                {mails.map((m) => <MailRow key={m.id} m={m} onStar={onStar} />)}
+                <SectionTitle sub="Urgent, Action Required & key-people mail only — routine email stays out of sight" right={<Pill mono c={T.ink3}>{shown.length} of {mails.length}</Pill>}>Needs attention</SectionTitle>
+                {shown.length === 0 ? (
+                  <div style={{ padding: "30px 6px", textAlign: "center", color: T.ink3, fontSize: 12.5, lineHeight: 1.6 }}>
+                    Nothing urgent, action-needed, or from key people in the last scan.<br />
+                    {mails.length} routine email{mails.length !== 1 ? "s" : ""} stayed out of view.
+                  </div>
+                ) : shown.map((m) => <MailRow key={m.id} m={m} onStar={onStar} />)}
               </Card>
               <Card pad={20}>
-                <SectionTitle sub="Always alert on these senders">Key people</SectionTitle>
+                <SectionTitle sub={keyPeople ? "Override for the next scan" : "From Settings · always starred & surfaced"}>Key people</SectionTitle>
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                  {(keyPeople ? keyPeople.split(",").map((s) => s.trim()).filter(Boolean) : []).map((p) => (
+                  {keyPeopleList.map((p) => (
                     <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 9px", borderRadius: 9, background: T.cardAlt, border: `1px solid ${T.line2}` }}>
-                      <span style={{ width: 26, height: 26, borderRadius: 26, background: T.violet + "1a", color: T.violet, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700 }}>{p.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{p}</span>
+                      <span style={{ width: 26, height: 26, borderRadius: 26, background: T.violet + "1a", color: T.violet, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700 }}>{p.split(/[\s@]/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p}</span>
                       <Dot c={T.green} s={7} />
                     </div>
                   ))}
-                  {!keyPeople && <div style={{ fontSize: 12, color: T.ink4 }}>Set key people in Settings or the config above.</div>}
+                  {keyPeopleList.length === 0 && <div style={{ fontSize: 12, color: T.ink4 }}>No key people configured yet — add some in Settings or the override above.</div>}
                 </div>
               </Card>
             </div>
