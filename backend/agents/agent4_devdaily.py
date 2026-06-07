@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from datetime import datetime, timedelta
 import httpx
 
@@ -124,23 +125,30 @@ async def devdaily_job(language: str = "", count: int = 5, topic: str = ""):
     """
     orchestrator.update_agent_status("devdaily", "running")
     try:
-        github_repos = await fetch_github_trending(language=language, count=count)
-        devto_articles = await fetch_devto_articles(topic=topic, count=count)
-
-        # Prepare content for LLM summary
-        repo_names = [f"{r['name']} ({r.get('language', 'N/A')})" for r in github_repos]
-        article_titles = [a["title"] for a in devto_articles]
-
-        prompt = (
-            f"Write a concise 3-sentence summary of today's best developer learning opportunities. "
-            f"Top GitHub repos: {', '.join(repo_names)}. "
-            f"Top Dev.to articles: {', '.join(article_titles)}. "
-            f"Focus on key trends and actionable takeaways."
+        # Independent fetches (both async httpx) — run concurrently.
+        github_repos, devto_articles = await asyncio.gather(
+            fetch_github_trending(language=language, count=count),
+            fetch_devto_articles(topic=topic, count=count),
         )
-        llm_summary = await generate_completion(
-            prompt,
-            system_prompt="You are an expert developer advocate writing a daily learning digest."
-        )
+
+        # Prepare content for LLM summary — isolated so a failure doesn't abort
+        # the job before the digest (already fetched) gets saved.
+        llm_summary = ""
+        try:
+            repo_names = [f"{r['name']} ({r.get('language', 'N/A')})" for r in github_repos]
+            article_titles = [a["title"] for a in devto_articles]
+            prompt = (
+                f"Write a concise 3-sentence summary of today's best developer learning opportunities. "
+                f"Top GitHub repos: {', '.join(repo_names)}. "
+                f"Top Dev.to articles: {', '.join(article_titles)}. "
+                f"Focus on key trends and actionable takeaways."
+            )
+            llm_summary = await generate_completion(
+                prompt,
+                system_prompt="You are an expert developer advocate writing a daily learning digest."
+            )
+        except Exception as e:
+            print(f"[DevDaily] LLM summary failed: {e}")
 
         payload = {
             "github_repos": github_repos,

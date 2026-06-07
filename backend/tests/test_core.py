@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── Compass: pivot math ──────────────────────────────────────────────────────
 def test_pivots_classic_formula():
-    from agents.agent5_market_direction import _pivots, _bias
+    from agents.agent5_compass import _pivots, _bias
     p = _pivots(110, 90, 100)          # H=110 L=90 C=100
     assert p["piv"] == 100.0
     assert p["r1"] == 110.0            # 2*100 - 90
@@ -23,7 +23,7 @@ def test_pivots_classic_formula():
 
 
 def test_headline_sentiment_keywords():
-    from agents.agent5_market_direction import _headline_sentiment
+    from agents.agent5_compass import _headline_sentiment
     assert _headline_sentiment("Stocks rally to record high") == "bull"
     assert _headline_sentiment("Markets plunge on rate fears") == "bear"
     assert _headline_sentiment("Treasury yields steady ahead of data") == "neutral"
@@ -63,6 +63,43 @@ def test_strip_think_and_cache_key():
     assert k1 == k2 and k1 != k3
 
 
+def test_llm_semaphore_serializes_concurrent_calls():
+    import llm_client
+
+    current = peak = 0
+
+    async def worker():
+        nonlocal current, peak
+        async with llm_client.llm_semaphore:
+            current += 1
+            peak = max(peak, current)
+            await asyncio.sleep(0.01)
+            current -= 1
+
+    async def run():
+        await asyncio.gather(*(worker() for _ in range(6)))
+
+    asyncio.run(run())
+    assert peak == 1   # single-permit semaphore: never more than one concurrent holder
+
+
+def test_generate_completion_never_raises_on_connection_failure(monkeypatch):
+    import llm_client
+    import httpx
+
+    async def boom(self, *a, **kw):
+        raise httpx.ConnectError("Connection refused")
+
+    async def no_delay(_seconds):
+        return None
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", boom)
+    monkeypatch.setattr(asyncio, "sleep", no_delay)   # skip the retry backoff
+    out = asyncio.run(llm_client.generate_completion("ping", use_cache=False))
+    assert isinstance(out, str)
+    assert out.startswith("Error:")
+
+
 def test_generate_json_parses_messy_output(monkeypatch):
     import llm_client
 
@@ -74,9 +111,46 @@ def test_generate_json_parses_messy_output(monkeypatch):
     assert out == {"a": 2, "b": [1, 2]}
 
 
+def test_generate_json_returns_none_on_unparseable_output(monkeypatch):
+    import llm_client
+
+    async def fake_error(prompt, system_prompt="", agent_id=None, json_mode=False, use_cache=True):
+        return "Error: Connection refused"
+
+    monkeypatch.setattr(llm_client, "generate_completion", fake_error)
+    out = asyncio.run(llm_client.generate_json("x"))
+    assert out is None
+
+
 # ── Orchestrator status mapping ──────────────────────────────────────────────
 def test_status_map():
     from orchestrator import STATUS_MAP
     assert STATUS_MAP["error"] == "crashed"
     assert STATUS_MAP["restarting"] == "queued"
     assert STATUS_MAP["running"] == "running"
+
+
+def test_watchdog_restarts_then_disables_after_max_failures():
+    from orchestrator import Orchestrator
+    orch = Orchestrator()   # fresh instance — isolated from the app's shared singleton
+    agent = "devdaily"
+    run_count = 0
+
+    async def crashing_job():
+        nonlocal run_count
+        run_count += 1
+        orch.agents_status[agent]["status"] = "error"   # crashes again immediately
+
+    orch.register_agent_job(agent, crashing_job)
+    orch._restart_counts[agent] = 0   # _load_history() may have loaded real prior-run counts from orchestrator.db
+    orch.agents_status[agent]["status"] = "error"
+
+    async def run():
+        for _ in range(orch.MAX_RESTARTS + 1):
+            await orch._watchdog_pass()
+            await asyncio.sleep(0)   # let the create_task'd restart run before the next pass
+
+    asyncio.run(run())
+    assert run_count == orch.MAX_RESTARTS
+    assert orch._restart_counts[agent] == orch.MAX_RESTARTS
+    assert orch.agents_status[agent]["status"] == "failed"

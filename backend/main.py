@@ -15,7 +15,7 @@ from llm_client import OLLAMA_BASE_URL, LLM_MODEL, get_llm_state
 from ws import manager
 
 from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
-from agents import agent4_devdaily, agent5_market_direction as compass_mod, agent6_aegis
+from agents import agent4_devdaily, agent5_compass as compass_mod, agent6_aegis
 
 ai_times_job = agent1_ai_times.ai_times_job
 mailman_job = agent2_mailman.mailman_job

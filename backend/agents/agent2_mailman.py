@@ -46,7 +46,10 @@ async def authenticate_gmail():
     return await asyncio.to_thread(_authenticate_gmail_sync)
 
 
-async def scan_inbox(service, max_results=10):
+def _scan_inbox_sync(service, max_results=10):
+    """Synchronous Gmail fetch (googleapiclient is sync, one blocking call per message)
+    — called via asyncio.to_thread so the event loop stays free and WebSocket status
+    updates keep flowing while the scan is in progress."""
     results = service.users().messages().list(userId='me', labelIds=['INBOX'], maxResults=max_results).execute()
     messages = results.get('messages', [])
     email_data = []
@@ -58,6 +61,10 @@ async def scan_inbox(service, max_results=10):
         email_data.append({"id": msg['id'], "subject": subject, "sender": sender,
                            "snippet": full.get('snippet', '')})
     return email_data
+
+
+async def scan_inbox(service, max_results=10):
+    return await asyncio.to_thread(_scan_inbox_sync, service, max_results)
 
 
 async def ensure_labels(service) -> dict:
@@ -117,8 +124,14 @@ async def classify_and_process_emails(emails, active_key_people):
         'Return ONLY a JSON array: [{"i":<index>,"category":"<one category>","summary":"<one English sentence>"}].\n\n'
         f"{listing}"
     )
-    result = await generate_json(prompt, system_prompt="You are an email triage assistant. Return only a JSON array.",
-                                 agent_id="mailman", use_cache=False)
+    # Isolate the LLM call — a failure here shouldn't prevent the scan from being
+    # saved; emails simply fall back to category "Other" with no AI summary below.
+    result = None
+    try:
+        result = await generate_json(prompt, system_prompt="You are an email triage assistant. Return only a JSON array.",
+                                     agent_id="mailman", use_cache=False)
+    except Exception as e:
+        print(f"[Mailman] Classification LLM failed: {e}")
 
     by_index = {}
     if isinstance(result, list):
@@ -199,9 +212,13 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True):
 
         service = build('gmail', 'v1', credentials=creds)
         emails = await scan_inbox(service)
-        processed_emails = await classify_and_process_emails(emails, active_key_people)
 
-        label_ids = await ensure_labels(service)
+        # Classification (LLM, serialized via the semaphore) and label setup (Gmail
+        # API, off-thread) are independent — run them concurrently.
+        processed_emails, label_ids = await asyncio.gather(
+            classify_and_process_emails(emails, active_key_people),
+            ensure_labels(service),
+        )
         await apply_labels_and_stars(service, processed_emails, label_ids)
 
         breakdown = {}

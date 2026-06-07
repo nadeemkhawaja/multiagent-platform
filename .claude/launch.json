@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "/Users/nkhawaja/Downloads/Claud Programming/MultiAgent Platform/venv/bin/python3.12",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5174"],
+      "cwd": "backend",
+      "port": 5174
     }
   ]
 }

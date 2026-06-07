@@ -37,8 +37,10 @@ def _human_views(n) -> str:
     return str(n)
 
 
-async def fetch_candidates(query: str, n: int = 12):
-    """Fetch a candidate pool with real duration + view counts (US / English, last 7 days)."""
+def _fetch_candidates_sync(query: str, n: int = 12):
+    """Synchronous YouTube Data API fetch (googleapiclient is sync) — called via
+    asyncio.to_thread so the event loop stays free and WebSocket status updates
+    keep flowing while the request is in flight."""
     if not YOUTUBE_API_KEY:
         print("[AI-Times] Missing YOUTUBE_API_KEY")
         return []
@@ -71,6 +73,11 @@ async def fetch_candidates(query: str, n: int = 12):
         return []
 
 
+async def fetch_candidates(query: str, n: int = 12):
+    """Fetch a candidate pool with real duration + view counts (US / English, last 7 days)."""
+    return await asyncio.to_thread(_fetch_candidates_sync, query, n)
+
+
 async def curate(news_cand, people_cand):
     """LLM does the editorial work — picks the best 5 per set, dedupes near-identical
     topics, and writes one digest intro sentence. To stay fast on local hardware it
@@ -96,6 +103,12 @@ async def curate(news_cand, people_cand):
         )
     except asyncio.TimeoutError:
         print(f"[AI-Times] Curate LLM exceeded {CURATE_TIMEOUT:.0f}s — using view-count ranking instead")
+        data = None
+        llm_ok = False
+    except Exception as e:
+        # Isolate any other LLM failure (e.g. Ollama unreachable) — fall back to
+        # view-count ranking rather than aborting the job before the digest is saved.
+        print(f"[AI-Times] Curate LLM failed: {e} — using view-count ranking instead")
         data = None
         llm_ok = False
 

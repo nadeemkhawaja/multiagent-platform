@@ -324,7 +324,3 @@ async def compass_job():
     except Exception as e:
         orchestrator.update_agent_status(AGENT_ID, "error", str(e))
         print(f"[Compass] Error: {e}")
-
-
-# Backwards-compatible alias (older imports / scheduler ids)
-market_direction_job = compass_job

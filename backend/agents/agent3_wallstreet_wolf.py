@@ -78,21 +78,23 @@ def build_market_html(top_gainers, top_losers, metals, currencies, commentary):
     html_content = f"""
     <html>
       <head>
+        <meta name="color-scheme" content="light">
+        <meta name="supported-color-schemes" content="light">
         <style>
-          body {{ font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }}
-          .container {{ max-width: 600px; margin: 0 auto; }}
-          h1 {{ color: #60a5fa; }}
-          h2 {{ color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 8px; }}
-          .stock-row {{ display: flex; justify-content: space-between; padding: 8px 12px; background: #1e293b; border-radius: 6px; margin-bottom: 4px; }}
-          .up {{ color: #10b981; }}
-          .down {{ color: #ef4444; }}
-          .commentary {{ background: #1e293b; border-left: 3px solid #3b82f6; padding: 16px; border-radius: 8px; margin: 16px 0; font-style: italic; }}
+          body {{ font-family: 'Segoe UI', sans-serif; background: #eef2f7; color: #0f172a; padding: 20px; margin: 0; }}
+          .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px; }}
+          h1 {{ color: #2563eb; margin-top: 0; }}
+          h2 {{ color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }}
+          .stock-row {{ display: flex; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 6px; margin-bottom: 6px; }}
+          .up {{ color: #15803d; font-weight: 600; }}
+          .down {{ color: #dc2626; font-weight: 600; }}
+          .commentary {{ background: #eff6ff; border-left: 3px solid #2563eb; padding: 16px; border-radius: 8px; margin: 16px 0; font-style: italic; }}
         </style>
       </head>
       <body>
         <div class="container">
           <h1>📈 Wallstreet Wolf Daily Brief</h1>
-          <p style="color:#94a3b8;">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
+          <p style="color:#64748b;">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
 
           <div class="commentary">{commentary}</div>
 

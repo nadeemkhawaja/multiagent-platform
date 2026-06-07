@@ -12,6 +12,7 @@ Stored in SQLite under agent_name="aegis", key="aegis".
 import os
 import re
 import json
+import asyncio
 from datetime import datetime
 
 import httpx
@@ -214,7 +215,9 @@ async def aegis_job(brand_override: str = None):
     brand = (brand_override or get_config("aegis_brand", AEGIS_BRAND) or AEGIS_BRAND).strip() or AEGIS_BRAND
     orchestrator.update_agent_status(AGENT_ID, "running")
     try:
-        raw = (await fetch_reddit(brand)) + (await fetch_hn(brand))
+        # Independent fetches (both async httpx) — run concurrently.
+        reddit_mentions, hn_mentions = await asyncio.gather(fetch_reddit(brand), fetch_hn(brand))
+        raw = reddit_mentions + hn_mentions
         # preserve prior approve/dismiss decisions across scans
         prev = {m["id"]: m for m in (_load() or {}).get("mentions", [])}
 

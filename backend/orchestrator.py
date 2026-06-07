@@ -364,27 +364,33 @@ class Orchestrator:
         return {"status": f"Crashed {agent_name}"}
 
     # ── watchdog ─────────────────────────────────────────────────────────
+    async def _watchdog_pass(self):
+        """One sweep over all agents, restarting crashed ones (up to MAX_RESTARTS,
+        then disabling them). Split out from _watchdog_loop so it can be exercised
+        directly in tests without waiting on the real poll interval."""
+        for agent_name, info in self.agents_status.items():
+            if info["status"] == "error" and agent_name in self._demo_crashed:
+                continue
+            if info["status"] == "error" and agent_name in self._agent_jobs:
+                attempts = self._restart_counts.get(agent_name, 0)
+                if attempts >= self.MAX_RESTARTS:
+                    if info["status"] != "failed":
+                        print(f"[Watchdog] '{agent_name}' failed {attempts}x. Manual restart required.")
+                        self.agents_status[agent_name]["status"] = "failed"
+                        self.log_event(f"{AGENT_META.get(agent_name, {}).get('n', agent_name)} disabled after {attempts} failures", "#e5484d")
+                    continue
+                self._restart_counts[agent_name] = attempts + 1
+                print(f"[Watchdog] Restarting '{agent_name}' ({attempts + 1}/{self.MAX_RESTARTS})...")
+                self.update_agent_status(agent_name, "restarting")
+                try:
+                    asyncio.create_task(self._agent_jobs[agent_name]())
+                except Exception as e:
+                    print(f"[Watchdog] Failed to restart '{agent_name}': {e}")
+
     async def _watchdog_loop(self):
         while True:
             await asyncio.sleep(10)
-            for agent_name, info in self.agents_status.items():
-                if info["status"] == "error" and agent_name in self._demo_crashed:
-                    continue
-                if info["status"] == "error" and agent_name in self._agent_jobs:
-                    attempts = self._restart_counts.get(agent_name, 0)
-                    if attempts >= self.MAX_RESTARTS:
-                        if info["status"] != "failed":
-                            print(f"[Watchdog] '{agent_name}' failed {attempts}x. Manual restart required.")
-                            self.agents_status[agent_name]["status"] = "failed"
-                            self.log_event(f"{AGENT_META.get(agent_name, {}).get('n', agent_name)} disabled after {attempts} failures", "#e5484d")
-                        continue
-                    self._restart_counts[agent_name] = attempts + 1
-                    print(f"[Watchdog] Restarting '{agent_name}' ({attempts + 1}/{self.MAX_RESTARTS})...")
-                    self.update_agent_status(agent_name, "restarting")
-                    try:
-                        asyncio.create_task(self._agent_jobs[agent_name]())
-                    except Exception as e:
-                        print(f"[Watchdog] Failed to restart '{agent_name}': {e}")
+            await self._watchdog_pass()
 
     def start_watchdog(self):
         if self._watchdog_task is None:
