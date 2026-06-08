@@ -3,7 +3,7 @@
 // ============================================================================
 import { useState, useEffect, useCallback } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
-import { Card, Pill, Dot, Btn, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance } from "../theme/ui";
 import { getConfig, saveConfig, getSchedules, setSchedule, getHealth } from "../state/api";
 
 const inputStyle = () => ({
@@ -67,7 +67,7 @@ function ScheduleRow({ agent, info, onSave }) {
   );
 }
 
-export default function Settings() {
+export default function Settings({ theme, setTheme, mode, setMode }) {
   const [config, setConfig] = useState(null);
   const [schedules, setSchedules] = useState(null);
   const [health, setHealth] = useState(null);
@@ -92,6 +92,14 @@ export default function Settings() {
       <TabHeader icon="⚙" color={T.violet} title="Settings" sub="Schedules · agent config · system health"
         actions={<Btn size="sm" kind="primary" onClick={saveSettings}>Save settings</Btn>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* Appearance */}
+        {theme && setTheme && mode && setMode && (
+          <Card pad={20}>
+            <SectionTitle sub="Theme and color mode">Appearance</SectionTitle>
+            <Appearance theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} />
+          </Card>
+        )}
+
         {/* Health */}
         <Card pad={20}>
           <SectionTitle sub="Live dependency status">System health</SectionTitle>
@@ -116,14 +124,20 @@ export default function Settings() {
               <Field label="Digest recipient email" hint="Where agent emails are sent">
                 <input value={config.recipient || ""} onChange={(e) => setField("recipient", e.target.value)} placeholder="you@gmail.com" style={inputStyle()} />
               </Field>
-              <Field label="Aegis brand / keyword" hint="Reputation term to monitor">
-                <input value={config.aegis_brand || ""} onChange={(e) => setField("aegis_brand", e.target.value)} placeholder="Anthropic" style={inputStyle()} />
-              </Field>
               <Field label="Mailman key people" hint="Comma-separated names/emails to alert on">
                 <input value={config.key_people || ""} onChange={(e) => setField("key_people", e.target.value)} placeholder="Sarah Chen, marcus@acme.io" style={inputStyle()} />
               </Field>
-              <Field label="Wolf watchlist (20+ tickers)" hint="Comma-separated; falls back to default if < 20">
-                <input value={config.watchlist || ""} onChange={(e) => setField("watchlist", e.target.value)} placeholder="AAPL, MSFT, NVDA, …" style={inputStyle()} />
+              <Field label="Wolf watchlist (20+ tickers)" hint="Comma-separated tickers · falls back to defaults if < 20">
+                <textarea rows={4} value={config.watchlist || ""} onChange={(e) => setField("watchlist", e.target.value)} placeholder={"AAPL, MSFT, NVDA, GOOGL,\nAMZN, TSLA, META, AMD, …"} style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.55 }} />
+              </Field>
+              <Field label="Capitol Tracker politicians" hint="Comma-separated last names or full names — one per line OK">
+                <textarea rows={5} value={config.capitol_politicians || ""} onChange={(e) => setField("capitol_politicians", e.target.value)} placeholder={"Pelosi, Trump, Cruz, McClain,\nMoore, McCormick, Greene, Issa, …"} style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.55 }} />
+              </Field>
+              <Field label="Capitol Tracker lookback window" hint={`${config.capitol_months || 2} month${(config.capitol_months || 2) === 1 ? "" : "s"} of STOCK Act disclosures`}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8 }}>
+                  <input type="range" min="1" max="12" step="1" value={config.capitol_months || 2} onChange={(e) => setField("capitol_months", Number(e.target.value))} style={{ flex: 1, accentColor: T.violet }} />
+                  <span style={{ fontFamily: T.mono, fontWeight: 700, fontSize: 16, minWidth: 36, textAlign: "center" }}>{config.capitol_months || 2}<span style={{ fontSize: 11, fontWeight: 600, color: T.ink4, marginLeft: 2 }}>mo</span></span>
+                </div>
               </Field>
             </div>
           )}

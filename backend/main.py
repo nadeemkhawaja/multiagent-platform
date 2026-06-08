@@ -15,40 +15,65 @@ from llm_client import OLLAMA_BASE_URL, LLM_MODEL, get_llm_state
 from ws import manager
 
 from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
-from agents import agent4_devdaily, agent5_compass as compass_mod, agent6_aegis
+from agents import agent4_devdaily, agent5_compass as compass_mod
 from agents import agent7_strategy_scout
+from agents import agent8_capitol_tracker
+from agents import agent9_morning_brief
+from agents import agent10_options_flow
+from agents import agent11_earnings_calendar
+from agents import agent12_cisco_pulse
 
-ai_times_job = agent1_ai_times.ai_times_job
-mailman_job = agent2_mailman.mailman_job
+ai_times_job        = agent1_ai_times.ai_times_job
+mailman_job         = agent2_mailman.mailman_job
 wallstreet_wolf_job = agent3_wallstreet_wolf.wallstreet_wolf_job
-devdaily_job = agent4_devdaily.devdaily_job
-compass_job = compass_mod.compass_job
-aegis_job = agent6_aegis.aegis_job
-strategy_scout_job = agent7_strategy_scout.strategy_scout_job
+devdaily_job        = agent4_devdaily.devdaily_job
+compass_job         = compass_mod.compass_job
+strategy_scout_job  = agent7_strategy_scout.strategy_scout_job
+capitol_tracker_job = agent8_capitol_tracker.capitol_tracker_job
+morning_brief_job   = agent9_morning_brief.morning_brief_job
+options_flow_job    = agent10_options_flow.options_flow_job
+earnings_cal_job    = agent11_earnings_calendar.earnings_calendar_job
+cisco_pulse_job     = agent12_cisco_pulse.cisco_pulse_job
 
 scheduler = AsyncIOScheduler()
 
 JOBS = {
-    "ai_times": ai_times_job, "mailman": mailman_job, "wallstreet_wolf": wallstreet_wolf_job,
-    "compass": compass_job, "aegis": aegis_job, "devdaily": devdaily_job,
-    "strategy_scout": strategy_scout_job,
+    "ai_times":        ai_times_job,
+    "mailman":         mailman_job,
+    "wallstreet_wolf": wallstreet_wolf_job,
+    "compass":         compass_job,
+    "devdaily":        devdaily_job,
+    "strategy_scout":  strategy_scout_job,
+    "capitol_tracker": capitol_tracker_job,
+    "morning_brief":   morning_brief_job,
+    "options_flow":    options_flow_job,
+    "earnings_cal":    earnings_cal_job,
+    "cisco_pulse":     cisco_pulse_job,
 }
 DEFAULT_SCHEDULES = {
-    "ai_times":        {"type": "cron", "hour": 8, "minute": 0},
+    "ai_times":        {"type": "cron",     "hour": 8,  "minute": 0},
     "mailman":         {"type": "interval", "minutes": 60},
     "wallstreet_wolf": {"type": "interval", "minutes": 120},
     "compass":         {"type": "interval", "minutes": 60},
-    "aegis":           {"type": "interval", "minutes": 60},
-    "devdaily":        {"type": "cron", "hour": 9, "minute": 0},
-    "strategy_scout":  {"type": "cron", "hour": 10, "minute": 0},
+    "devdaily":        {"type": "cron",     "hour": 9,  "minute": 0},
+    "strategy_scout":  {"type": "cron",     "hour": 10, "minute": 0},
+    "capitol_tracker": {"type": "cron",     "hour": 7,  "minute": 0},
+    "morning_brief":   {"type": "cron",     "hour": 6,  "minute": 0},
+    "options_flow":    {"type": "interval", "minutes": 120},
+    "earnings_cal":    {"type": "interval", "minutes": 360},
+    "cisco_pulse":     {"type": "cron",     "hour": 7,  "minute": 30},
 }
 PREVIEW = {
-    "ai_times": agent1_ai_times.email_preview,
-    "mailman": agent2_mailman.email_preview,
+    "ai_times":        agent1_ai_times.email_preview,
+    "mailman":         agent2_mailman.email_preview,
     "wallstreet_wolf": agent3_wallstreet_wolf.email_preview,
-    "compass": compass_mod.email_preview,
-    "aegis": agent6_aegis.email_preview,
-    "strategy_scout": agent7_strategy_scout.email_preview,
+    "compass":         compass_mod.email_preview,
+    "strategy_scout":  agent7_strategy_scout.email_preview,
+    "capitol_tracker": agent8_capitol_tracker.email_preview,
+    "morning_brief":   agent9_morning_brief.email_preview,
+    "options_flow":    agent10_options_flow.email_preview,
+    "earnings_cal":    agent11_earnings_calendar.email_preview,
+    "cisco_pulse":     agent12_cisco_pulse.email_preview,
 }
 
 
@@ -216,8 +241,6 @@ async def trigger_agent(agent_name: str, config: Optional[AgentTriggerConfig] = 
         task = asyncio.create_task(devdaily_job(language=cfg.language, count=cfg.count, topic=cfg.topic))
     elif agent_name == "mailman":
         task = asyncio.create_task(mailman_job(key_people_override=cfg.key_people, send_email=cfg.send_email))
-    elif agent_name == "aegis":
-        task = asyncio.create_task(aegis_job(brand_override=cfg.brand or None))
     elif agent_name in JOBS:
         task = asyncio.create_task(JOBS[agent_name]())
     else:
@@ -283,33 +306,41 @@ async def get_settings():
         "recipient": cfg.get("recipient", os.getenv("DAILY_DIGEST_EMAIL", "")),
         "key_people": cfg.get("key_people", os.getenv("KEY_PEOPLE", "")),
         "watchlist": cfg.get("watchlist", ""),
-        "aegis_brand": cfg.get("aegis_brand", os.getenv("AEGIS_BRAND", "Anthropic")),
+        "capitol_politicians": cfg.get("capitol_politicians", ""),
+        "capitol_months": cfg.get("capitol_months", "2"),
     }
 
 
 @app.post("/api/config")
 async def update_settings(body: Dict[str, Any]):
     for k, v in body.items():
-        if k in ("recipient", "key_people", "watchlist", "aegis_brand"):
+        if k in ("recipient", "key_people", "watchlist", "capitol_politicians", "capitol_months"):
             set_config(k, v)
     orchestrator.log_event("Settings updated", "#7c5cf6")
     return await get_settings()
 
 
-# ─── Aegis actions ───────────────────────────────────────────────────
-class AegisReply(BaseModel):
-    id: str
-    reply: Optional[str] = None
-
-
-@app.post("/api/aegis/approve")
-async def aegis_approve(req: AegisReply):
-    return agent6_aegis.approve_mention(req.id, req.reply)
-
-
-@app.post("/api/aegis/dismiss")
-async def aegis_dismiss(req: AegisReply):
-    return agent6_aegis.dismiss_mention(req.id)
+# ─── Stress Test ─────────────────────────────────────────────────────
+@app.post("/api/stress-test")
+async def stress_test():
+    """Trigger all agents simultaneously for load testing."""
+    triggered = []
+    for agent_name, job in JOBS.items():
+        try:
+            if agent_name in running_tasks and not running_tasks[agent_name].done():
+                running_tasks[agent_name].cancel()
+            if agent_name == "devdaily":
+                task = asyncio.create_task(devdaily_job())
+            elif agent_name == "mailman":
+                task = asyncio.create_task(mailman_job())
+            else:
+                task = asyncio.create_task(job())
+            running_tasks[agent_name] = task
+            triggered.append(agent_name)
+        except Exception as e:
+            print(f"[StressTest] Failed to trigger {agent_name}: {e}")
+    orchestrator.log_event(f"🔥 Stress test: {len(triggered)} agents triggered simultaneously", "#dc2626")
+    return {"status": "stress_test_started", "triggered": triggered}
 
 
 # ─── LLM test ────────────────────────────────────────────────────────

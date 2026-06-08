@@ -23,13 +23,17 @@ except Exception:
 
 
 AGENT_META = {
-    "ai_times":        {"n": "AI-Times",        "glyph": "▶", "desc": "AI YouTube digest",      "schedule": "Daily · 08:00", "color": "#e5484d"},
-    "mailman":         {"n": "Mailman",            "glyph": "✉", "desc": "Gmail triage",           "schedule": "Every 60 min",  "color": "#2f6feb"},
-    "wallstreet_wolf": {"n": "Wallstreet Wolf",    "glyph": "$", "desc": "Market tracker",         "schedule": "Every 2h",      "color": "#16a34a"},
-    "compass":         {"n": "Wallstreet Compass", "glyph": "◎", "desc": "Bias & key levels",      "schedule": "Every 60 min",  "color": "#f59e0b"},
-    "aegis":           {"n": "Aegis",              "glyph": "❖", "desc": "Islamophobia watch",      "schedule": "Every 60 min",  "color": "#0d9488"},
-    "devdaily":        {"n": "GitHub Trending",    "glyph": "⌥", "desc": "GitHub & Dev.to digest", "schedule": "Daily · 09:00", "color": "#7c5cf6"},
-    "strategy_scout":  {"n": "Strategy Scout",     "glyph": "✦", "desc": "Top trading strategies", "schedule": "Daily · 10:00", "color": "#0ea5e9"},
+    "ai_times":        {"n": "AI-Times",          "glyph": "▶", "desc": "AI YouTube digest",        "schedule": "Daily · 08:00", "color": "#e5484d"},
+    "mailman":         {"n": "Mailman",            "glyph": "✉", "desc": "Gmail triage",             "schedule": "Every 60 min",  "color": "#2f6feb"},
+    "wallstreet_wolf": {"n": "Wallstreet Wolf",    "glyph": "$", "desc": "Market tracker",           "schedule": "Every 2h",      "color": "#16a34a"},
+    "compass":         {"n": "Wallstreet Compass", "glyph": "◎", "desc": "Bias & key levels",        "schedule": "Every 60 min",  "color": "#f59e0b"},
+    "devdaily":        {"n": "GitHub Trending",    "glyph": "⌥", "desc": "GitHub & Dev.to digest",   "schedule": "Daily · 09:00", "color": "#7c5cf6"},
+    "strategy_scout":  {"n": "Strategy Scout",     "glyph": "✦", "desc": "Top trading strategies",   "schedule": "Daily · 10:00", "color": "#0ea5e9"},
+    "capitol_tracker": {"n": "Capitol Tracker",    "glyph": "🏛", "desc": "Political stock trades",   "schedule": "Daily · 07:00", "color": "#dc2626"},
+    "morning_brief":   {"n": "Morning Brief",      "glyph": "☀", "desc": "Daily personalized digest", "schedule": "Daily · 06:00", "color": "#f59e0b"},
+    "options_flow":    {"n": "Options Flow",       "glyph": "⚡","desc": "Unusual options activity",  "schedule": "Every 2h",      "color": "#7c5cf6"},
+    "earnings_cal":    {"n": "Earnings Calendar",  "glyph": "📅","desc": "Upcoming earnings & IV",    "schedule": "Every 6h",      "color": "#16a34a"},
+    "cisco_pulse":     {"n": "Cisco Pulse",        "glyph": "◈", "desc": "ACI/NDFC/PSIRT intel",     "schedule": "Daily · 07:30", "color": "#0d9488"},
 }
 AGENT_ORDER = list(AGENT_META.keys())
 
@@ -328,7 +332,8 @@ class Orchestrator:
                 "color": meta["color"], "status": status,
                 "cpu": random.randint(4, 18) if running else random.randint(0, 3),
                 "mem": {"ai_times": 180, "mailman": 240, "wallstreet_wolf": 210,
-                        "compass": 168, "aegis": 132, "devdaily": 150}.get(aid, 140),
+                        "compass": 168, "devdaily": 150, "capitol_tracker": 160,
+                         "morning_brief": 145, "options_flow": 170, "earnings_cal": 155, "cisco_pulse": 148}.get(aid, 140),
                 "schedule": meta["schedule"],
                 "restarts": self._restart_counts.get(aid, 0),
                 "error": self.agents_status[aid].get("error"),

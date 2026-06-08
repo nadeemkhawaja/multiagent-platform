@@ -35,14 +35,18 @@ export function applyMode(m) {
 
 // agent accent palette (keyed by backend agent ids)
 export const AGENT_COLOR = {
-  orchestrator: "#7c5cf6",
-  ai_times: "#e5484d",
-  mailman: "#2f6feb",
+  orchestrator:    "#7c5cf6",
+  ai_times:        "#e5484d",
+  mailman:         "#2f6feb",
   wallstreet_wolf: "#16a34a",
-  compass: "#f59e0b",
-  aegis: "#0d9488",
-  devdaily: "#6366f1",
-  strategy_scout: "#0ea5e9",
+  compass:         "#f59e0b",
+  devdaily:        "#6366f1",
+  strategy_scout:  "#0ea5e9",
+  capitol_tracker: "#dc2626",
+  morning_brief:   "#f59e0b",
+  options_flow:    "#7c5cf6",
+  earnings_cal:    "#16a34a",
+  cisco_pulse:     "#0d9488",
 };
 
 export const STAT = {

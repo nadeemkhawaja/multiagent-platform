@@ -4,7 +4,7 @@
 // ============================================================================
 import { useState, useEffect, useRef } from "react";
 import { T } from "../theme/tokens";
-import { Card, Pill, Spark, SectionTitle, TabHeader } from "../theme/ui";
+import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
 
@@ -51,7 +51,6 @@ function FutureCard({ f }) {
           </div>
           <div style={{ fontSize: 11.5, color: T.ink4, marginTop: 1 }}>{f.name}</div>
         </div>
-        {f.h && f.h.length > 1 && <Spark data={f.h} w={92} h={34} color={col} />}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 10 }}>
         <span style={{ fontSize: 26, fontWeight: 800, fontFamily: T.mono, letterSpacing: -1 }}>{f.p.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -61,16 +60,37 @@ function FutureCard({ f }) {
   );
 }
 
-function MoverRow({ s, rank }) {
+// Pure-CSS change bar — no chart lib needed
+function ChangeBar({ pct, maxAbs = 5 }) {
+  const up = pct >= 0;
+  const col = up ? T.green : T.red;
+  const w = Math.min(100, (Math.abs(pct) / maxAbs) * 100);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr auto auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4, width: 80 }}>
+      {!up && <div style={{ flex: `0 0 ${w / 2}%`, height: 6, background: col, borderRadius: 3, marginLeft: "auto" }} />}
+      <div style={{ width: 1, height: 10, background: T.line, flexShrink: 0 }} />
+      {up && <div style={{ flex: `0 0 ${w / 2}%`, height: 6, background: col, borderRadius: 3 }} />}
+    </div>
+  );
+}
+
+function MoverRow({ s, rank }) {
+  const up = s.ch >= 0;
+  const col = up ? T.green : T.red;
+  const barW = Math.min(100, Math.abs(s.ch) * 8);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 80px auto auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
       <span style={{ fontFamily: T.mono, fontSize: 11, color: T.ink4 }}>{rank}</span>
       <div>
         <div style={{ fontSize: 13, fontWeight: 700 }}>{s.t}</div>
         <div style={{ fontSize: 10.5, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>{s.n}</div>
       </div>
+      {/* Change bar */}
+      <div style={{ height: 6, background: T.line2, borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ width: barW + "%", height: "100%", background: col, borderRadius: 3, transition: "width .4s ease" }} />
+      </div>
       <span style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{s.p.toFixed(2)}</span>
-      <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: s.ch >= 0 ? T.green : T.red, textAlign: "right", minWidth: 64 }}>{s.ch >= 0 ? "+" : ""}{s.ch.toFixed(2)}%</span>
+      <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: col, textAlign: "right", minWidth: 64 }}>{up ? "+" : ""}{s.ch.toFixed(2)}%</span>
     </div>
   );
 }
@@ -172,18 +192,46 @@ export default function Wolf({ status, agentError }) {
 
         <Card pad={20}>
           <SectionTitle sub="Full watchlist · live prices" right={<Pill mono c={T.ink3}>updating · 2s</Pill>}>Watchlist <span style={{ fontSize: 11, fontFamily: T.mono, color: T.ink4 }}>Block 3</span></SectionTitle>
+          {/* Column headers */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 28px" }}>
-            {watch.map((w) => (
-              <div key={w.t} style={{ display: "grid", gridTemplateColumns: "1fr 60px auto auto", gap: 12, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, width: 48 }}>{w.t}</span>
-                  <span style={{ fontSize: 11, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.n}</span>
-                </div>
-                <div style={{ height: 22 }}>{w.h && w.h.length > 1 ? <Spark data={w.h} w={56} h={22} color={w.ch >= 0 ? T.green : T.red} fill={false} /> : null}</div>
-                <span style={{ fontFamily: T.mono, fontSize: 12.5, textAlign: "right" }}>{w.p.toFixed(2)}</span>
-                <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: w.ch >= 0 ? T.green : T.red, textAlign: "right", minWidth: 62 }}>{w.ch >= 0 ? "+" : ""}{w.ch.toFixed(2)}%</span>
+            {[0, 1].map((col) => (
+              <div key={col} style={{ display: "grid", gridTemplateColumns: "52px 1fr 72px auto 70px", gap: 10, padding: "4px 0 6px", borderBottom: `1px solid ${T.line}` }}>
+                {["Ticker", "Name", "Change", "Price", "Hi / Lo"].map((h) => (
+                  <span key={h} style={{ fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4 }}>{h}</span>
+                ))}
               </div>
             ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 28px" }}>
+            {watch.map((w) => {
+              const up = w.ch >= 0;
+              const col = up ? T.green : T.red;
+              const barW = Math.min(100, Math.abs(w.ch) * 10);
+              const hiLo = w.h && w.h.length > 1
+                ? { hi: Math.max(...w.h).toFixed(2), lo: Math.min(...w.h).toFixed(2) }
+                : null;
+              return (
+                <div key={w.t} style={{ display: "grid", gridTemplateColumns: "52px 1fr 72px auto 70px", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.line2}` }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800 }}>{w.t}</span>
+                  <span style={{ fontSize: 10.5, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.n}</span>
+                  {/* CSS change bar */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <div style={{ height: 5, background: T.line2, borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ width: barW + "%", height: "100%", background: col, borderRadius: 3, transition: "width .4s" }} />
+                    </div>
+                    <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 700, color: col }}>{up ? "+" : ""}{w.ch.toFixed(2)}%</span>
+                  </div>
+                  <span style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{w.p.toFixed(2)}</span>
+                  {/* Period hi/lo */}
+                  {hiLo ? (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 10, fontFamily: T.mono, color: T.green }}>{hiLo.hi}</div>
+                      <div style={{ fontSize: 10, fontFamily: T.mono, color: T.red }}>{hiLo.lo}</div>
+                    </div>
+                  ) : <span style={{ fontSize: 10, color: T.ink4 }}>—</span>}
+                </div>
+              );
+            })}
           </div>
         </Card>
 

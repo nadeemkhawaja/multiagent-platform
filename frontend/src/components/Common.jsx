@@ -1,5 +1,5 @@
 // Shared UI bits: email-preview modal trigger + agent error banner.
-import { useState } from "react";
+import { useState } from "react"; // still used by EmailPreviewButton
 import { T } from "../theme/tokens";
 import { Btn, Card, Pill } from "../theme/ui";
 import { emailPreview, stopAgent } from "../state/api";
@@ -7,15 +7,14 @@ import { emailPreview, stopAgent } from "../state/api";
 // ── Lufi — the platform's AI analyst persona (powered by Qwen3 locally) ──────
 // Tries /lufi.png (drop a real photo there) and falls back to the bundled
 // /lufi.svg illustration. Used wherever Lufi narrates a "read"/commentary.
-export function LufiAvatar({ size = 32, ring = true }) {
-  const [src, setSrc] = useState("/lufi.png");
+export function LufiAvatar({ size = 32 }) {
   return (
-    <img
-      src={src} alt="Lufi" width={size} height={size}
-      onError={() => { if (!src.endsWith(".svg")) setSrc("/lufi.svg"); }}
-      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto",
-        border: ring ? `2px solid ${T.violet}55` : "none", background: T.violetBg, display: "block" }}
-    />
+    <div style={{
+      width: size, height: size, borderRadius: "50%", flex: "0 0 auto",
+      background: T.violetBg, border: `2px solid ${T.violet}55`,
+      display: "grid", placeItems: "center",
+      fontSize: Math.round(size * 0.45), color: T.violet, fontWeight: 800,
+    }}>✦</div>
   );
 }
 

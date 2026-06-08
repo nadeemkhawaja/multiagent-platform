@@ -1,130 +1,260 @@
 // ============================================================================
-// App.jsx — shell: left nav, appearance controls, routing. Wired to the backend.
+// App.jsx — shell: collapsible nav, command palette, toasts, keyboard shortcuts
 // ============================================================================
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { T, applyMode, AGENT_COLOR } from "./theme/tokens";
-import { Dot, Appearance } from "./theme/ui";
-import { useSystemState } from "./state/api";
+import { Dot } from "./theme/ui";
+import { useSystemState, useAgentData } from "./state/api";
+import { ToastContainer, useToasts, useAgentToasts } from "./components/Toast";
+import CommandPalette from "./components/CommandPalette";
 
-import Orchestrator from "./tabs/Orchestrator";
-import AITimes from "./tabs/AITimes";
-import Mailman from "./tabs/Mailman";
-import Wolf from "./tabs/Wolf";
-import Compass from "./tabs/Compass";
-import Aegis from "./tabs/Aegis";
-import DevDaily from "./tabs/DevDaily";
-import StrategyScout from "./tabs/StrategyScout";
-import Settings from "./tabs/Settings";
+import Orchestrator   from "./tabs/Orchestrator";
+import AITimes        from "./tabs/AITimes";
+import Mailman        from "./tabs/Mailman";
+import Wolf           from "./tabs/Wolf";
+import Compass        from "./tabs/Compass";
+import DevDaily       from "./tabs/DevDaily";
+import StrategyScout  from "./tabs/StrategyScout";
+import CapitolTracker from "./tabs/CapitolTracker";
+import MorningBrief   from "./tabs/MorningBrief";
+import OptionsFlow    from "./tabs/OptionsFlow";
+import EarningsCalendar from "./tabs/EarningsCalendar";
+import CiscoPulse     from "./tabs/CiscoPulse";
+import Settings       from "./tabs/Settings";
 
-const NAV = [
-  { id: "orchestrator", label: "Orchestrator", glyph: "◇" },
-  { id: "ai_times", label: "AI-Times", glyph: "▶" },
-  { id: "mailman", label: "Mailman", glyph: "✉" },
-  { id: "wallstreet_wolf", label: "Wallstreet Wolf", glyph: "$" },
-  { id: "compass", label: "Wallstreet Compass", glyph: "◎" },
-  { id: "aegis", label: "Aegis", glyph: "❖" },
-  { id: "devdaily", label: "GitHub Trending", glyph: "⌥" },
-  { id: "strategy_scout", label: "Strategy Scout", glyph: "✦" },
+const NAV_AGENTS = [
+  { id: "ai_times",         label: "AI-Times",          glyph: "▶"  },
+  { id: "mailman",          label: "Mailman",            glyph: "✉"  },
+  { id: "wallstreet_wolf",  label: "Wallstreet Wolf",   glyph: "$"  },
+  { id: "compass",          label: "Wallstreet Compass", glyph: "◎"  },
+  { id: "devdaily",         label: "GitHub Trending",   glyph: "⌥"  },
+  { id: "strategy_scout",   label: "Strategy Scout",    glyph: "✦"  },
+  { id: "capitol_tracker",  label: "Capitol Tracker",   glyph: "🏛" },
+  { id: "morning_brief",    label: "Morning Brief",     glyph: "☀"  },
+  { id: "options_flow",     label: "Options Flow",      glyph: "⚡" },
+  { id: "earnings_cal",     label: "Earnings Calendar", glyph: "📅" },
+  { id: "cisco_pulse",      label: "Cisco Pulse",       glyph: "◈"  },
 ];
-const SETTINGS_ITEM = { id: "settings", label: "Settings", glyph: "⚙" };
-const TABS = { ai_times: AITimes, mailman: Mailman, wallstreet_wolf: Wolf, compass: Compass, aegis: Aegis, devdaily: DevDaily, strategy_scout: StrategyScout };
+const SETTINGS_ITEM   = { id: "settings",     label: "Settings",     glyph: "⚙" };
+const ORCHESTRATOR_IT = { id: "orchestrator", label: "Orchestrator", glyph: "◇" };
+
+const TABS = {
+  ai_times:         AITimes,
+  mailman:          Mailman,
+  wallstreet_wolf:  Wolf,
+  compass:          Compass,
+  devdaily:         DevDaily,
+  strategy_scout:   StrategyScout,
+  capitol_tracker:  CapitolTracker,
+  morning_brief:    MorningBrief,
+  options_flow:     OptionsFlow,
+  earnings_cal:     EarningsCalendar,
+  cisco_pulse:      CiscoPulse,
+};
+
+// All tabs for keyboard shortcut ordering (no home)
+const ORDERED_TABS = ["orchestrator","ai_times","mailman","wallstreet_wolf","compass","devdaily","strategy_scout","capitol_tracker","morning_brief","options_flow","earnings_cal","cisco_pulse"];
+
 const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
 
-function NavItem({ item, active, onClick, badge }) {
+// ── Keyboard shortcut help overlay ──────────────────────────────────────────
+function ShortcutHelp({ onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 998, background: "rgba(0,0,0,.45)", display: "grid", placeItems: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 16, padding: "24px 28px", width: 380, boxShadow: "0 20px 60px rgba(0,0,0,.2)" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Keyboard shortcuts</div>
+        {[
+          ["⌘ K", "Command palette"],
+          ["1 – 9", "Jump to tab by number"],
+          ["R", "Refresh active agent"],
+          ["S", "Go to Settings"],
+          ["O", "Go to Orchestrator"],
+          ["?", "Show this help"],
+          ["Esc", "Close overlay"],
+        ].map(([k, d]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${T.line2}`, fontSize: 13 }}>
+            <span style={{ color: T.ink2 }}>{d}</span>
+            <span style={{ fontFamily: T.mono, fontSize: 12, background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 5, padding: "2px 8px", color: T.ink3 }}>{k}</span>
+          </div>
+        ))}
+        <button onClick={onClose} style={{ marginTop: 16, width: "100%", padding: "8px", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink2, cursor: "pointer", fontSize: 13, fontFamily: T.sans }}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+// ── NavItem ──────────────────────────────────────────────────────────────────
+function NavItem({ item, active, onClick, badge, collapsed }) {
   const col = AGENT_COLOR[item.id] || T.violet;
+  if (collapsed) {
+    return (
+      <button onClick={onClick} title={item.label} style={{
+        width: 38, height: 38, borderRadius: 10, margin: "1px auto", display: "flex", alignItems: "center", justifyContent: "center",
+        background: active ? col + "1f" : "transparent", border: `1px solid ${active ? col + "44" : "transparent"}`,
+        color: active ? col : T.ink3, fontSize: 15, fontWeight: 700, cursor: "pointer",
+        transition: "all .14s", position: "relative",
+      }}>
+        {item.glyph}
+        {badge && <div style={{ position: "absolute", top: 4, right: 4 }}>{badge}</div>}
+      </button>
+    );
+  }
   return (
     <button onClick={onClick} style={{
-      display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", cursor: "pointer",
-      padding: "9px 12px", borderRadius: 10, border: "1px solid transparent", marginBottom: 2,
-      background: active ? T.card : "transparent", boxShadow: active ? T.shadow : "none",
-      borderColor: active ? T.line : "transparent", font: "inherit", transition: "all .14s",
+      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+      cursor: "pointer", padding: "8px 10px", borderRadius: 10,
+      border: `1px solid ${active ? T.line : "transparent"}`,
+      background: active ? T.card : "transparent",
+      boxShadow: active ? T.shadow : "none",
+      font: "inherit", transition: "all .14s", marginBottom: 1,
     }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = T.mode === "dark" ? "#ffffff10" : "#ffffff80"; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
-      <span style={{ width: 28, height: 28, borderRadius: 8, background: col + (active ? "1f" : "14"), color: col, display: "grid", placeItems: "center", fontSize: 14, fontWeight: 700, flex: "0 0 auto" }}>{item.glyph}</span>
-      <span style={{ fontSize: 13.5, fontWeight: active ? 700 : 600, color: active ? T.ink : T.ink2, flex: 1 }}>{item.label}</span>
+      <span style={{ width: 26, height: 26, borderRadius: 7, background: col + (active ? "1f" : "12"), color: col, display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flex: "0 0 auto" }}>{item.glyph}</span>
+      <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? T.ink : T.ink2, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
       {badge}
     </button>
   );
 }
 
-function Sidebar({ tab, setTab, theme, setTheme, mode, setMode, sys, online, transport }) {
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollapsed, onCmdK }) {
   const agents = sys?.agents || [];
   const res = sys?.res;
   const statusOf = (id) => agents.find((a) => a.id === id)?.status;
   const anyAlarm = !!sys?.alarm;
+  const W = collapsed ? 58 : 232;
+
+  const sectionLabel = (text) => collapsed ? null : (
+    <div style={{ fontSize: 10, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", marginTop: 12 }}>{text}</div>
+  );
 
   return (
-    <div style={{ width: 248, flex: "0 0 auto", background: T.sidebar, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", padding: "18px 14px", height: "100vh", position: "sticky", top: 0, overflowY: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "4px 8px 18px" }}>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 16, flex: "0 0 auto" }}>◇</div>
-        <div>
-          <div style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: -0.2, lineHeight: 1.1 }}>Orchestrator</div>
-          <div style={{ fontSize: 10.5, color: T.ink3, fontFamily: T.mono }}>multi-agent platform</div>
-        </div>
+    <div style={{ width: W, flex: `0 0 ${W}px`, background: T.sidebar, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", padding: collapsed ? "14px 8px" : "14px 10px", height: "100vh", position: "sticky", top: 0, overflowY: "auto", overflowX: "hidden", transition: "width .22s ease, flex .22s ease" }}>
+
+      {/* Logo — clicking navigates to Orchestrator */}
+      <div style={{ display: "flex", alignItems: "center", gap: collapsed ? 0 : 10, padding: collapsed ? "2px 0 12px" : "2px 4px 14px", justifyContent: collapsed ? "center" : "space-between" }}>
+        {!collapsed && (
+          <button onClick={() => setTab("orchestrator")} title="Orchestrator" style={{ display: "flex", alignItems: "center", gap: 9, background: tab === "orchestrator" ? T.violet + "18" : "transparent", border: tab === "orchestrator" ? `1px solid ${T.violet}33` : "1px solid transparent", borderRadius: 8, padding: "4px 8px 4px 4px", cursor: "pointer", flex: 1, minWidth: 0 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 14, flex: "0 0 auto" }}>◇</div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -0.2, lineHeight: 1.1, color: T.ink }}>Orchestrator</div>
+              <div style={{ fontSize: 9.5, color: T.ink3, fontFamily: T.mono }}>multi-agent</div>
+            </div>
+            <Dot c={anyAlarm ? T.red : online ? T.green : T.amber} s={6} />
+          </button>
+        )}
+        {collapsed && (
+          <button onClick={() => setTab("orchestrator")} title="Orchestrator" style={{ width: 30, height: 30, borderRadius: 8, background: tab === "orchestrator" ? "linear-gradient(135deg,#7c5cf6,#9d7bff)" : "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer" }}>◇</button>
+        )}
+        <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} style={{ width: 22, height: 22, borderRadius: 6, background: T.cardAlt, border: `1px solid ${T.line}`, cursor: "pointer", display: "grid", placeItems: "center", fontSize: 11, color: T.ink3, flexShrink: 0 }}>
+          {collapsed ? "▶" : "◀"}
+        </button>
       </div>
 
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 12px 8px" }}>System</div>
-      <NavItem item={NAV[0]} active={tab === "orchestrator"} onClick={() => setTab("orchestrator")}
-        badge={<Dot c={anyAlarm ? T.red : online ? T.green : T.amber} s={7} />} />
-      <NavItem item={SETTINGS_ITEM} active={tab === "settings"} onClick={() => setTab("settings")} />
+      {/* Cmd+K search */}
+      {!collapsed && (
+        <button onClick={onCmdK} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 10px", marginBottom: 10, cursor: "pointer", fontFamily: T.sans }}>
+          <span style={{ fontSize: 13, color: T.ink4 }}>⌘</span>
+          <span style={{ fontSize: 12, color: T.ink4, flex: 1, textAlign: "left" }}>Search…</span>
+          <span style={{ fontSize: 10, fontFamily: T.mono, color: T.ink4, background: T.card, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px" }}>K</span>
+        </button>
+      )}
 
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "16px 12px 8px" }}>Agents</div>
-      {NAV.slice(1).map((it) => {
+      {/* Agents */}
+      {sectionLabel("Agents")}
+      {NAV_AGENTS.map((it) => {
         const st = statusOf(it.id);
-        return <NavItem key={it.id} item={it} active={tab === it.id} onClick={() => setTab(it.id)}
-          badge={st ? <Dot c={dotColor[st] || "#aeb4bf"} s={7} /> : null} />;
+        const isCapitol = it.id === "capitol_tracker";
+        const badge = isCapitol && capitolCount > 0 && !collapsed
+          ? <span style={{ fontSize: 9.5, fontWeight: 700, background: "#dc262620", color: "#dc2626", padding: "1px 6px", borderRadius: 4, fontFamily: T.mono }}>{capitolCount}</span>
+          : (!collapsed && st) ? <Dot c={dotColor[st] || "#aeb4bf"} s={6} /> : null;
+        return <NavItem key={it.id} item={it} active={tab === it.id} onClick={() => setTab(it.id)} badge={badge} collapsed={collapsed} />;
       })}
 
-      <div style={{ marginTop: "auto", paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
-        <Appearance theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} />
-      </div>
-      <div style={{ padding: "12px 12px 4px", borderTop: `1px solid ${T.line}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <Dot c={online ? T.green : T.amber} s={7} />
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink2 }}>{(sys?.llm?.model) || "Qwen3"} · local</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: T.mono, color: T.ink4 }}>{transport === "ws" ? "live · ws" : transport === "poll" ? "poll" : "…"}</span>
-        </div>
-        <div style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono, lineHeight: 1.6 }}>
-          {res ? <>CPU {Math.round(res.cpu.v)}% · RAM {Math.round(res.ram.v)}% · GPU {Math.round(res.gpu.v)}%<br /></> : <>connecting…<br /></>}
-          localhost:5174
+      {/* Bottom — Settings pinned */}
+      <div style={{ marginTop: "auto", paddingTop: 10, borderTop: `1px solid ${T.line}` }}>
+        <NavItem item={SETTINGS_ITEM} active={tab === "settings"} onClick={() => setTab("settings")} collapsed={collapsed} />
+        <div style={{ padding: collapsed ? "8px 0" : "8px 4px 2px", fontSize: 10, color: T.ink4, fontFamily: T.mono, lineHeight: 1.6, textAlign: collapsed ? "center" : "left" }}>
+          {!collapsed && (res
+            ? <>CPU {Math.round(res.cpu?.v || 0)}% · RAM {Math.round(res.ram?.v || 0)}%<br /></>
+            : <>connecting…<br /></>)}
+          <Dot c={online ? T.green : T.amber} s={6} />
+          {!collapsed && " 5174"}
         </div>
       </div>
     </div>
   );
 }
 
+// ── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [tab, setTab] = useState(() => localStorage.getItem("om_tab") || "orchestrator");
-  const [theme, setTheme] = useState(() => localStorage.getItem("om_theme") || "aria");
-  const [mode, setMode] = useState(() => localStorage.getItem("om_mode") || "light");
-  applyMode(mode); // mutate shared tokens before children render
+  const [tab, setTab]       = useState(() => { const t = localStorage.getItem("om_tab"); return t === "home" ? "orchestrator" : (t || "orchestrator"); });
+  const [theme, setTheme]   = useState(() => localStorage.getItem("om_theme") || "aria");
+  const [mode, setMode]     = useState(() => localStorage.getItem("om_mode") || "light");
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("om_collapsed") === "1");
+  const [cmdOpen, setCmdOpen]     = useState(false);
+  const [helpOpen, setHelpOpen]   = useState(false);
+  applyMode(mode);
 
   const { state: sys, online, transport } = useSystemState();
+  const { data: capitolData } = useAgentData("capitol_tracker");
+  const capitolCount = capitolData?.tracker?.stats?.total || 0;
 
+  const { toasts, addToast, dismissToast } = useToasts();
+  useAgentToasts(sys, addToast);
+
+  // Persist prefs
   useEffect(() => { localStorage.setItem("om_tab", tab); }, [tab]);
   useEffect(() => { localStorage.setItem("om_theme", theme); }, [theme]);
+  useEffect(() => { localStorage.setItem("om_collapsed", collapsed ? "1" : "0"); }, [collapsed]);
+  useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = mode; }, [mode]);
+
+  const navigate = useCallback((id) => setTab(id), []);
+
+  // Keyboard shortcuts
   useEffect(() => {
-    localStorage.setItem("om_mode", mode);
-    document.body.style.background = T.bg;
-    document.documentElement.style.colorScheme = mode;
-  }, [mode]);
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen(true); return; }
+      if (e.key === "Escape") { setCmdOpen(false); setHelpOpen(false); return; }
+      if (e.key === "?") { setHelpOpen(true); return; }
+      if (e.key === "o" || e.key === "O") { setTab("orchestrator"); return; }
+      if (e.key === "s" || e.key === "S") { setTab("settings"); return; }
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= 9 && ORDERED_TABS[num - 1]) setTab(ORDERED_TABS[num - 1]);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const agent = sys?.agents?.find((a) => a.id === tab);
   let content;
   if (tab === "orchestrator") {
-    content = <Orchestrator sys={sys} online={online} theme={theme} />;
+    content = <Orchestrator sys={sys} online={online} theme={theme} onNavigate={navigate} />;
   } else if (tab === "settings") {
-    content = <Settings />;
+    content = <Settings theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} />;
   } else {
     const TabEl = TABS[tab];
-    content = <TabEl key={tab} status={agent?.status} agentError={agent?.error} progress={agent?.progress} result={agent?.result} />;
+    if (!TabEl) { content = <div style={{ padding: 40, color: T.ink3 }}>Tab not found: {tab}</div>; }
+    else content = <TabEl key={tab} status={agent?.status} agentError={agent?.error} progress={agent?.progress} result={agent?.result} />;
   }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, fontFamily: T.sans, color: T.ink }}>
-      <Sidebar tab={tab} setTab={setTab} theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} sys={sys} online={online} transport={transport} />
+      <Sidebar
+        tab={tab} setTab={setTab}
+        sys={sys} online={online}
+        capitolCount={capitolCount}
+        collapsed={collapsed} setCollapsed={setCollapsed}
+        onCmdK={() => setCmdOpen(true)}
+      />
       <div style={{ flex: 1, minWidth: 0 }}>{content}</div>
+
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
+      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
+      <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </div>
   );
 }

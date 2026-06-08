@@ -129,3 +129,38 @@ def all_config() -> dict:
         return out
     finally:
         db.close()
+
+
+# ── Agent data helpers (used by agents 9-12) ─────────────────────────────────
+def save_agent_data(agent_id: str, data: dict):
+    """Save agent output — each top-level key in data becomes a separate AgentData row.
+    e.g. save_agent_data("morning_brief", {"brief": {...}}) → key="brief" row."""
+    db = SessionLocal()
+    try:
+        for key, value in data.items():
+            rec = db.query(AgentData).filter_by(agent_name=agent_id, key=key).first()
+            payload = json.dumps(value)
+            if rec:
+                rec.value = payload
+                rec.updated_at = datetime.utcnow()
+            else:
+                db.add(AgentData(agent_name=agent_id, key=key, value=payload))
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_agent_data(agent_id: str) -> dict:
+    """Return all AgentData rows for agent_id as a dict keyed by row.key."""
+    db = SessionLocal()
+    try:
+        records = db.query(AgentData).filter_by(agent_name=agent_id).all()
+        result = {}
+        for r in records:
+            try:
+                result[r.key] = json.loads(r.value)
+            except (json.JSONDecodeError, TypeError):
+                result[r.key] = r.value
+        return result
+    finally:
+        db.close()
