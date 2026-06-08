@@ -1,56 +1,68 @@
 graph TD
-    subgraph Frontend
-        Dashboard[Web Dashboard React/Vite]
+    subgraph Client["Frontend — React / Vite"]
+        Dashboard["Web Dashboard<br/>live gauges · agent tabs · demo controls<br/>updates every 5s"]
     end
 
-    subgraph Backend
-        Orchestrator[Main Orchestrator FastAPI]
-        DB[(SQLite DB)]
-        Scheduler[APScheduler]
-        Semaphore((LLM Semaphore))
-        
-        Agent1[Agent-1 AI-Times]
-        Agent2[Agent-2 Mailman]
-        Agent3[Agent-3 Wallstreet Wolf]
-        Agent4[Agent-4 DevDaily]
-        
-        LLMClient[LLM Client Wrapper]
+    subgraph Core["Main Orchestrator — FastAPI · Python 3.12"]
+        Orchestrator["Orchestrator<br/>resource monitor: CPU / RAM / Disk / GPU / threads<br/>90% alarm + corrective action · watchdog auto-restart"]
+        Scheduler["APScheduler<br/>per-agent cron / interval"]
+        Semaphore(("LLM Semaphore<br/>1 permit · serialized · no deadlocks"))
+        LLMClient["LLM Client<br/>cache + retry"]
+        DB[("SQLite<br/>cache · history · config")]
     end
-    
-    subgraph LocalAI
-        Ollama[Ollama / Qwen3]
+
+    subgraph Graded["Graded Agents (rubric)"]
+        A1["Agent-1<br/>AI-Times"]
+        A2["Agent-2<br/>Mailman"]
+        A3["Agent-3<br/>Wallstreet Wolf"]
+        A4["Agent-4<br/>GitHub Trending"]
     end
-    
-    subgraph APIs
-        YouTube[YouTube Data API]
-        Gmail[Gmail API]
-        Yahoo[Yahoo Finance]
-        GitHub[GitHub API]
-        DevTo[Dev.to API]
+
+    subgraph Extra["Bonus Agents — creativity · hidden in demo mode"]
+        Extras["Wallstreet Compass · Strategy Scout · Capitol Tracker<br/>Morning Brief · Options Flow · Earnings Calendar · Cisco Pulse"]
     end
-    
-    Dashboard <-->|REST API| Orchestrator
+
+    subgraph Local["Local AI — no hosted LLM APIs"]
+        Ollama["Ollama · Qwen3<br/>qwen3:8b"]
+    end
+
+    subgraph Ext["External APIs"]
+        YouTube["YouTube Data API v3"]
+        Gmail["Gmail API · OAuth 2.0"]
+        Yahoo["Yahoo Finance"]
+        GitHub["GitHub API"]
+        DevTo["Dev.to API"]
+        SMTP["Gmail SMTP<br/>daily HTML email"]
+    end
+
+    Dashboard <-->|"REST + WebSocket"| Orchestrator
+    Orchestrator --> Scheduler
     Orchestrator <--> DB
-    Scheduler -.->|Triggers| Agent1
-    Scheduler -.->|Triggers| Agent2
-    Scheduler -.->|Triggers| Agent3
-    Scheduler -.->|Triggers| Agent4
-    
-    Agent1 -->|Stores Data| DB
-    Agent2 -->|Stores Data| DB
-    Agent3 -->|Stores Data| DB
-    Agent4 -->|Stores Data| DB
-    
-    Agent1 <--> YouTube
-    Agent2 <--> Gmail
-    Agent3 <--> Yahoo
-    Agent4 <--> GitHub
-    Agent4 <--> DevTo
-    
-    Agent1 --> LLMClient
-    Agent2 --> LLMClient
-    Agent3 --> LLMClient
-    Agent4 --> LLMClient
-    
-    LLMClient -->|Semaphore locks request| Semaphore
-    Semaphore <--> Ollama
+    Scheduler -.->|triggers| A1 & A2 & A3 & A4
+    Scheduler -.->|triggers| Extras
+
+    A1 & A2 & A3 & A4 -->|store| DB
+    Extras -->|store| DB
+
+    A1 <-->|fetch| YouTube
+    A2 <-->|OAuth scan| Gmail
+    A3 <-->|quotes| Yahoo
+    A4 <-->|trending| GitHub
+    A4 <-->|articles| DevTo
+    A1 & A2 & A3 & A4 -->|digest| SMTP
+
+    A1 & A2 & A3 & A4 --> LLMClient
+    Extras --> LLMClient
+    LLMClient -->|acquire permit| Semaphore
+    Semaphore <-->|local inference| Ollama
+
+    classDef core fill:#ede9fe,stroke:#7c5cf6,color:#2e1065;
+    classDef graded fill:#ecfdf5,stroke:#16a34a,color:#064e3b;
+    classDef bonus fill:#f1f5f9,stroke:#94a3b8,color:#334155;
+    classDef local fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
+    classDef ext fill:#eff6ff,stroke:#2563eb,color:#1e3a8a;
+    class Orchestrator,Scheduler,Semaphore,LLMClient,DB core;
+    class A1,A2,A3,A4 graded;
+    class Extras bonus;
+    class Ollama local;
+    class YouTube,Gmail,Yahoo,GitHub,DevTo,SMTP ext;

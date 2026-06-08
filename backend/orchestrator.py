@@ -9,7 +9,7 @@ from typing import Dict, Any
 import httpx
 
 from llm_client import get_llm_state, OLLAMA_BASE_URL
-from database import SessionLocal, ResourceSample, Event, AgentRun, AgentState, init_db
+from database import SessionLocal, ResourceSample, Event, AgentRun, AgentState, init_db, get_config, set_config
 from ws import manager
 
 # Optional NVIDIA GPU telemetry.
@@ -36,6 +36,11 @@ AGENT_META = {
     "cisco_pulse":     {"n": "Cisco Pulse",        "glyph": "◈", "desc": "ACI/NDFC/PSIRT intel",     "schedule": "Daily · 07:30", "color": "#0d9488"},
 }
 AGENT_ORDER = list(AGENT_META.keys())
+
+# The four graded agents (+ the orchestrator itself). Demo mode hides everything
+# else so a 10-minute video only has to show — and never risk breaking on — the
+# components the rubric actually scores.
+CORE_AGENTS = ["ai_times", "mailman", "wallstreet_wolf", "devdaily"]
 
 STATUS_MAP = {
     "running": "running", "idle": "idle", "stopped": "idle", "error": "crashed",
@@ -77,6 +82,7 @@ class Orchestrator:
         psutil.cpu_percent(interval=None)
         init_db()            # ensure tables exist before reading history
         self._load_history()
+        self.demo_mode = bool(get_config("demo_mode", False))
 
     # ── load durable history from SQLite ─────────────────────────────────
     def _load_history(self):
@@ -355,10 +361,22 @@ class Orchestrator:
                     "disk": block("disk", res["disk_percent"]), "gpu": block("gpu", res["gpu_percent"]),
                     "net": block("net", res["net_mbps"])},
             "threads": res["active_threads"], "agents": agents, "llm": llm,
-            "events": list(self.events), "alarm": alarm,
+            "events": list(self.events), "alarm": alarm, "demo": self.demo_mode,
         }
 
     # ── demo controls ────────────────────────────────────────────────────
+    def set_demo_mode(self, enabled: bool) -> bool:
+        """Toggle demo mode. When on, the dashboard and scheduler focus on the
+        four graded agents only; extras are hidden/paused for a clean demo."""
+        self.demo_mode = bool(enabled)
+        set_config("demo_mode", self.demo_mode)
+        extras = [a for a in AGENT_ORDER if a not in CORE_AGENTS]
+        if self.demo_mode:
+            self.log_event(f"Demo mode ON · {len(CORE_AGENTS)} core agents · {len(extras)} extras paused", "#7c5cf6")
+        else:
+            self.log_event("Demo mode OFF · full agent fleet active", "#7c5cf6")
+        return self.demo_mode
+
     def spike(self, resource: str = "cpu"):
         resource = resource if resource in ALARM_ACTIONS else "cpu"
         value = round(random.uniform(91, 97), 1)

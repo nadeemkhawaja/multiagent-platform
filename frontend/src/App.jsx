@@ -38,6 +38,10 @@ const NAV_AGENTS = [
 const SETTINGS_ITEM   = { id: "settings",     label: "Settings",     glyph: "⚙" };
 const ORCHESTRATOR_IT = { id: "orchestrator", label: "Orchestrator", glyph: "◇" };
 
+// The four graded agents. Demo mode collapses the sidebar to just these so a
+// 10-minute video only shows the rubric-scored components.
+const CORE_AGENTS = ["ai_times", "mailman", "wallstreet_wolf", "devdaily"];
+
 const TABS = {
   ai_times:         AITimes,
   mailman:          Mailman,
@@ -123,6 +127,8 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
   const res = sys?.res;
   const statusOf = (id) => agents.find((a) => a.id === id)?.status;
   const anyAlarm = !!sys?.alarm;
+  const demo = !!sys?.demo;
+  const navAgents = demo ? NAV_AGENTS.filter((a) => CORE_AGENTS.includes(a.id)) : NAV_AGENTS;
   const W = collapsed ? 58 : 232;
 
   const sectionLabel = (text) => collapsed ? null : (
@@ -162,8 +168,8 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
       )}
 
       {/* Agents */}
-      {sectionLabel("Agents")}
-      {NAV_AGENTS.map((it) => {
+      {sectionLabel(demo ? "Agents · demo mode" : "Agents")}
+      {navAgents.map((it) => {
         const st = statusOf(it.id);
         const isCapitol = it.id === "capitol_tracker";
         const badge = isCapitol && capitolCount > 0 && !collapsed
@@ -211,6 +217,13 @@ export default function App() {
   useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = mode; }, [mode]);
 
   const navigate = useCallback((id) => setTab(id), []);
+
+  // In demo mode, don't sit on a now-hidden agent tab.
+  useEffect(() => {
+    if (sys?.demo && tab !== "orchestrator" && tab !== "settings" && !CORE_AGENTS.includes(tab)) {
+      setTab("orchestrator");
+    }
+  }, [sys?.demo, tab]);
 
   // Keyboard shortcuts
   useEffect(() => {

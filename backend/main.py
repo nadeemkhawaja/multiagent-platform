@@ -10,7 +10,7 @@ import asyncio
 import httpx
 
 from database import init_db, SessionLocal, AgentData, get_config, set_config, all_config
-from orchestrator import orchestrator, AGENT_META, AGENT_ORDER
+from orchestrator import orchestrator, AGENT_META, AGENT_ORDER, CORE_AGENTS
 from llm_client import OLLAMA_BASE_URL, LLM_MODEL, get_llm_state
 from ws import manager
 
@@ -98,6 +98,15 @@ async def lifespan(app: FastAPI):
         _apply_schedule(aid, cfg)
 
     scheduler.start()
+    # Demo mode (persisted): pause non-core agents so only the four graded
+    # agents are scheduled during a recording — no extras firing mid-demo.
+    if orchestrator.demo_mode:
+        for aid in AGENT_ORDER:
+            if aid not in CORE_AGENTS:
+                try:
+                    scheduler.pause_job(aid)
+                except Exception:
+                    pass
     orchestrator.start_sampler()
     orchestrator.start_watchdog()
     yield
@@ -190,6 +199,29 @@ async def demo_crash(req: Optional[CrashRequest] = None):
     if not aid:
         return {"error": "no agent to crash"}
     return orchestrator.crash(aid)
+
+
+class DemoModeRequest(BaseModel):
+    enabled: bool = False
+
+
+@app.get("/api/demo/mode")
+async def get_demo_mode():
+    return {"enabled": orchestrator.demo_mode, "core_agents": CORE_AGENTS}
+
+
+@app.post("/api/demo/mode")
+async def set_demo_mode(req: DemoModeRequest):
+    """Toggle demo mode. On → pause every non-core agent's schedule so only the
+    four graded agents run; off → resume the full fleet."""
+    enabled = orchestrator.set_demo_mode(req.enabled)
+    extras = [a for a in AGENT_ORDER if a not in CORE_AGENTS]
+    for aid in extras:
+        try:
+            scheduler.pause_job(aid) if enabled else scheduler.resume_job(aid)
+        except Exception:
+            pass
+    return {"enabled": enabled, "core_agents": CORE_AGENTS, "paused": extras if enabled else []}
 
 
 # ─── Agent data ──────────────────────────────────────────────────────

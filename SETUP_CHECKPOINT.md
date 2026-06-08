@@ -9,7 +9,7 @@
 
 | Item | Status |
 |------|--------|
-| Ollama + qwen3.5:4b | ✅ Running |
+| Ollama + qwen3:8b | ✅ Running |
 | Node v26 | ✅ OK |
 | Python 3.12 (via Homebrew) | ✅ `python3.12 --version` → 3.12.1 |
 | Project root | `/Users/nkhawaja/Downloads/Claud Programming/MultiAgent Platform` |
@@ -34,7 +34,7 @@
 
 ```
 OLLAMA_BASE_URL=http://localhost:11434
-LLM_MODEL=qwen3.5:4b
+LLM_MODEL=qwen3:8b
 DAILY_DIGEST_EMAIL=nadeem.khawaja@gmail.com
 SMTP_APP_PASSWORD=<16-char app password>
 YOUTUBE_API_KEY=<AIza...>
@@ -51,7 +51,7 @@ GITHUB_TOKEN=<ghp_...>
 | Agent-1: AI-Times | ✅ Ready | YouTube Data API v3 key set |
 | Agent-2: Mailman | ✅ Ready | credentials.json placed; first run opens browser for OAuth → creates token.json |
 | Agent-3: Wallstreet Wolf | ✅ Ready | yfinance — no API key needed |
-| Agent-4: DevDaily | ✅ Ready | GitHub trending + Dev.to articles |
+| Agent-4: GitHub Trending | ✅ Ready | GitHub trending + Dev.to articles |
 | Agent-5: Market Direction Briefer | 🔧 Building | ES/NQ futures, VIX, Fear&Greed, LLM pre-market bias |
 
 ---

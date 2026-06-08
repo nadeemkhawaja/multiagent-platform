@@ -84,6 +84,8 @@ export const triggerAgent = (id, cfg) => jsonPost(`/api/agent/${id}/trigger`, cf
 export const stopAgent = (id) => jsonPost(`/api/agent/${id}/stop`);
 export const spikeResource = (resource) => jsonPost("/api/demo/spike", { resource });
 export const crashAgent = (agent_id) => jsonPost("/api/demo/crash", agent_id ? { agent_id } : {});
+export const getDemoMode = () => jsonGet("/api/demo/mode");
+export const setDemoMode = (enabled) => jsonPost("/api/demo/mode", { enabled });
 export const aegisApprove = (id, reply) => jsonPost("/api/aegis/approve", { id, reply });
 export const aegisDismiss = (id) => jsonPost("/api/aegis/dismiss", { id });
 

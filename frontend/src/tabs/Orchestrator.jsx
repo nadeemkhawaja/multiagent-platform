@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, StatusPill, Ring, SectionTitle, TabHeader, Btn } from "../theme/ui";
 import { CpuIcon, RamIcon, DiskIcon, GpuIcon, NetIcon } from "../theme/icons";
-import { API_BASE, useAgentData } from "../state/api";
+import { API_BASE, useAgentData, setDemoMode, spikeResource, crashAgent } from "../state/api";
 
 // ── All agents the Home overview knows about ─────────────────────────────────
 const ALL_AGENTS = [
@@ -22,6 +22,8 @@ const ALL_AGENTS = [
   { id: "earnings_cal",    label: "Earnings Calendar", glyph: "📅", desc: "Upcoming earnings" },
   { id: "cisco_pulse",     label: "Cisco Pulse",       glyph: "◈", desc: "NetOps intel" },
 ];
+// The four graded agents — demo mode narrows the overview grid to just these.
+const CORE_AGENTS = ["ai_times", "mailman", "wallstreet_wolf", "devdaily"];
 const STATUS_BG = { running: "#eafaf0", idle: "transparent", crashed: "#fdeced", queued: "#fef5e7" };
 
 // Compact clickable card used in the agent grid
@@ -522,6 +524,59 @@ function StressTestButton({ agents = [] }) {
   );
 }
 
+// ── Demo Controls: demo-mode toggle + simulate-load + crash-agent ────────────
+function DemoControls({ s }) {
+  const demo = !!s.demo;
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => { setBusy(true); try { await setDemoMode(!demo); } finally { setTimeout(() => setBusy(false), 400); } };
+  // In demo mode, crash a *visible* core agent so the auto-restart is on screen.
+  const crashOne = () => {
+    if (!demo) return crashAgent();
+    const live = (s.agents || []).filter((a) => CORE_AGENTS.includes(a.id) && a.status !== "crashed");
+    crashAgent(live.length ? live[Math.floor(Math.random() * live.length)].id : undefined);
+  };
+  const ActBtn = ({ label, onClick, color }) => (
+    <button onClick={onClick} style={{
+      padding: "8px 14px", borderRadius: 9, border: `1px solid ${color}55`, background: color + "12",
+      color, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: T.sans,
+    }}>{label}</button>
+  );
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.violet}44`, borderRadius: 14, padding: "18px 22px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: T.violet }}>◐</span> Demo Controls
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.ink4 }}>— for a clean 10-minute recording</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: T.ink4, marginTop: 4 }}>
+            {demo ? "Showing the 4 graded agents · extras hidden and paused" : "Full fleet visible · every agent scheduled"}
+          </div>
+        </div>
+        <button onClick={toggle} disabled={busy} title="Toggle demo mode" style={{
+          display: "flex", alignItems: "center", gap: 9, padding: "7px 13px", borderRadius: 999,
+          border: `1px solid ${demo ? T.violet : T.line}`, background: demo ? T.violet + "16" : T.cardAlt,
+          color: demo ? T.violet : T.ink3, fontWeight: 700, fontSize: 12.5, cursor: busy ? "wait" : "pointer", fontFamily: T.sans,
+        }}>
+          <span style={{ width: 30, height: 16, borderRadius: 999, background: demo ? T.violet : "#c4c9d4", position: "relative", transition: "all .2s", flex: "0 0 auto" }}>
+            <span style={{ position: "absolute", top: 2, left: demo ? 16 : 2, width: 12, height: 12, borderRadius: 999, background: "#fff", transition: "all .2s" }} />
+          </span>
+          Demo mode {demo ? "ON" : "OFF"}
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+        <ActBtn label="⚠ Simulate CPU > 90%" onClick={() => spikeResource("cpu")} color={T.red} />
+        <ActBtn label="⚠ Simulate RAM > 90%" onClick={() => spikeResource("ram")} color="#ea580c" />
+        <ActBtn label="⚠ Simulate GPU > 90%" onClick={() => spikeResource("gpu")} color="#7c5cf6" />
+        <ActBtn label="✕ Crash a random agent" onClick={crashOne} color={T.red} />
+      </div>
+      <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 10, fontFamily: T.mono }}>
+        Spike → alarm banner with a suggested corrective action (auto-clears ~12 s). Crash → watchdog auto-restarts the agent ~4 s later.
+      </div>
+    </div>
+  );
+}
+
 const SKELETON = {
   uptimeS: 0, threads: 0,
   res: { cpu: { v: 0, hist: [] }, ram: { v: 0, hist: [] }, disk: { v: 0, hist: [] }, gpu: { v: 0, hist: [] }, net: { v: 0, hist: [] } },
@@ -534,6 +589,8 @@ export default function Orchestrator({ sys, online, theme = "aria", onNavigate }
   const running = s.agents.filter((a) => a.status === "running").length;
   const alarm = ackd ? null : s.alarm;
   const nav = onNavigate || (() => {});
+  const demo = !!s.demo;
+  const shownAgents = demo ? ALL_AGENTS.filter((a) => CORE_AGENTS.includes(a.id)) : ALL_AGENTS;
 
   const cpu  = s.res?.cpu?.v  || 0;
   const ram  = s.res?.ram?.v  || 0;
@@ -576,13 +633,16 @@ export default function Orchestrator({ sys, online, theme = "aria", onNavigate }
 
         {/* ── Agent overview grid (clickable) ──────────────────────────────── */}
         <div>
-          <SectionTitle sub="click any card to open that agent's tab">{s.agents.length || ALL_AGENTS.length} managed agents · auto-restart enabled</SectionTitle>
+          <SectionTitle sub="click any card to open that agent's tab">{shownAgents.length} {demo ? "graded agents · demo mode" : "managed agents · auto-restart enabled"}</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10, marginTop: 8 }}>
-            {ALL_AGENTS.map((a) => (
+            {shownAgents.map((a) => (
               <AgentOverviewCard key={a.id} agent={a} sysAgent={s.agents.find((x) => x.id === a.id)} onNavigate={nav} />
             ))}
           </div>
         </div>
+
+        {/* ── Demo controls ───────────────────────────────────────────────── */}
+        <DemoControls s={s} />
 
         {/* ── Alarm ───────────────────────────────────────────────────────── */}
         <AlarmBanner alarm={alarm} onAck={() => { setAckd(true); setTimeout(() => setAckd(false), 12000); }} />

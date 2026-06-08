@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.5:4b")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 
 # Single-permit semaphore: only one agent calls the model at a time → fully
 # serialized inference, no contention, no circular waits, no deadlocks.

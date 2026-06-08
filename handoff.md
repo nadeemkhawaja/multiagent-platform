@@ -9,7 +9,7 @@
 Design, implement, and demonstrate a fully operational Multi-Agent Auto-Scheduling Platform running entirely on a local machine using a locally hosted LLM. A central orchestrator manages four specialized agents, handles resource scheduling, and serves a web-based dashboard.
 
 ### Constraints & Requirements
-- **Local LLM Only:** Must use Ollama with `qwen3.5:4b`. No OpenAI/Anthropic API calls for inference.
+- **Local LLM Only:** Must use Ollama with `qwen3:8b`. No OpenAI/Anthropic API calls for inference.
 - **Auto-restart:** Orchestrator must restart crashed agents.
 - **Deadlock Prevention:** LLM calls must be serialized (using `asyncio.Semaphore(1)`).
 - **Resource Monitoring:** CPU, RAM, Disk must be monitored with specific alarm actions if > 90%.
@@ -26,7 +26,7 @@ Design, implement, and demonstrate a fully operational Multi-Agent Auto-Scheduli
 ---
 
 ## 3. Key Decision Points So Far
-1. **Model Selection:** Switched default model explicitly to `qwen3.5:4b` to match the user's specific local download and maximize quality.
+1. **Model Selection:** Switched default model explicitly to `qwen3:8b` to match the user's specific local download and maximize quality.
 2. **Pathing & Venv:** Re-created the Python virtual environment (`venv`) to fix absolute pathing issues caused by a trailing space in the root folder name.
 3. **Syntax Error Fix:** Extracted f-string comprehensions into separate variables in `agent3_wallstreet_wolf.py` to ensure compatibility across all Python versions and prevent Uvicorn crashes.
 4. **Email Utilities:** Created a centralized `email_utils.py` that handles real Gmail SMTP sending for all 4 agents.
@@ -94,7 +94,7 @@ async def _watchdog_loop(self):
 
 ## 5. How to Run on Any Machine
 1. Install Python 3.12+, Node.js, and Ollama.
-2. Run `ollama pull qwen3.5:4b` and keep Ollama running.
+2. Run `ollama pull qwen3:8b` and keep Ollama running.
 3. Clone repository and run `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt`.
 4. Run Backend: `cd backend && uvicorn main:app --reload --port 8000`.
 5. Run Frontend: `cd frontend && npm install && npm run dev`.

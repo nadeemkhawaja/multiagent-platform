@@ -41,7 +41,7 @@ async def fetch_github_trending(language: str = "", count: int = 5):
                 } for item in items
             ]
         except Exception as e:
-            print(f"[DevDaily] Error fetching GitHub trending: {e}")
+            print(f"[GitHub Trending] Error fetching GitHub trending: {e}")
             return []
 
 
@@ -65,12 +65,12 @@ async def fetch_devto_articles(topic: str = "", count: int = 5):
                 } for item in items[:count]
             ]
         except Exception as e:
-            print(f"[DevDaily] Error fetching Dev.to articles: {e}")
+            print(f"[GitHub Trending] Error fetching Dev.to articles: {e}")
             return []
 
 
 def send_devdaily_email(github_repos, devto_articles, llm_summary):
-    """Sends the DevDaily digest email."""
+    """Sends the GitHub Trending digest email."""
     if not DAILY_DIGEST_EMAIL:
         return
 
@@ -118,7 +118,7 @@ def send_devdaily_email(github_repos, devto_articles, llm_summary):
 
 async def devdaily_job(language: str = "", count: int = 5, topic: str = ""):
     """
-    Main DevDaily job. Supports user-configurable parameters:
+    Main GitHub Trending job. Supports user-configurable parameters:
     - language: filter GitHub repos by language (e.g., 'python')
     - count: number of results to fetch (default 5)
     - topic: filter Dev.to articles by topic/tag (e.g., 'ai')
@@ -148,7 +148,7 @@ async def devdaily_job(language: str = "", count: int = 5, topic: str = ""):
                 system_prompt="You are an expert developer advocate writing a daily learning digest."
             )
         except Exception as e:
-            print(f"[DevDaily] LLM summary failed: {e}")
+            print(f"[GitHub Trending] LLM summary failed: {e}")
 
         payload = {
             "github_repos": github_repos,

@@ -16,7 +16,7 @@ if curl -s --max-time 3 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
   echo "    Ollama: OK ($OLLAMA_URL)"
 else
   echo "    WARNING: Ollama not reachable at $OLLAMA_URL."
-  echo "             Start it (the Ollama app or 'ollama serve') and run: ollama pull qwen3.5:4b"
+  echo "             Start it (the Ollama app or 'ollama serve') and run: ollama pull qwen3:8b"
 fi
 
 # 2. Python virtual environment + backend deps
