@@ -19,6 +19,8 @@ DEFAULT_WATCHLIST = [
     "DELL", "BABA", "PLTR", "GBTC", "COIN",                        # hardware, China tech, crypto
 ]
 
+# Broad-market index futures — the headline risk gauges traders watch first.
+FUTURES = {"ES=F": ("/ES", "S&P 500 E-mini"), "NQ=F": ("/NQ", "Nasdaq-100 E-mini")}
 METALS = ["GC=F", "SI=F"]  # Gold, Silver
 CURRENCIES = ["EURUSD=X", "GBPUSD=X", "JPY=X"]
 
@@ -32,7 +34,7 @@ def get_watchlist():
 def _fetch_market_data_sync():
     """Synchronous yfinance fetch — called via asyncio.to_thread to avoid blocking the event loop."""
     WATCHLIST = get_watchlist()
-    all_symbols = WATCHLIST + METALS + CURRENCIES
+    all_symbols = WATCHLIST + list(FUTURES.keys()) + METALS + CURRENCIES
     tickers = yf.Tickers(" ".join(all_symbols))
 
     data = []
@@ -76,7 +78,17 @@ async def fetch_market_data():
     return await asyncio.to_thread(_fetch_market_data_sync)
 
 
-def build_market_html(top_gainers, top_losers, metals, currencies, commentary):
+def _fmt_future(s):
+    label, name = FUTURES.get(s["symbol"], (s["symbol"], ""))
+    cls = "up" if s["change_pct"] >= 0 else "down"
+    sign = "+" if s["change_pct"] >= 0 else ""
+    return (f'<div class="stock-row"><span><b>{label}</b> {name}</span>'
+            f'<span>{s["price"]:,}</span>'
+            f'<span class="{cls}">{sign}{s["change_pct"]}%</span></div>')
+
+
+def build_market_html(top_gainers, top_losers, metals, currencies, commentary, futures=None):
+    futures = futures or []
     html_content = f"""
     <html>
       <head>
@@ -100,6 +112,9 @@ def build_market_html(top_gainers, top_losers, metals, currencies, commentary):
 
           <div class="commentary">{commentary}</div>
 
+          <h2>📊 Index Futures</h2>
+          {''.join([_fmt_future(s) for s in futures]) or '<p style="color:#94a3b8;">No futures data.</p>'}
+
           <h2>🟢 Top 5 Gainers</h2>
           {''.join([f'<div class="stock-row"><span>{s["symbol"]}</span><span>${s["price"]}</span><span class="up">+{s["change_pct"]}%</span></div>' for s in top_gainers])}
 
@@ -118,10 +133,10 @@ def build_market_html(top_gainers, top_losers, metals, currencies, commentary):
     return html_content
 
 
-def send_market_email(top_gainers, top_losers, metals, currencies, commentary):
+def send_market_email(top_gainers, top_losers, metals, currencies, commentary, futures=None):
     if not DAILY_DIGEST_EMAIL:
         return
-    html = build_market_html(top_gainers, top_losers, metals, currencies, commentary)
+    html = build_market_html(top_gainers, top_losers, metals, currencies, commentary, futures)
     send_html_email(DAILY_DIGEST_EMAIL, "Wallstreet Wolf Daily Market Brief", html, sender_name="Wallstreet Wolf Agent")
 
 
@@ -133,7 +148,8 @@ def email_preview() -> str:
         return "<p>No market data yet — run Wallstreet Wolf first.</p>"
     p = json.loads(rec.value)
     return build_market_html(p.get("top_gainers", []), p.get("top_losers", []),
-                             p.get("metals", []), p.get("currencies", []), p.get("commentary", ""))
+                             p.get("metals", []), p.get("currencies", []), p.get("commentary", ""),
+                             p.get("futures", []))
 
 
 async def wallstreet_wolf_job():
@@ -149,17 +165,22 @@ async def wallstreet_wolf_job():
         top_gainers = stocks_only[:5]
         top_losers = stocks_only[-5:][::-1]  # worst performer first
 
+        futures = [d for d in market_data if d["symbol"] in FUTURES]
+        # keep /ES before /NQ
+        futures.sort(key=lambda d: list(FUTURES.keys()).index(d["symbol"]))
         metals = [d for d in market_data if d["symbol"] in [m for m in METALS]]
         currencies = [d for d in market_data if d["symbol"] in [c for c in CURRENCIES]]
 
         gainer_strs = [f"{s['symbol']} (+{s['change_pct']}%)" for s in top_gainers]
         loser_strs = [f"{s['symbol']} ({s['change_pct']}%)" for s in top_losers]
+        futures_strs = [f"{FUTURES[s['symbol']][0]} ({'+' if s['change_pct'] >= 0 else ''}{s['change_pct']}%)" for s in futures]
 
         # Generate LLM commentary — isolated so a failure doesn't abort the data save
         commentary = ""
         try:
             prompt = (
                 f"Write a concise 3-sentence daily market commentary. "
+                f"Index futures: {', '.join(futures_strs) or 'N/A'}. "
                 f"Top gainers today: {', '.join(gainer_strs)}. "
                 f"Top losers: {', '.join(loser_strs)}. "
                 f"Gold: ${metals[0]['price'] if metals else 'N/A'}, Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
@@ -173,6 +194,7 @@ async def wallstreet_wolf_job():
 
         payload = {
             "watchlist": stocks_only,
+            "futures": futures,
             "top_gainers": top_gainers,
             "top_losers": top_losers,
             "metals": metals,
@@ -192,7 +214,7 @@ async def wallstreet_wolf_job():
         db.close()
 
         # Send real email
-        send_market_email(top_gainers, top_losers, metals, currencies, commentary)
+        send_market_email(top_gainers, top_losers, metals, currencies, commentary, futures)
 
         orchestrator.update_agent_status("wallstreet_wolf", "idle")
     except Exception as e:

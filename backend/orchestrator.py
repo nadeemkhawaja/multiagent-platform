@@ -27,8 +27,9 @@ AGENT_META = {
     "mailman":         {"n": "Mailman",            "glyph": "✉", "desc": "Gmail triage",           "schedule": "Every 60 min",  "color": "#2f6feb"},
     "wallstreet_wolf": {"n": "Wallstreet Wolf",    "glyph": "$", "desc": "Market tracker",         "schedule": "Every 2h",      "color": "#16a34a"},
     "compass":         {"n": "Wallstreet Compass", "glyph": "◎", "desc": "Bias & key levels",      "schedule": "Every 60 min",  "color": "#f59e0b"},
-    "aegis":           {"n": "Aegis",              "glyph": "❖", "desc": "Reputation guardian",    "schedule": "Every 60 min",  "color": "#0d9488"},
-    "devdaily":        {"n": "Dev Hunt",           "glyph": "⌥", "desc": "GitHub & Dev.to digest", "schedule": "Daily · 09:00", "color": "#7c5cf6"},
+    "aegis":           {"n": "Aegis",              "glyph": "❖", "desc": "Islamophobia watch",      "schedule": "Every 60 min",  "color": "#0d9488"},
+    "devdaily":        {"n": "GitHub Trending",    "glyph": "⌥", "desc": "GitHub & Dev.to digest", "schedule": "Daily · 09:00", "color": "#7c5cf6"},
+    "strategy_scout":  {"n": "Strategy Scout",     "glyph": "✦", "desc": "Top trading strategies", "schedule": "Daily · 10:00", "color": "#0ea5e9"},
 }
 AGENT_ORDER = list(AGENT_META.keys())
 
@@ -57,9 +58,10 @@ class Orchestrator:
         self.MAX_RESTARTS = 3
 
         self._started_at = time.time()
-        self._hist = {k: deque(maxlen=24) for k in ("cpu", "ram", "disk", "gpu")}
+        self._hist = {k: deque(maxlen=24) for k in ("cpu", "ram", "disk", "gpu", "net")}
         self.events = deque(maxlen=20)
-        self._last = {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "gpu": 0.0, "threads": 0}
+        self._last = {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "gpu": 0.0, "net": 0.0, "threads": 0}
+        self._net_prev = None        # (bytes_total, monotonic_ts) for throughput delta
         self._gpu_vram_mb = 0
         self._spike = None
         self._demo_crashed = set()
@@ -115,12 +117,32 @@ class Orchestrator:
         except Exception:
             pass
 
+    # ── network throughput (Mb/s, in + out) ──────────────────────────────
+    def _read_net(self) -> float:
+        try:
+            io = psutil.net_io_counters()
+            total = io.bytes_sent + io.bytes_recv
+            now = time.monotonic()
+            if self._net_prev is None:
+                self._net_prev = (total, now)
+                return 0.0
+            prev_total, prev_ts = self._net_prev
+            dt = now - prev_ts
+            self._net_prev = (total, now)
+            if dt <= 0:
+                return self._last.get("net", 0.0)
+            mbps = (total - prev_total) * 8 / 1e6 / dt   # megabits per second
+            return round(max(0.0, mbps), 1)
+        except Exception:
+            return self._last.get("net", 0.0)
+
     # ── sampling ─────────────────────────────────────────────────────────
     def _take_sample(self) -> Dict[str, float]:
         cpu = psutil.cpu_percent(interval=None)
         ram = psutil.virtual_memory().percent
         disk = psutil.disk_usage("/").percent
         gpu = self._read_gpu()
+        net = self._read_net()
 
         if self._spike:
             if time.time() > self._spike["expires"]:
@@ -135,8 +157,8 @@ class Orchestrator:
 
         threads = psutil.Process().num_threads()
         self._last = {"cpu": round(cpu, 1), "ram": round(ram, 1), "disk": round(disk, 1),
-                      "gpu": round(gpu, 1), "threads": threads}
-        for k in ("cpu", "ram", "disk", "gpu"):
+                      "gpu": round(gpu, 1), "net": round(net, 1), "threads": threads}
+        for k in ("cpu", "ram", "disk", "gpu", "net"):
             self._hist[k].append(self._last[k])
         return self._last
 
@@ -183,7 +205,7 @@ class Orchestrator:
                 alarms.append({"resource": ALARM_LABELS[k], "value": s[k], "suggestion": ALARM_ACTIONS[k]})
         return {
             "cpu_percent": s["cpu"], "ram_percent": s["ram"], "disk_percent": s["disk"],
-            "gpu_percent": s["gpu"], "active_threads": s["threads"],
+            "gpu_percent": s["gpu"], "net_mbps": s.get("net", 0.0), "active_threads": s["threads"],
             "alarm": len(alarms) > 0, "alarms": alarms,
         }
 
@@ -325,7 +347,8 @@ class Orchestrator:
         return {
             "uptimeS": int(time.time() - self._started_at),
             "res": {"cpu": block("cpu", res["cpu_percent"]), "ram": block("ram", res["ram_percent"]),
-                    "disk": block("disk", res["disk_percent"]), "gpu": block("gpu", res["gpu_percent"])},
+                    "disk": block("disk", res["disk_percent"]), "gpu": block("gpu", res["gpu_percent"]),
+                    "net": block("net", res["net_mbps"])},
             "threads": res["active_threads"], "agents": agents, "llm": llm,
             "events": list(self.events), "alarm": alarm,
         }

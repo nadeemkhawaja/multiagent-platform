@@ -13,6 +13,7 @@ import Wolf from "./tabs/Wolf";
 import Compass from "./tabs/Compass";
 import Aegis from "./tabs/Aegis";
 import DevDaily from "./tabs/DevDaily";
+import StrategyScout from "./tabs/StrategyScout";
 import Settings from "./tabs/Settings";
 
 const NAV = [
@@ -22,10 +23,11 @@ const NAV = [
   { id: "wallstreet_wolf", label: "Wallstreet Wolf", glyph: "$" },
   { id: "compass", label: "Wallstreet Compass", glyph: "◎" },
   { id: "aegis", label: "Aegis", glyph: "❖" },
-  { id: "devdaily", label: "Dev Hunt", glyph: "⌥" },
+  { id: "devdaily", label: "GitHub Trending", glyph: "⌥" },
+  { id: "strategy_scout", label: "Strategy Scout", glyph: "✦" },
 ];
 const SETTINGS_ITEM = { id: "settings", label: "Settings", glyph: "⚙" };
-const TABS = { ai_times: AITimes, mailman: Mailman, wallstreet_wolf: Wolf, compass: Compass, aegis: Aegis, devdaily: DevDaily };
+const TABS = { ai_times: AITimes, mailman: Mailman, wallstreet_wolf: Wolf, compass: Compass, aegis: Aegis, devdaily: DevDaily, strategy_scout: StrategyScout };
 const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
 
 function NavItem({ item, active, onClick, badge }) {

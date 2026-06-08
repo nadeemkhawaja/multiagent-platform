@@ -1,8 +1,35 @@
 // Shared UI bits: email-preview modal trigger + agent error banner.
 import { useState } from "react";
 import { T } from "../theme/tokens";
-import { Btn, Card } from "../theme/ui";
+import { Btn, Card, Pill } from "../theme/ui";
 import { emailPreview, stopAgent } from "../state/api";
+
+// ── Lufi — the platform's AI analyst persona (powered by Qwen3 locally) ──────
+// Tries /lufi.png (drop a real photo there) and falls back to the bundled
+// /lufi.svg illustration. Used wherever Lufi narrates a "read"/commentary.
+export function LufiAvatar({ size = 32, ring = true }) {
+  const [src, setSrc] = useState("/lufi.png");
+  return (
+    <img
+      src={src} alt="Lufi" width={size} height={size}
+      onError={() => { if (!src.endsWith(".svg")) setSrc("/lufi.svg"); }}
+      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto",
+        border: ring ? `2px solid ${T.violet}55` : "none", background: T.violetBg, display: "block" }}
+    />
+  );
+}
+
+// Byline: avatar + "Lufi" + role, with an optional model tag.
+export function LufiByline({ role = "AI market analyst", model = "Qwen3", size = 28 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <LufiAvatar size={size} />
+      <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.2 }}>Lufi</span>
+      <span style={{ fontSize: 11.5, color: T.ink4 }}>{role}</span>
+      {model && <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>{model}</Pill>}
+    </div>
+  );
+}
 
 // Run / Stop / Restart controls shared by every agent tab.
 // `onRun` is the tab's own trigger handler (builds any per-agent config);

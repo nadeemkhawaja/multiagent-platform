@@ -1,31 +1,36 @@
 """
-Agent-5: Aegis — Reputation Guardian
-====================================
-Monitors public mentions of a configurable brand/keyword across sources you
-legitimately have access to (Reddit public search + Hacker News via Algolia).
-LLM step: per mention → {risk, sentiment, reason, suggested_reply}.
-Human-in-the-loop: replies are DRAFTS only — approved/dismissed from the UI,
-never auto-posted. Scheduled action: daily reputation digest at 18:00.
+Agent-5: Aegis — Islamophobia Watch & Forum-Moderation Assistant
+================================================================
+Monitors public forum discussions (Reddit public search + Hacker News via
+Algolia) for Islamophobic / anti-Muslim content. For each post the LLM
+assesses → {risk (hate-speech severity), sentiment toward Muslims, reason,
+suggested moderation reply}. The suggested reply is calm, factual
+counter-speech / de-escalation for a *human moderator* — it is a DRAFT only,
+approved or dismissed from the UI and NEVER auto-posted. Scheduled action:
+daily moderation digest at 18:00.
 Stored in SQLite under agent_name="aegis", key="aegis".
 """
 
 import os
 import re
 import json
+import html
 import asyncio
 from datetime import datetime
 
 import httpx
 
 from database import SessionLocal, AgentData, get_config
-from llm_client import generate_completion
+from llm_client import generate_json
 from orchestrator import orchestrator
 from email_utils import send_html_email
 
 AGENT_ID = "aegis"
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
-AEGIS_BRAND = os.getenv("AEGIS_BRAND", "Anthropic")
-UA = {"User-Agent": "Mozilla/5.0 (AegisReputationGuardian/1.0)"}
+# The topic/keyword Aegis watches for. Defaults to Islamophobia; override via
+# the AEGIS_BRAND env var or the "aegis_brand" config (kept for back-compat).
+AEGIS_BRAND = os.getenv("AEGIS_BRAND", "Islamophobia")
+UA = {"User-Agent": "Mozilla/5.0 (AegisModerationAssistant/1.0)"}
 MAX_SCORED = 6  # cap LLM calls per scan (semaphore-friendly)
 
 
@@ -41,6 +46,7 @@ async def fetch_reddit(brand):
                 for child in r.json().get("data", {}).get("children", []):
                     d = child.get("data", {})
                     text = d.get("title", "") + (" — " + d["selftext"] if d.get("selftext") else "")
+                    text = html.unescape(text)
                     if not text.strip():
                         continue
                     out.append({
@@ -65,7 +71,7 @@ async def fetch_hn(brand):
             )
             if r.status_code == 200:
                 for h in r.json().get("hits", []):
-                    text = re.sub(r"<[^>]+>", "", h.get("comment_text", "") or "")
+                    text = html.unescape(re.sub(r"<[^>]+>", "", h.get("comment_text", "") or ""))
                     if not text.strip():
                         continue
                     out.append({
@@ -80,25 +86,37 @@ async def fetch_hn(brand):
     return out
 
 
-async def score_mention(brand, mention):
-    """LLM → risk/sentiment/reason/suggested_reply. Reply is a draft for approval."""
-    prompt = f"""You guard the reputation of "{brand}". Given this public mention, return ONLY JSON:
-{{"risk":"high|med|low","sentiment":<-100..100 int>,"reason":"<one sentence>","suggested_reply":"<calm, factual draft for human approval; never inflammatory>"}}
+async def score_mention(topic, mention):
+    """LLM → risk/sentiment/reason/suggested_reply. The reply is a calm
+    moderation/counter-speech DRAFT for a human moderator (never auto-posted).
+    Uses the LLM's enforced JSON mode so the output always parses."""
+    prompt = f"""You assist forum moderators in spotting and de-escalating Islamophobic / anti-Muslim
+content (watching the topic "{topic}"). Assess the post below and return ONLY a JSON object with keys:
+- "risk": one of "high", "med", "low". high = clear anti-Muslim hate speech or harassment; med = biased/stereotyping but not overt hate; low = neutral, factual, or supportive.
+- "sentiment": integer -100 (hostile to Muslims) .. +100 (supportive).
+- "reason": one short sentence on whether this is Islamophobic and how severe.
+- "suggested_reply": one or two sentences — a calm, factual, non-inflammatory reply a human moderator could post to de-escalate/counter the bias, OR a brief moderation recommendation. Never write hateful or inflammatory text.
 
-Mention ({mention['src']} · {mention['sub']}): "{mention['text']}"
-/no_think"""
+Post ({mention['src']} · {mention['sub']}): "{mention['text']}\""""
     try:
-        raw = await generate_completion(prompt, agent_id=AGENT_ID)
-        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        data = json.loads(m.group(0)) if m else {}
+        data = await generate_json(
+            prompt,
+            system_prompt="You are a content-moderation assistant fighting Islamophobia. Return only valid JSON.",
+            agent_id=AGENT_ID, use_cache=False,
+        )
+        if not isinstance(data, dict):
+            data = {}
         risk = str(data.get("risk", "low")).lower()
         risk = risk if risk in ("high", "med", "low") else "low"
+        try:
+            sent = max(-100, min(100, int(data.get("sentiment", 0))))
+        except (TypeError, ValueError):
+            sent = 0
         return {
             "risk": risk,
-            "sent": int(data.get("sentiment", 0)),
-            "why": data.get("reason", ""),
-            "reply": data.get("suggested_reply", ""),
+            "sent": sent,
+            "why": str(data.get("reason", "")).strip(),
+            "reply": str(data.get("suggested_reply", "")).strip(),
             "status": "new",
         }
     except Exception as e:
@@ -178,16 +196,17 @@ def build_digest_html(payload, brand=None):
     rows = "".join(
         f"<li style='margin-bottom:8px'><b style='color:"
         f"{'#e5484d' if m['risk'] == 'high' else '#f59e0b' if m['risk'] == 'med' else '#8a909c'}'>"
-        f"[{m['risk'].upper()}]</b> {m['src']} · {m['sub']} — {m['text'][:140]}…</li>"
+        f"[{'HATE SPEECH' if m['risk'] == 'high' else 'BIASED' if m['risk'] == 'med' else 'LOW'}]</b> "
+        f"{m['src']} · {m['sub']} — {m['text'][:140]}…</li>"
         for m in payload.get("mentions", [])[:8]
     )
     return f"""
     <html><body style='font-family:Hanken Grotesk,Arial,sans-serif;background:#f6f7f9;color:#16181d;padding:24px'>
-      <h2>❖ Aegis — Reputation Digest for "{brand}"</h2>
-      <p style='color:#8a909c;font-size:12px'>{datetime.utcnow().strftime('%A, %B %d %Y — %H:%M UTC')}</p>
-      <p>{stats['mentions']} mentions · net sentiment {stats['net_sentiment']:+d} · {stats['high_risk']} high-risk</p>
+      <h2>❖ Aegis — Islamophobia Watch · Moderation Digest</h2>
+      <p style='color:#8a909c;font-size:12px'>Topic: "{brand}" · {datetime.utcnow().strftime('%A, %B %d %Y — %H:%M UTC')}</p>
+      <p>{stats['mentions']} posts scanned · net sentiment {stats['net_sentiment']:+d} · {stats['high_risk']} flagged for moderation</p>
       <ul style='list-style:none;padding:0'>{rows}</ul>
-      <p style='color:#8a909c;font-size:12px'>Suggested replies await your approval in the dashboard — nothing is auto-posted.</p>
+      <p style='color:#8a909c;font-size:12px'>Suggested moderation replies await a human moderator's approval in the dashboard — nothing is auto-posted.</p>
     </body></html>
     """
 
@@ -198,21 +217,22 @@ def send_digest(payload, brand):
     stats = payload["stats"]
     send_html_email(
         to_email=DAILY_DIGEST_EMAIL,
-        subject=f"❖ Aegis Digest — {stats['high_risk']} high-risk — {datetime.utcnow().strftime('%b %d')}",
+        subject=f"❖ Aegis — {stats['high_risk']} flagged for moderation — {datetime.utcnow().strftime('%b %d')}",
         html_body=build_digest_html(payload, brand),
-        sender_name="Aegis Agent",
+        sender_name="Aegis Moderation Assistant",
     )
 
 
 def email_preview() -> str:
     payload = _load()
     if not payload:
-        return "<p>No Aegis data yet — scan sources first.</p>"
+        return "<p>No Aegis data yet — scan forums first.</p>"
     return build_digest_html(payload)
 
 
 async def aegis_job(brand_override: str = None):
-    brand = (brand_override or get_config("aegis_brand", AEGIS_BRAND) or AEGIS_BRAND).strip() or AEGIS_BRAND
+    topic = (brand_override or get_config("aegis_brand", AEGIS_BRAND) or AEGIS_BRAND).strip() or AEGIS_BRAND
+    brand = topic
     orchestrator.update_agent_status(AGENT_ID, "running")
     try:
         # Independent fetches (both async httpx) — run concurrently.
@@ -240,9 +260,9 @@ async def aegis_job(brand_override: str = None):
 
         high = payload["stats"]["high_risk"]
         if high:
-            orchestrator.log_event(f"Aegis flagged {high} high-risk mention(s)", "#e5484d")
+            orchestrator.log_event(f"Aegis flagged {high} Islamophobic post(s) for moderation", "#e5484d")
         orchestrator.update_agent_status(AGENT_ID, "idle")
-        print(f"[Aegis] Done — {len(scored)} mentions on '{brand}', {high} high-risk")
+        print(f"[Aegis] Done — {len(scored)} posts on '{topic}', {high} flagged for moderation")
     except Exception as e:
         orchestrator.update_agent_status(AGENT_ID, "error", str(e))
         print(f"[Aegis] Error: {e}")

@@ -233,10 +233,18 @@ def save_to_db(payload):
         db.close()
 
 
+def _tone(composite):
+    """Plain-English market tone (no 'Risk-On/Risk-Off' jargon)."""
+    if composite > 15:
+        return "Bullish", "Risk appetite — buyers in control", "#16a34a"
+    if composite < -15:
+        return "Bearish", "Defensive — money rotating to safety", "#e5484d"
+    return "Neutral", "Range-bound — no clear edge", "#f59e0b"
+
+
 def build_compass_html(payload):
     composite = payload.get("composite", 0)
-    tone = "Risk-On" if composite > 15 else "Risk-Off" if composite < -15 else "Mixed"
-    color = "#16a34a" if composite > 15 else "#e5484d" if composite < -15 else "#f59e0b"
+    tone, tone_desc, color = _tone(composite)
     sec_rows = "".join(
         f"<tr><td style='padding:6px 12px'>{s['k']}</td>"
         f"<td style='padding:6px 12px;font-family:monospace;color:{'#16a34a' if s['bias'] >= 0 else '#e5484d'}'>"
@@ -249,7 +257,8 @@ def build_compass_html(payload):
       <p style='color:#8a909c;font-size:12px'>{datetime.utcnow().strftime('%A, %B %d %Y — %H:%M UTC')}</p>
       <div style='text-align:center;margin:18px 0;padding:18px;border:1px solid {color};border-radius:12px'>
         <div style='font-size:30px;font-weight:800;color:{color}'>{tone}</div>
-        <div style='font-family:monospace;color:#8a909c'>composite {composite:+d}</div>
+        <div style='color:#5b6472;font-size:13px;margin-top:2px'>{tone_desc}</div>
+        <div style='font-family:monospace;color:#8a909c;margin-top:4px'>composite {composite:+d}</div>
       </div>
       <p style='line-height:1.55'>{payload.get('read', '')}</p>
       <table style='width:100%;border-collapse:collapse;margin-top:12px'>
@@ -266,7 +275,7 @@ def send_compass_email(payload):
     if not DAILY_DIGEST_EMAIL:
         return
     composite = payload.get("composite", 0)
-    tone = "Risk-On" if composite > 15 else "Risk-Off" if composite < -15 else "Mixed"
+    tone, _desc, _color = _tone(composite)
     send_html_email(
         to_email=DAILY_DIGEST_EMAIL,
         subject=f"◎ Wallstreet Compass Brief — {tone} — {datetime.utcnow().strftime('%b %d')}",

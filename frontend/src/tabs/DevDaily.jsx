@@ -6,7 +6,7 @@ import { useState } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { ErrorBanner, AgentControls } from "../components/Common";
+import { ErrorBanner, AgentControls, LufiAvatar } from "../components/Common";
 
 const ACCENT = AGENT_COLOR.devdaily;
 
@@ -32,7 +32,7 @@ export default function DevDaily({ status, agentError }) {
 
   return (
     <div>
-      <TabHeader icon="⌥" color={ACCENT} title="Dev Hunt" sub="GitHub trending + Dev.to · LLM learning digest"
+      <TabHeader icon="⌥" color={ACCENT} title="GitHub Trending" sub="GitHub trending + Dev.to · LLM learning digest"
         actions={<>
           <Pill mono c={T.ink3}>digest 09:00 daily</Pill>
           <AgentControls agentId="devdaily" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Fetching…" />
@@ -57,9 +57,9 @@ export default function DevDaily({ status, agentError }) {
         {d.llm_summary && (
           <Card pad={20} style={{ background: T.cardAlt }}>
             <div style={{ display: "flex", gap: 14 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.violetBg, color: T.violet, display: "grid", placeItems: "center", fontSize: 17, flex: "0 0 auto" }}>◇</div>
+              <LufiAvatar size={38} />
               <div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Daily learning summary <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Daily learning summary <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink4 }}>by Lufi</span> <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
                 <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6 }}>{d.llm_summary}</div>
               </div>
             </div>

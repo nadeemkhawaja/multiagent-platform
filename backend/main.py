@@ -16,6 +16,7 @@ from ws import manager
 
 from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
 from agents import agent4_devdaily, agent5_compass as compass_mod, agent6_aegis
+from agents import agent7_strategy_scout
 
 ai_times_job = agent1_ai_times.ai_times_job
 mailman_job = agent2_mailman.mailman_job
@@ -23,12 +24,14 @@ wallstreet_wolf_job = agent3_wallstreet_wolf.wallstreet_wolf_job
 devdaily_job = agent4_devdaily.devdaily_job
 compass_job = compass_mod.compass_job
 aegis_job = agent6_aegis.aegis_job
+strategy_scout_job = agent7_strategy_scout.strategy_scout_job
 
 scheduler = AsyncIOScheduler()
 
 JOBS = {
     "ai_times": ai_times_job, "mailman": mailman_job, "wallstreet_wolf": wallstreet_wolf_job,
     "compass": compass_job, "aegis": aegis_job, "devdaily": devdaily_job,
+    "strategy_scout": strategy_scout_job,
 }
 DEFAULT_SCHEDULES = {
     "ai_times":        {"type": "cron", "hour": 8, "minute": 0},
@@ -37,6 +40,7 @@ DEFAULT_SCHEDULES = {
     "compass":         {"type": "interval", "minutes": 60},
     "aegis":           {"type": "interval", "minutes": 60},
     "devdaily":        {"type": "cron", "hour": 9, "minute": 0},
+    "strategy_scout":  {"type": "cron", "hour": 10, "minute": 0},
 }
 PREVIEW = {
     "ai_times": agent1_ai_times.email_preview,
@@ -44,6 +48,7 @@ PREVIEW = {
     "wallstreet_wolf": agent3_wallstreet_wolf.email_preview,
     "compass": compass_mod.email_preview,
     "aegis": agent6_aegis.email_preview,
+    "strategy_scout": agent7_strategy_scout.email_preview,
 }
 
 

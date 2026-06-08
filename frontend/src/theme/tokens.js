@@ -42,6 +42,7 @@ export const AGENT_COLOR = {
   compass: "#f59e0b",
   aegis: "#0d9488",
   devdaily: "#6366f1",
+  strategy_scout: "#0ea5e9",
 };
 
 export const STAT = {

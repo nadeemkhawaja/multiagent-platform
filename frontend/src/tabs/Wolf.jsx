@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, Spark, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
 
 const fmtFx = (sym = "") => {
   const s = sym.replace("=X", "");
@@ -27,6 +27,38 @@ function adaptMetals(list) {
     const gold = (s.symbol || "").includes("GC") || s.p === "Gold";
     return { p: gold ? "Gold" : "Silver", sym: gold ? "XAU/USD" : "XAG/USD", v: Number(s.price ?? s.v) || 0, ch: Number(s.change_pct ?? s.ch) || 0 };
   });
+}
+
+const FUT_LABEL = { "ES=F": ["/ES", "S&P 500 E-mini"], "NQ=F": ["/NQ", "Nasdaq-100 E-mini"] };
+function adaptFutures(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((s) => {
+    const [label, name] = FUT_LABEL[s.symbol] || [s.symbol, ""];
+    return { label, name, p: Number(s.price) || 0, ch: Number(s.change_pct) || 0, h: s.history || [] };
+  });
+}
+
+function FutureCard({ f }) {
+  const up = f.ch >= 0, col = up ? T.green : T.red;
+  return (
+    <Card pad={18} style={{ position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3, background: col }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 19, fontWeight: 800, fontFamily: T.mono, letterSpacing: -0.5 }}>{f.label}</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3, background: T.line2, padding: "2px 7px", borderRadius: 5, letterSpacing: 0.4 }}>FUTURES</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: T.ink4, marginTop: 1 }}>{f.name}</div>
+        </div>
+        {f.h && f.h.length > 1 && <Spark data={f.h} w={92} h={34} color={col} />}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 10 }}>
+        <span style={{ fontSize: 26, fontWeight: 800, fontFamily: T.mono, letterSpacing: -1 }}>{f.p.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+        <span style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, color: col }}>{up ? "▲" : "▼"} {up ? "+" : ""}{f.ch.toFixed(2)}%</span>
+      </div>
+    </Card>
+  );
 }
 
 function MoverRow({ s, rank }) {
@@ -85,6 +117,7 @@ export default function Wolf({ status, agentError }) {
   const advancers = watch.filter((w) => w.ch >= 0).length;
   const fx = adaptFx(md.currencies);
   const metals = adaptMetals(md.metals);
+  const futures = adaptFutures(md.futures);
   const commentary = md.commentary;
 
   const run = async () => {
@@ -113,15 +146,24 @@ export default function Wolf({ status, agentError }) {
         <>
         <Card pad={20} style={{ background: T.cardAlt, borderColor: T.line }}>
           <div style={{ display: "flex", gap: 14 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: T.violetBg, color: T.violet, display: "grid", placeItems: "center", fontSize: 17, flex: "0 0 auto" }}>◇</div>
+            <LufiAvatar size={38} />
             <div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Market commentary <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Market commentary <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink4 }}>by Lufi</span> <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
               <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, maxWidth: 920 }}>
                 {commentary || `Breadth is ${advancers >= watch.length / 2 ? "constructive" : "soft"} (${advancers}/${watch.length} advancing). Run a refresh to fetch fresh Yahoo Finance prices and a Qwen3 commentary for today's tape.`}
               </div>
             </div>
           </div>
         </Card>
+
+        {futures.length > 0 && (
+          <div>
+            <SectionTitle sub="Broad-market risk gauges — what traders watch first">Index futures</SectionTitle>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {futures.map((f) => <FutureCard key={f.label} f={f} />)}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <MoverBlock title="Top 5 Gainers" list={gainers} accent={T.green} badge="Block 1" />

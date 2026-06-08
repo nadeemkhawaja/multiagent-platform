@@ -5,7 +5,7 @@ import { useState } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent } from "../state/api";
-import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls } from "../components/Common";
+import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
 
 const biasColor = (b) => (b === "bull" ? T.green : b === "bear" ? T.red : "#94a3b8");
 const biasLabel = (b) => (b === "bull" ? "Bullish" : b === "bear" ? "Bearish" : "Neutral");
@@ -84,6 +84,12 @@ export default function Compass({ status, agentError }) {
   const empty = !sectors.length && !news.length && !futures.length && !levels.length;
   const overall = c.composite ?? (sectors.length ? Math.round(sectors.reduce((a, s) => a + s.bias, 0) / sectors.length) : 0);
   const read = c.read;
+  // Plain-English market tone (replaces jargon "Risk-On / Risk-Off / Mixed").
+  const toneWord = overall > 15 ? "Bullish" : overall < -15 ? "Bearish" : "Neutral";
+  const toneDesc = overall > 15 ? "Risk appetite — buyers in control"
+    : overall < -15 ? "Defensive — money rotating to safety"
+    : "Range-bound — no clear edge";
+  const toneCol = overall > 15 ? T.green : overall < -15 ? T.red : "#64748b";
 
   const sentChip = (s) => {
     const map = { bull: [T.green, T.greenBg, "Bullish"], bear: [T.red, T.redBg, "Bearish"], neutral: ["#64748b", "#f1f5f9", "Neutral"] };
@@ -118,13 +124,18 @@ export default function Compass({ status, agentError }) {
           <div>
             <div style={{ fontSize: 12.5, color: T.ink3, fontWeight: 600 }}>Today's composite bias</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-              <span style={{ fontSize: 38, fontWeight: 800, letterSpacing: -1.5, color: overall > 15 ? T.green : overall < -15 ? T.red : "#64748b" }}>{overall > 15 ? "Risk-On" : overall < -15 ? "Risk-Off" : "Mixed"}</span>
+              <span style={{ fontSize: 38, fontWeight: 800, letterSpacing: -1.5, color: toneCol }}>{toneWord}</span>
             </div>
+            <div style={{ fontSize: 12, color: T.ink3, marginTop: 2, fontWeight: 600 }}>{toneDesc}</div>
             <div style={{ marginTop: 10 }}><BiasMeter score={overall} h={12} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.mono, fontSize: 10.5, color: T.ink4, marginTop: 5 }}><span>BEARISH</span><span>{overall > 0 ? "+" : ""}{overall}</span><span>BULLISH</span></div>
           </div>
           <div style={{ borderLeft: `1px solid ${T.line2}`, paddingLeft: 28 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: T.violet, marginBottom: 4, display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>◇ Qwen3 read</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <LufiAvatar size={26} />
+              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.2 }}>Lufi's read</span>
+              <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill>
+            </div>
             <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55 }}>
               {read || "Run analysis to fetch live sector ETF moves, compute pivot-based key levels for /ES, /NQ and the 10 majors, and have Qwen3 write today's directional read."}
             </div>

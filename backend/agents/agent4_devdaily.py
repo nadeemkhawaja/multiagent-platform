@@ -90,7 +90,7 @@ def send_devdaily_email(github_repos, devto_articles, llm_summary):
       </head>
       <body>
         <div class="container">
-          <h1>💻 Dev Hunt Digest</h1>
+          <h1>💻 GitHub Trending Digest</h1>
           <p style="color:#94a3b8;">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
 
           <div class="summary">{llm_summary}</div>
@@ -113,7 +113,7 @@ def send_devdaily_email(github_repos, devto_articles, llm_summary):
     </html>
     """
 
-    send_html_email(DAILY_DIGEST_EMAIL, "Dev Hunt Developer Digest", html_content, sender_name="Dev Hunt Agent")
+    send_html_email(DAILY_DIGEST_EMAIL, "GitHub Trending Developer Digest", html_content, sender_name="GitHub Trending Agent")
 
 
 async def devdaily_job(language: str = "", count: int = 5, topic: str = ""):
