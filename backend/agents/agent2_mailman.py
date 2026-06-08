@@ -1,5 +1,6 @@
 import os
 import json
+import html
 import asyncio
 from datetime import datetime
 from google.oauth2.credentials import Credentials
@@ -117,8 +118,10 @@ async def classify_and_process_emails(emails, active_key_people):
     )
     prompt = (
         "Classify and summarize each email below. For EACH, choose exactly one category from: "
-        f"{', '.join(CATEGORIES)}. Write a one-sentence English summary. "
-        'Return ONLY a JSON array: [{"i":<index>,"category":"<one category>","summary":"<one English sentence>"}].\n\n'
+        f"{', '.join(CATEGORIES)}. "
+        "Summary rule: a crisp gist of at most 12 words — what it is and any action needed. "
+        "Plain and direct, no filler, do not start with 'This email' or 'The sender'. "
+        'Return ONLY a JSON array: [{"i":<index>,"category":"<one category>","summary":"<<=12 words>"}].\n\n'
         f"{listing}"
     )
     # Isolate the LLM call — a failure here shouldn't prevent the scan from being
@@ -153,32 +156,72 @@ async def classify_and_process_emails(emails, active_key_people):
     return processed
 
 
+# Category → accent colour for the light-theme email (readable on white).
+CAT_COLORS = {
+    "Urgent": "#dc2626", "Action Required": "#ea580c", "Follow-Up": "#7c3aed",
+    "Newsletter": "#2563eb", "Notification": "#64748b", "Personal": "#0d9488", "Other": "#94a3b8",
+}
+
+
+def _esc(s):
+    return html.escape(str(s or ""))
+
+
+def _cat_tag(cat):
+    c = CAT_COLORS.get(cat, "#64748b")
+    return (f'<span style="font-size:10px;font-weight:700;color:{c};background:#f1f5f9;'
+            f'border:1px solid #e2e8f0;padding:2px 8px;border-radius:5px;white-space:nowrap">{_esc(cat)}</span>')
+
+
 def build_summary_html(processed_emails, breakdown):
     key_alerts = [e for e in processed_emails if e['is_key'] or e['category'].lower() == 'urgent']
+
+    chips = "".join(
+        f'<span style="display:inline-block;font-size:12px;font-weight:600;color:'
+        f'{CAT_COLORS.get(c, "#64748b")};background:#f1f5f9;border:1px solid #e2e8f0;'
+        f'padding:5px 11px;border-radius:14px;margin:0 6px 6px 0">{_esc(c)} · {n}</span>'
+        for c, n in breakdown.items()
+    ) or '<span style="color:#94a3b8;font-size:13px">No emails this scan.</span>'
+
+    alerts_html = ""
+    if key_alerts:
+        rows = "".join(
+            f'''<div style="border:1px solid #fecaca;border-left:4px solid #dc2626;background:#fef2f2;
+                  border-radius:8px;padding:12px 14px;margin-bottom:8px">
+              <div style="font-weight:700;color:#0f172a;font-size:14px">⭐ {_esc(e['subject'])}</div>
+              <div style="color:#64748b;font-size:12px;margin-top:2px">{_esc(e['sender'])}</div>
+              {f'<div style="color:#334155;font-size:13px;margin-top:6px;line-height:1.45">{_esc(e["ai_summary"])}</div>' if e.get('ai_summary') else ''}
+            </div>''' for e in key_alerts
+        )
+        alerts_html = (f'<h2 style="color:#334155;font-size:15px;border-bottom:1px solid #e2e8f0;'
+                       f'padding-bottom:6px;margin:24px 0 12px">🚨 Key Alerts</h2>{rows}')
+
+    list_rows = "".join(
+        f'''<div style="padding:10px 0;border-bottom:1px solid #eef2f7">
+          <div style="font-size:13px;font-weight:600;color:#0f172a">{_cat_tag(e['category'])}
+            <span style="margin-left:7px">{_esc(e['subject'])}</span></div>
+          {f'<div style="color:#475569;font-size:12.5px;margin-top:3px">{_esc(e["ai_summary"])}</div>' if e.get('ai_summary') else ''}
+        </div>''' for e in processed_emails
+    ) or '<p style="color:#94a3b8;font-size:13px">Inbox is clear.</p>'
+
     return f"""
-    <html><head><style>
-      body {{ font-family:'Segoe UI',sans-serif; background:#0f172a; color:#f8fafc; padding:20px; }}
-      .container {{ max-width:600px; margin:0 auto; }}
-      h1 {{ color:#60a5fa; }} h2 {{ color:#94a3b8; border-bottom:1px solid #334155; padding-bottom:8px; }}
-      .badge {{ display:inline-block; background:#1e293b; padding:4px 12px; border-radius:16px; margin:4px; font-size:.9em; }}
-      .email-item {{ padding:12px; background:#1e293b; border-radius:8px; margin-bottom:8px; }}
-      .email-item .subject {{ color:#f8fafc; font-weight:bold; }}
-      .email-item .sender {{ color:#94a3b8; font-size:.85em; }}
-      .email-item .summary {{ color:#cbd5e1; font-size:.9em; margin-top:4px; font-style:italic; }}
-      .alert {{ border-left:3px solid #ef4444; }}
-    </style></head><body><div class="container">
-      <h1>✉️ Mailman Daily Summary</h1>
-      <p style="color:#94a3b8;">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
-      <h2>📊 Category Breakdown</h2>
-      <div>{''.join(f'<span class="badge">{c}: {n}</span>' for c, n in breakdown.items())}</div>
-      {'<h2>🚨 Key Alerts</h2>' + ''.join(f'''<div class="email-item alert">
-        <div class="subject">{e['subject']} ⭐</div><div class="sender">{e['sender']}</div>
-        <div class="summary">{e['ai_summary']}</div></div>''' for e in key_alerts) if key_alerts else ''}
-      <h2>📋 All Emails</h2>
-      {''.join(f'''<div class="email-item"><div class="subject">[{e['category']}] {e['subject']}</div>
-        <div class="sender">{e['sender']}</div><div class="summary">{e['ai_summary']}</div></div>'''
-        for e in processed_emails)}
-    </div></body></html>
+    <html>
+      <head>
+        <meta name="color-scheme" content="light">
+        <meta name="supported-color-schemes" content="light">
+      </head>
+      <body style="font-family:'Segoe UI',Arial,sans-serif;background:#eef2f7;color:#0f172a;padding:20px;margin:0">
+        <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:28px">
+          <h1 style="color:#2563eb;font-size:22px;margin:0 0 4px">✉️ Mailman Daily Summary</h1>
+          <p style="color:#64748b;font-size:12px;margin:0 0 20px">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
+          <h2 style="color:#334155;font-size:15px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin:0 0 12px">📊 Category Breakdown</h2>
+          <div>{chips}</div>
+          {alerts_html}
+          <h2 style="color:#334155;font-size:15px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin:24px 0 12px">📋 All Emails</h2>
+          {list_rows}
+        </div>
+      </body>
+    </html>
     """
 
 
