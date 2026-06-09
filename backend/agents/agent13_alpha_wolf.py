@@ -102,34 +102,49 @@ def _gather():
 # ── LLM synthesis → structured Daily + Weekly plan ───────────────────────────
 async def _synthesize(summaries: dict) -> dict:
     context = "\n".join(f"- {k}: {v}" for k, v in summaries.items())
-    prompt = f"""You are Alpha Wolf, the master trading strategist who coordinates a pack of specialist
-agents. Using ONLY the intel below, produce a concise, actionable trade game-plan for a swing/position
-retail trader. Be specific with tickers and triggers. Never guarantee outcomes; always frame risk.
+    prompt = f"""You are Alpha Wolf, the lead strategist commanding a pack of six specialist agents.
+Each agent below reports a different slice of the market:
+- MARKET     = today's movers + the Wolf's read (Wallstreet Wolf)
+- REGIME     = sector bias + overall market regime (Wallstreet Compass)
+- STRATEGIES = setups other traders are actively running (Strategy Scout)
+- CONGRESS   = recent congressional buys/sells (Capitol Tracker)
+- OPTIONS    = unusual options flow / positioning (Options Flow)
+- EARNINGS   = upcoming earnings catalysts (Earnings Calendar)
 
-INTEL (latest from the pack):
+INTEL:
 {context}
+
+Your job: CROSS-REFERENCE all six feeds and build ONE clear, actionable game-plan. Your
+highest-conviction calls are names where MULTIPLE feeds line up — e.g. a bullish regime + unusual
+call flow + congressional buying + a near-term catalyst on the same ticker. Tell the trader exactly
+what to do, what to watch, and what to avoid. Be specific with tickers, levels and triggers. Never
+guarantee outcomes; always frame the risk.
 
 Return ONLY valid JSON with this exact shape:
 {{
+  "headline": "one punchy sentence — the single most important move or stance right now",
+  "stance": "RISK-ON|RISK-OFF|NEUTRAL",
   "regime": "one sentence on the overall market regime and key driver",
+  "confluence": ["TICKER — which feeds agree and why it's high-conviction"],
   "daily": {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
     "summary": "2-3 sentences on today's plan",
-    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","thesis":"why","trigger":"entry condition/level","risk":"what invalidates it"}}]
+    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","thesis":"why — cite which agents support it","trigger":"entry condition/level","risk":"what invalidates it"}}]
   }},
   "weekly": {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
     "summary": "2-3 sentences on the week",
     "themes": ["theme 1","theme 2"],
-    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","thesis":"why","catalyst":"event/why this week","risk":"what invalidates it"}}]
+    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","thesis":"why — cite which agents support it","catalyst":"event/why this week","risk":"what invalidates it"}}]
   }},
+  "avoid": ["what to stay away from right now and why"],
   "catalysts": ["upcoming catalyst 1","catalyst 2"],
   "risk_notes": "position sizing and overall risk guidance"
 }}
-Give 2-4 ideas per plan. /no_think"""
+Give 2-4 ideas per plan, 1-3 confluence calls, 1-3 avoids. /no_think"""
     plan = await generate_json(
         prompt,
-        system_prompt="You are a disciplined trading strategist. Return only valid JSON.",
+        system_prompt="You are a disciplined trading strategist who fuses many signals into one plan. Return only valid JSON.",
         agent_id=AGENT_ID,
     )
     return plan if isinstance(plan, dict) else {}
@@ -146,9 +161,11 @@ async def alpha_wolf_job():
         plan = await _synthesize(summaries)
         if not plan:
             plan = {
+                "headline": "Not enough intel yet — run the pack, then re-run Alpha Wolf.",
+                "stance": "NEUTRAL",
                 "regime": "Not enough sub-agent data yet — run the pack (Wolf, Compass, Strategy Scout, "
                           "Capitol Tracker, Options Flow, Earnings) first, then re-run Alpha Wolf.",
-                "daily": {}, "weekly": {}, "catalysts": [], "risk_notes": "",
+                "confluence": [], "daily": {}, "weekly": {}, "avoid": [], "catalysts": [], "risk_notes": "",
             }
         plan["disclaimer"] = DISCLAIMER
         plan["inputs"] = summaries
@@ -203,8 +220,14 @@ def _build_email(plan: dict) -> str:
     weekly = plan.get("weekly", {}) or {}
     catalysts = plan.get("catalysts", []) or []
     themes = weekly.get("themes", []) or []
+    confluence = plan.get("confluence", []) or []
+    avoid = plan.get("avoid", []) or []
     cat_html = "".join(f"<li style='margin:3px 0'>{c}</li>" for c in catalysts[:6]) or "<li>None flagged</li>"
+    conf_html = "".join(f"<li style='margin:3px 0'>{c}</li>" for c in confluence[:4])
+    avoid_html = "".join(f"<li style='margin:3px 0'>{c}</li>" for c in avoid[:4]) or "<li>Nothing flagged</li>"
     theme_html = " · ".join(themes[:4]) or "—"
+    stance = str(plan.get("stance", "NEUTRAL")).upper()
+    stance_c = "#16a34a" if stance == "RISK-ON" else "#dc2626" if stance == "RISK-OFF" else "#6b7280"
     return f"""<!DOCTYPE html><html><body style='font-family:Helvetica,sans-serif;background:#f6f7f9;margin:0;padding:0'>
 <div style='max-width:660px;margin:24px auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb'>
   <div style='background:linear-gradient(135deg,#4c1d95,#7c3aed);padding:26px 32px'>
@@ -213,7 +236,12 @@ def _build_email(plan: dict) -> str:
   </div>
 
   <div style='padding:18px 32px;background:#f5f3ff;border-bottom:1px solid #e5e7eb'>
-    <div style='font-size:14px;line-height:1.55;color:#3730a3'><b>Regime:</b> {plan.get('regime','')}</div>
+    <div style='display:flex;align-items:center;gap:10px;margin-bottom:8px'>
+      <span style='font-size:10px;font-weight:800;color:#fff;background:{stance_c};padding:3px 10px;border-radius:6px'>{stance}</span>
+      <span style='font-size:15px;font-weight:800;color:#4c1d95'>{plan.get('headline','')}</span>
+    </div>
+    <div style='font-size:13px;line-height:1.55;color:#3730a3'><b>Regime:</b> {plan.get('regime','')}</div>
+    {f"<div style='margin-top:10px'><div style='font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'>Confluence (high conviction)</div><ul style='margin:0;padding-left:18px;font-size:12.5px;color:#3730a3'>{conf_html}</ul></div>" if conf_html else ""}
   </div>
 
   <div style='padding:20px 32px;border-bottom:1px solid #e5e7eb'>
@@ -232,6 +260,8 @@ def _build_email(plan: dict) -> str:
   <div style='padding:18px 32px;border-bottom:1px solid #e5e7eb'>
     <div style='font-size:12px;font-weight:700;color:#8a909c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px'>Catalysts to watch</div>
     <ul style='margin:0;padding-left:18px;font-size:12.5px;color:#444'>{cat_html}</ul>
+    <div style='font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px'>Avoid</div>
+    <ul style='margin:0;padding-left:18px;font-size:12.5px;color:#444'>{avoid_html}</ul>
     <div style='font-size:12.5px;color:#444;margin-top:10px'><b>Risk:</b> {plan.get('risk_notes','')}</div>
   </div>
 

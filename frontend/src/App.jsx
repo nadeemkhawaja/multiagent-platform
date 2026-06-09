@@ -31,9 +31,9 @@ const MAIN_AGENTS = [
   { id: "cisco_pulse",      label: "Cisco Pulse",       glyph: "◈"  },
   { id: "devdaily",         label: "GitHub Trending",   glyph: "⌥"  },
 ];
-// Alpha Wolf — master agent + its pack of trading sub-agents.
+// Alpha Wolf — master agent (the group header itself) + its pack of sub-agents.
+const ALPHA_MASTER = { id: "alpha_wolf", label: "Alpha Wolf", glyph: "🐺" };
 const ALPHA_GROUP = [
-  { id: "alpha_wolf",       label: "Alpha Wolf",        glyph: "🐺" },
   { id: "wallstreet_wolf",  label: "Wallstreet Wolf",   glyph: "$"  },
   { id: "compass",          label: "Wallstreet Compass", glyph: "◎"  },
   { id: "strategy_scout",   label: "Strategy Scout",    glyph: "✦"  },
@@ -188,17 +188,16 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
       {sectionLabel(demo ? "Agents · demo mode" : "Agents")}
       {mainList.map((it) => renderNav(it))}
 
-      {/* Alpha Wolf — master agent + trading pack (hidden in demo mode) */}
+      {/* Alpha Wolf — master agent (header navigates) + expandable pack (hidden in demo) */}
       {!demo && !collapsed && (
         <>
-          <button onClick={() => setAlphaOpen((o) => !o)} style={{
-            display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", cursor: "pointer",
-            padding: "8px 10px", marginTop: 12, borderRadius: 8, border: "1px solid transparent", background: "transparent", font: "inherit",
-          }}>
-            <span style={{ width: 22, height: 22, borderRadius: 6, background: "#7c3aed18", color: "#7c3aed", display: "grid", placeItems: "center", fontSize: 12, flex: "0 0 auto" }}>🐺</span>
-            <span style={{ flex: 1, fontSize: 10, fontWeight: 800, color: T.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Alpha Wolf</span>
-            <span style={{ fontSize: 10, color: T.ink4 }}>{alphaOpen ? "▾" : "▸"}</span>
-          </button>
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>{renderNav(ALPHA_MASTER)}</div>
+            <button onClick={() => setAlphaOpen((o) => !o)} title={alphaOpen ? "Collapse pack" : "Expand pack"} style={{
+              width: 24, height: 24, borderRadius: 6, border: `1px solid ${T.line}`, background: T.cardAlt,
+              color: T.ink3, cursor: "pointer", fontSize: 10, flex: "0 0 auto", display: "grid", placeItems: "center",
+            }}>{alphaOpen ? "▾" : "▸"}</button>
+          </div>
           {alphaOpen && (
             <div style={{ marginLeft: 14, paddingLeft: 6, borderLeft: `1px solid ${T.line}` }}>
               {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
@@ -209,6 +208,7 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
       {!demo && collapsed && (
         <>
           <div style={{ height: 1, background: T.line, margin: "10px 8px" }} />
+          {renderNav(ALPHA_MASTER)}
           {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
         </>
       )}
