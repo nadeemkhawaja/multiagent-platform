@@ -204,7 +204,7 @@ function ResCard({ m, r }) {
   const ringPct = Math.min(100, (v / m.cap) * 100);
   const Icon = m.icon;
   return (
-    <Card pad={16} style={{ position: "relative", overflow: "hidden" }}>
+    <Card pad={13} style={{ position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: col, opacity: hot ? 0.9 : 0.5 }} />
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
         <div style={{ width: 34, height: 34, borderRadius: 9, background: col + "16", color: col, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
@@ -217,12 +217,12 @@ function ResCard({ m, r }) {
         <Ring val={ringPct} size={34} stroke={4} color={col} track={T.line2} />
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 12 }}>
-        <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: hot ? T.red : T.ink }}>{fmtVal(v, m.unit)}</span>
+        <span style={{ fontSize: 25, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: hot ? T.red : T.ink }}>{fmtVal(v, m.unit)}</span>
         <span style={{ fontSize: 13, fontWeight: 600, color: T.ink4 }}>{m.unit}</span>
         <span style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 700, color: col, background: col + "16", padding: "3px 8px", borderRadius: 6 }}>{hot ? "CRITICAL" : "NOMINAL"}</span>
       </div>
       <div ref={ref} style={{ width: "100%", marginTop: 10 }}>
-        <ThresholdChart data={r.hist} threshold={m.warn} cap={m.cap} w={w} h={44} />
+        <ThresholdChart data={r.hist} threshold={m.warn} cap={m.cap} w={w} h={36} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
         <span style={{ fontSize: 9.5, fontFamily: T.mono, color: T.ink4 }}>last {r.hist.length} samples</span>
@@ -592,11 +592,6 @@ export default function Orchestrator({ sys, online, theme = "aria", onNavigate }
   const demo = !!s.demo;
   const shownAgents = demo ? ALL_AGENTS.filter((a) => CORE_AGENTS.includes(a.id)) : ALL_AGENTS;
 
-  const cpu  = s.res?.cpu?.v  || 0;
-  const ram  = s.res?.ram?.v  || 0;
-  const disk = s.res?.disk?.v || 0;
-  const gpu  = s.res?.gpu?.v  || 0;
-
   return (
     <div>
       <TabHeader icon="◇" color={T.violet} title="Orchestrator"
@@ -613,23 +608,10 @@ export default function Orchestrator({ sys, online, theme = "aria", onNavigate }
 
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {/* ── Quick resource strip ─────────────────────────────────────────── */}
-        <Card pad={18}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <SectionTitle sub="live system metrics · updates every 5s">Resources</SectionTitle>
-            <span style={{ fontSize: 11, color: T.ink4, fontFamily: T.mono }}>uptime {fmtUptime(s.uptimeS)} · {s.threads} threads</span>
-          </div>
-          <div style={{ display: "flex", gap: 28, justifyContent: "space-around", flexWrap: "wrap" }}>
-            <MiniGauge label="CPU"  val={cpu}  warn={85} />
-            <MiniGauge label="RAM"  val={ram}  warn={88} />
-            <MiniGauge label="Disk" val={disk} warn={90} />
-            <MiniGauge label="GPU"  val={gpu}  warn={85} />
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 26, fontWeight: 800, fontFamily: T.mono, color: T.ink, marginTop: 4 }}>{s.threads || 0}</div>
-              <div style={{ fontSize: 10, color: T.ink4, marginTop: 3, fontWeight: 600 }}>Threads</div>
-            </div>
-          </div>
-        </Card>
+        {/* ── Resource metric cards (live system metrics · updates every 5s) ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+          {METRICS.map((m) => <ResCard key={m.k} m={m} r={s.res[m.k] || { v: 0, hist: [] }} />)}
+        </div>
 
         {/* ── Agent overview grid (clickable) ──────────────────────────────── */}
         <div>
@@ -656,52 +638,8 @@ export default function Orchestrator({ sys, online, theme = "aria", onNavigate }
           <StressTestButton agents={s.agents} />
         </div>
 
-        {/* ── Data snippets ────────────────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Card pad={18}>
-            <SectionTitle sub="Latest movers" right={<button onClick={() => nav("wallstreet_wolf")} style={{ fontSize: 11, color: T.violet, background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open →</button>}>Wallstreet Wolf</SectionTitle>
-            <WolfSnippet onNavigate={nav} />
-          </Card>
-          <Card pad={18}>
-            <SectionTitle sub="Recent disclosures" right={<button onClick={() => nav("capitol_tracker")} style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", border: "1px solid #dc262633", borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open →</button>}>Capitol Tracker</SectionTitle>
-            <CapitolSnippet onNavigate={nav} />
-          </Card>
-          <Card pad={18}>
-            <SectionTitle sub="Today's digest" right={<button onClick={() => nav("morning_brief")} style={{ fontSize: 11, color: "#b45309", background: "#fffbeb", border: "1px solid #d9770633", borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open →</button>}>Morning Brief</SectionTitle>
-            <BriefSnippet />
-          </Card>
-          <Card pad={18}>
-            <SectionTitle sub="Unusual options activity" right={<button onClick={() => nav("options_flow")} style={{ fontSize: 11, color: T.violet, background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open →</button>}>Options Flow</SectionTitle>
-            <OptionsSnippet />
-          </Card>
-        </div>
-
-        {/* ── Cross-agent signals ──────────────────────────────────────────── */}
-        <SignalsPanel sys={s} />
-
-        {/* ── Detailed resource charts + agent table ───────────────────────── */}
-        {theme === "atlas" ? (
-          <>
-            <MetricStrip s={s} />
-            <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 16, alignItems: "start" }}>
-              <AgentTable s={s} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <Semaphore s={s} />
-                <EventLog s={s} />
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(168px, 1fr))", gap: 14 }}>
-              {METRICS.map((m) => <ResCard key={m.k} m={m} r={s.res[m.k] || { v: 0, hist: [] }} />)}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: 16, alignItems: "stretch" }}>
-              <Semaphore s={s} />
-              <EventLog s={s} />
-            </div>
-          </>
-        )}
+        {/* ── LLM semaphore — assignment requirement: 1 permit, no deadlocks ── */}
+        <Semaphore s={s} />
       </div>
     </div>
   );
