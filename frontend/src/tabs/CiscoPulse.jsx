@@ -85,6 +85,7 @@ export default function CiscoPulse({ status, agentError }) {
   const allItems = pulse?.all_items || [];
   const critical = pulse?.critical || [];
   const high     = pulse?.high     || [];
+  const events   = pulse?.events   || [];
   const commentary = pulse?.commentary || "";
 
   const filtered = section === "all" ? allItems : allItems.filter((i) => i.category === section);
@@ -98,6 +99,7 @@ export default function CiscoPulse({ status, agentError }) {
           {pulse && <>
             {critical.length > 0 && <Pill c={RED} bg={RED_BG}>{critical.length} critical</Pill>}
             {high.length > 0 && <Pill c={AMBER} bg={AMBER_BG}>{high.length} high</Pill>}
+            {events.length > 0 && <Pill c="#7c3aed" bg="#f5f3ff">{events.length} news</Pill>}
             <Pill c={TEAL} bg={TEAL_BG}>{pulse.total || 0} total</Pill>
           </>}
           <EmailPreviewButton agentId="cisco_pulse" label="Preview digest" />
@@ -143,9 +145,17 @@ export default function CiscoPulse({ status, agentError }) {
             </Card>
           )}
 
+          {/* Conferences & News */}
+          {events.length > 0 && (
+            <Card pad={20} style={{ borderColor: "#7c3aed33" }}>
+              <SectionTitle sub="Cisco Live, product launches & announcements">📰 Conferences & News</SectionTitle>
+              {events.slice(0, 8).map((item, i) => <AdvisoryCard key={i} item={item} />)}
+            </Card>
+          )}
+
           {/* Category filter */}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {[["all","All"],["security","🔒 Security"],["datacenter","🏢 Data Center"],["devnet","⚙ DevNet"],["networking","☁ Networking"]].map(([v, l]) => (
+            {[["all","All"],["news","📰 News"],["security","🔒 Security"],["datacenter","🏢 Data Center"],["devnet","⚙ DevNet"],["networking","☁ Networking"]].map(([v, l]) => (
               <button key={v} onClick={() => setSection(v)} style={{ padding: "5px 13px", borderRadius: 7, border: `1px solid ${section === v ? TEAL : T.line}`, background: section === v ? TEAL : "transparent", color: section === v ? "#fff" : T.ink2, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: T.sans }}>
                 {l} {v !== "all" && `(${allItems.filter((i) => i.category === v).length})`}
               </button>
@@ -165,7 +175,7 @@ export default function CiscoPulse({ status, agentError }) {
           <Card pad={16} style={{ background: T.cardAlt }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: T.ink3, marginBottom: 8 }}>Monitoring scope</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {["Cisco PSIRT RSS", "DevNet Blog", "Cisco Networking Blog", "Cisco Data Center Blog", "ACI 6.x relevance", "NDFC 12.x relevance", "Nexus 9K", "NX-OS CVEs"].map((t) => (
+              {["Cisco PSIRT RSS", "Security Blog", "DevNet Blog", "Networking Blog", "Data Center Blog", "Innovation Blog", "Newsroom & Events", "Cisco Live", "ACI/NDFC", "Nexus 9K", "AI DC infra"].map((t) => (
                 <span key={t} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: TEAL + "18", color: TEAL, fontWeight: 600 }}>{t}</span>
               ))}
             </div>

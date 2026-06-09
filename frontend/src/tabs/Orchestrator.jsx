@@ -2,11 +2,11 @@
 // Orchestrator.jsx — Mission Control: agent overview + system gauges + ops
 // Merged from Home + Orchestrator. Single entry point for the whole platform.
 // ============================================================================
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
-import { Card, Pill, Dot, StatusPill, Ring, SectionTitle, TabHeader, Btn } from "../theme/ui";
+import { Card, Pill, Dot, Ring, SectionTitle, TabHeader, Btn } from "../theme/ui";
 import { CpuIcon, RamIcon, DiskIcon, GpuIcon, NetIcon } from "../theme/icons";
-import { API_BASE, useAgentData, setDemoMode, spikeResource, crashAgent } from "../state/api";
+import { API_BASE, setDemoMode, spikeResource, crashAgent } from "../state/api";
 
 // ── All agents the Home overview knows about ─────────────────────────────────
 const ALL_AGENTS = [
@@ -21,6 +21,7 @@ const ALL_AGENTS = [
   { id: "options_flow",    label: "Options Flow",      glyph: "⚡", desc: "Unusual activity" },
   { id: "earnings_cal",    label: "Earnings Calendar", glyph: "📅", desc: "Upcoming earnings" },
   { id: "cisco_pulse",     label: "Cisco Pulse",       glyph: "◈", desc: "NetOps intel" },
+  { id: "alpha_wolf",      label: "Alpha Wolf",        glyph: "🐺", desc: "Master strategist" },
 ];
 // The four graded agents — demo mode narrows the overview grid to just these.
 const CORE_AGENTS = ["ai_times", "mailman", "wallstreet_wolf", "devdaily"];
@@ -44,92 +45,6 @@ function AgentOverviewCard({ agent, sysAgent, onNavigate }) {
       <div style={{ textAlign: "right", flexShrink: 0 }}>
         <div style={{ fontSize: 9.5, fontWeight: 700, color: sc, background: STATUS_BG[status] || T.cardAlt, padding: "2px 7px", borderRadius: 5, border: `1px solid ${sc}22` }}>{status}</div>
       </div>
-    </div>
-  );
-}
-
-// Data snippet components ─────────────────────────────────────────────────────
-function WolfSnippet({ onNavigate }) {
-  const { data } = useAgentData("wallstreet_wolf");
-  const md = data?.market_data || data?.wolf || {};
-  const gainers = (md.top_gainers || md.gainers || []).slice(0, 3);
-  const losers  = (md.top_losers  || md.losers  || []).slice(0, 3);
-  if (!gainers.length) return <div style={{ fontSize: 12, color: T.ink4, padding: "8px 0" }}>No data — run Wolf first</div>;
-  const ticker = (s) => s.symbol || s.ticker || "?";
-  const pct    = (s) => (s.change_pct ?? s.pct ?? 0);
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-      {[["Top gainers", gainers, T.green, true], ["Top losers", losers, T.red, false]].map(([label, list, col, pos]) => (
-        <div key={label}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: col, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>{label}</div>
-          {list.map((s) => (
-            <div key={ticker(s)} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12, borderBottom: `1px solid ${T.line2}` }}>
-              <span style={{ fontWeight: 700, fontFamily: T.mono }}>{ticker(s)}</span>
-              <span style={{ color: col, fontFamily: T.mono }}>{pos && pct(s) > 0 ? "+" : ""}{pct(s).toFixed(2)}%</span>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CapitolSnippet({ onNavigate }) {
-  const { data } = useAgentData("capitol_tracker");
-  const trades = (data?.tracker?.trades || []).slice(0, 5);
-  if (!trades.length) return <div style={{ fontSize: 12, color: T.ink4, padding: "8px 0" }}>No data — run Capitol Tracker</div>;
-  return (
-    <div>
-      {trades.map((t, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12, borderBottom: `1px solid ${T.line2}` }}>
-          <span style={{ fontWeight: 700, fontFamily: T.mono, minWidth: 44 }}>{t.ticker || "—"}</span>
-          <span style={{ flex: 1, color: T.ink3, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.politician}</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: /purchase|buy|exercise/i.test(t.type) ? T.green : T.red, background: /purchase|buy|exercise/i.test(t.type) ? "#f0fdf4" : "#fef2f2", padding: "2px 6px", borderRadius: 4 }}>{t.type?.slice(0, 8)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BriefSnippet() {
-  const { data } = useAgentData("morning_brief");
-  const brief = data?.brief;
-  if (!brief) return <div style={{ fontSize: 12, color: T.ink4, padding: "8px 0" }}>No brief — runs at 06:00 daily</div>;
-  return (
-    <div>
-      {brief.weather && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12 }}><span style={{ fontSize: 16 }}>🌤</span><span style={{ color: T.ink2 }}>{brief.weather}</span></div>}
-      {brief.narrative && <div style={{ fontSize: 12, color: T.ink2, lineHeight: 1.5 }}>{brief.narrative.slice(0, 200)}…</div>}
-    </div>
-  );
-}
-
-function OptionsSnippet() {
-  const { data } = useAgentData("options_flow");
-  const signals = (data?.flow?.signals || []).slice(0, 4);
-  if (!signals.length) return <div style={{ fontSize: 12, color: T.ink4, padding: "8px 0" }}>No data — run Options Flow</div>;
-  return (
-    <div>
-      {signals.map((s, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12, borderBottom: `1px solid ${T.line2}` }}>
-          <span style={{ fontWeight: 700, fontFamily: T.mono, minWidth: 44, color: AGENT_COLOR.options_flow }}>{s.ticker}</span>
-          <span style={{ fontSize: 10, background: "#f1edfe", color: T.violet, padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>{s.type || "call"}</span>
-          <span style={{ flex: 1, color: T.ink3, fontSize: 11 }}>IV ~{s.iv_pct?.toFixed(0)}%ile</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Mini gauge ring (compact) ───────────────────────────────────────────────────
-function MiniGauge({ label, val, warn = 85 }) {
-  const hot = val >= warn;
-  const col = hot ? T.red : T.green;
-  return (
-    <div style={{ textAlign: "center" }}>
-      <Ring val={Math.min(100, val)} size={44} stroke={5} color={col} track={T.line2}>
-        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: T.mono, color: hot ? T.red : T.ink }}>{Math.round(val)}</span>
-      </Ring>
-      <div style={{ fontSize: 10, color: T.ink4, marginTop: 3, fontWeight: 600 }}>{label}</div>
     </div>
   );
 }
@@ -246,26 +161,6 @@ function AlarmBanner({ alarm, onAck }) {
   );
 }
 
-function AgentCard({ a }) {
-  const col = accent(a.id);
-  const crashed = a.status === "crashed";
-  return (
-    <div style={{ border: `1px solid ${crashed ? T.red + "55" : T.line}`, borderRadius: 12, padding: 14, display: "flex", gap: 12, alignItems: "center", background: crashed ? T.redBg : T.card, transition: "all .2s" }}>
-      <div style={{ width: 38, height: 38, borderRadius: 10, background: col + "1a", color: col, display: "grid", placeItems: "center", fontSize: 16, fontWeight: 700, flex: "0 0 auto" }}>{a.glyph}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{a.n}</div>
-        <div style={{ fontSize: 11.5, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.desc}</div>
-      </div>
-      <div style={{ textAlign: "right", flex: "0 0 auto" }}>
-        <StatusPill status={a.status} />
-        <div style={{ fontSize: 10.5, color: T.ink4, fontFamily: T.mono, marginTop: 3 }}>
-          {crashed ? "restarting…" : a.schedule}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Semaphore({ s }) {
   const llm = s.llm || { queue: [], heldS: 0, tokens: 0, rate: 0, holder: null };
   const holder = s.agents.find((a) => a.id === llm.holder);
@@ -304,151 +199,6 @@ function Semaphore({ s }) {
         );
       })}
       <div style={{ marginTop: "auto", paddingTop: 14, fontSize: 11, color: T.ink4, fontFamily: T.mono }}>{(s.llm && s.llm.model) || "Qwen3"} · mutex healthy</div>
-    </Card>
-  );
-}
-
-function EventLog({ s }) {
-  const [expanded, setExpanded] = useState(false);
-  const events = s.events || [];
-  const shown = expanded ? events : events.slice(0, 12);
-  return (
-    <Card pad={20} style={{ height: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <SectionTitle sub="orchestrator activity" right={
-          events.length > 12 && (
-            <button onClick={() => setExpanded(!expanded)} style={{ fontSize: 11, color: T.violet, background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 6, padding: "2px 10px", cursor: "pointer", fontFamily: T.sans, fontWeight: 600 }}>
-              {expanded ? "▲ Collapse" : `▼ Show all ${events.length}`}
-            </button>
-          )
-        }>Event log</SectionTitle>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", maxHeight: expanded ? "none" : 360, overflow: "hidden" }}>
-        {shown.map((e, i) => (
-          <div key={i} style={{ display: "flex", gap: 11, padding: "7px 0", fontSize: 12.5, alignItems: "baseline", borderBottom: i < shown.length - 1 ? `1px solid ${T.line2}` : "none" }}>
-            <span style={{ fontFamily: T.mono, color: "#b6bcc6", fontSize: 10.5, flex: "0 0 auto", whiteSpace: "nowrap" }}>{e.t}</span>
-            <Dot c={e.c} s={6} />
-            <span style={{ color: T.ink2 }}>{e.m}</span>
-          </div>
-        ))}
-        {events.length === 0 && <div style={{ fontSize: 12, color: T.ink4 }}>No events yet.</div>}
-        {!expanded && events.length > 12 && (
-          <div style={{ padding: "8px 0", textAlign: "center", fontSize: 11.5, color: T.ink4, borderTop: `1px solid ${T.line2}`, marginTop: 4 }}>
-            {events.length - 12} older events hidden
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// Cross-agent Signals: Wolf watchlist tickers that appear in Capitol Tracker trades
-function SignalsPanel({ sys }) {
-  const { data: wolfData } = useAgentData("wallstreet_wolf");
-  const { data: capitolData } = useAgentData("capitol_tracker");
-
-  const signals = useMemo(() => {
-    const wolfStocks = wolfData?.wolf?.watchlist || [];
-    const capitolTrades = capitolData?.tracker?.trades || [];
-    if (!wolfStocks.length || !capitolTrades.length) return [];
-
-    const watchTickers = new Set(wolfStocks.map((w) => (w.ticker || w.symbol || "").toUpperCase()));
-    const matched = {};
-    capitolTrades.forEach((t) => {
-      const tk = (t.ticker || "").toUpperCase();
-      if (tk && watchTickers.has(tk)) {
-        if (!matched[tk]) matched[tk] = [];
-        matched[tk].push(t);
-      }
-    });
-    return Object.entries(matched).sort((a, b) => b[1].length - a[1].length);
-  }, [wolfData, capitolData]);
-
-  if (!signals.length) return null;
-  const RED = "#dc2626"; const GREEN = "#16a34a";
-
-  return (
-    <Card pad={20} style={{ borderColor: "#f59e0b55", background: "#fffbeb" }}>
-      <SectionTitle sub="Wolf watchlist tickers with recent congressional trades" right={
-        <Pill c="#d97706" bg="#fde68a80">⚡ {signals.length} overlap{signals.length !== 1 ? "s" : ""}</Pill>
-      }>Cross-Agent Signals</SectionTitle>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
-        {signals.map(([ticker, trades]) => {
-          const buys = trades.filter((t) => /purchase|buy|exercise|call/i.test(t.type)).length;
-          const sells = trades.filter((t) => /sale|sell/i.test(t.type)).length;
-          const net = buys - sells;
-          const col = net > 0 ? GREEN : net < 0 ? RED : "#6b7280";
-          return (
-            <div key={ticker} style={{ background: T.card, border: `1px solid ${col}44`, borderRadius: 10, padding: "10px 14px", minWidth: 120 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "monospace", color: col }}>{ticker}</div>
-              <div style={{ fontSize: 10.5, color: "#92400e", marginTop: 3 }}>
-                {trades.length} trade{trades.length !== 1 ? "s" : ""} · {[...new Set(trades.map((t) => t.politician.split(" ").pop()))].slice(0, 2).join(", ")}
-              </div>
-              <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
-                {buys > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: "#f0fdf4", padding: "2px 6px", borderRadius: 4 }}>▲ {buys} buy</span>}
-                {sells > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: RED, background: "#fef2f2", padding: "2px 6px", borderRadius: 4 }}>▼ {sells} sell</span>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ fontSize: 11, color: "#92400e", marginTop: 12 }}>
-        These tickers appear on your Wolf watchlist <em>and</em> in recent STOCK Act congressional disclosures. Educational use only — not investment advice.
-      </div>
-    </Card>
-  );
-}
-
-// ---------- Atlas layout ----------
-function MetricStrip({ s }) {
-  return (
-    <Card pad={0} style={{ display: "flex", alignItems: "stretch", overflow: "hidden", flexWrap: "wrap" }}>
-      {METRICS.map((m, i) => {
-        const r = s.res[m.k] || { v: 0, hist: [] };
-        const hot = r.v >= m.warn; const col = hot ? T.red : T.green;
-        const Icon = m.icon;
-        return (
-          <div key={m.k} style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", flex: "1 1 170px", borderRight: i < METRICS.length - 1 ? `1px solid ${T.line2}` : "none" }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: col + "16", color: col, display: "grid", placeItems: "center", flex: "0 0 auto" }}><Icon size={16} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>{m.label}</div>
-              <div style={{ fontSize: 21, fontWeight: 800, fontFamily: T.mono, letterSpacing: -0.5, color: hot ? T.red : T.ink }}>{fmtVal(r.v, m.unit)}<span style={{ fontSize: 11, color: T.ink4 }}>{m.unit === "%" ? "%" : " " + m.unit}</span></div>
-            </div>
-            <div style={{ marginLeft: "auto" }}><ThresholdChart data={r.hist} threshold={m.warn} cap={m.cap} w={72} h={34} /></div>
-          </div>
-        );
-      })}
-    </Card>
-  );
-}
-
-function AgentTable({ s }) {
-  const cols = "1.8fr 0.9fr 0.6fr 0.7fr 0.7fr 1fr";
-  return (
-    <Card pad={0} style={{ overflow: "hidden" }}>
-      <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.line2}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>Managed agents</div>
-        <Pill mono c={T.ink3}>auto-restart on</Pill>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, padding: "10px 20px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
-        <span>Agent</span><span>Status</span><span style={{ textAlign: "right" }}>CPU</span><span style={{ textAlign: "right" }}>Mem</span><span style={{ textAlign: "right" }}>Restarts</span><span style={{ textAlign: "right" }}>Schedule</span>
-      </div>
-      {s.agents.map((a) => {
-        const col = accent(a.id); const crashed = a.status === "crashed";
-        return (
-          <div key={a.id} style={{ display: "grid", gridTemplateColumns: cols, padding: "14px 20px", alignItems: "center", borderBottom: `1px solid ${T.line2}`, fontSize: 13, background: crashed ? T.redBg : "transparent" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: col + "1a", color: col, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>{a.glyph}</div>
-              <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.n}</div><div style={{ fontSize: 11, color: T.ink4 }}>{a.desc}</div></div>
-            </div>
-            <StatusPill status={a.status} />
-            <span style={{ fontFamily: T.mono, color: T.ink2, textAlign: "right" }}>{a.cpu}%</span>
-            <span style={{ fontFamily: T.mono, color: T.ink2, textAlign: "right" }}>{a.mem}m</span>
-            <span style={{ fontFamily: T.mono, color: T.ink3, textAlign: "right" }}>{a.restarts}</span>
-            <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.ink3, textAlign: "right" }}>{crashed ? "restarting…" : a.schedule}</span>
-          </div>
-        );
-      })}
     </Card>
   );
 }

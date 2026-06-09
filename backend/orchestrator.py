@@ -34,6 +34,7 @@ AGENT_META = {
     "options_flow":    {"n": "Options Flow",       "glyph": "⚡","desc": "Unusual options activity",  "schedule": "Every 2h",      "color": "#7c5cf6"},
     "earnings_cal":    {"n": "Earnings Calendar",  "glyph": "📅","desc": "Upcoming earnings & IV",    "schedule": "Every 6h",      "color": "#16a34a"},
     "cisco_pulse":     {"n": "Cisco Pulse",        "glyph": "◈", "desc": "ACI/NDFC/PSIRT intel",     "schedule": "Daily · 07:30", "color": "#0d9488"},
+    "alpha_wolf":      {"n": "Alpha Wolf",         "glyph": "🐺","desc": "Master trade strategist",  "schedule": "Daily · 08:30", "color": "#7c3aed"},
 }
 AGENT_ORDER = list(AGENT_META.keys())
 

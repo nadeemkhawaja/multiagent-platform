@@ -20,20 +20,26 @@ import MorningBrief   from "./tabs/MorningBrief";
 import OptionsFlow    from "./tabs/OptionsFlow";
 import EarningsCalendar from "./tabs/EarningsCalendar";
 import CiscoPulse     from "./tabs/CiscoPulse";
+import AlphaWolf      from "./tabs/AlphaWolf";
 import Settings       from "./tabs/Settings";
 
-const NAV_AGENTS = [
+// Main panel — always-pinned agents (the graded four + Cisco Pulse).
+const MAIN_AGENTS = [
   { id: "ai_times",         label: "AI-Times",          glyph: "▶"  },
   { id: "mailman",          label: "Mailman",            glyph: "✉"  },
   { id: "wallstreet_wolf",  label: "Wallstreet Wolf",   glyph: "$"  },
-  { id: "compass",          label: "Wallstreet Compass", glyph: "◎"  },
+  { id: "cisco_pulse",      label: "Cisco Pulse",       glyph: "◈"  },
   { id: "devdaily",         label: "GitHub Trending",   glyph: "⌥"  },
+];
+// Alpha Wolf — master agent + its pack of trading sub-agents.
+const ALPHA_GROUP = [
+  { id: "alpha_wolf",       label: "Alpha Wolf",        glyph: "🐺" },
+  { id: "wallstreet_wolf",  label: "Wallstreet Wolf",   glyph: "$"  },
+  { id: "compass",          label: "Wallstreet Compass", glyph: "◎"  },
   { id: "strategy_scout",   label: "Strategy Scout",    glyph: "✦"  },
   { id: "capitol_tracker",  label: "Capitol Tracker",   glyph: "🏛" },
-  { id: "morning_brief",    label: "Morning Brief",     glyph: "☀"  },
   { id: "options_flow",     label: "Options Flow",      glyph: "⚡" },
   { id: "earnings_cal",     label: "Earnings Calendar", glyph: "📅" },
-  { id: "cisco_pulse",      label: "Cisco Pulse",       glyph: "◈"  },
 ];
 const SETTINGS_ITEM   = { id: "settings",     label: "Settings",     glyph: "⚙" };
 const ORCHESTRATOR_IT = { id: "orchestrator", label: "Orchestrator", glyph: "◇" };
@@ -54,10 +60,11 @@ const TABS = {
   options_flow:     OptionsFlow,
   earnings_cal:     EarningsCalendar,
   cisco_pulse:      CiscoPulse,
+  alpha_wolf:       AlphaWolf,
 };
 
 // All tabs for keyboard shortcut ordering (no home)
-const ORDERED_TABS = ["orchestrator","ai_times","mailman","wallstreet_wolf","compass","devdaily","strategy_scout","capitol_tracker","morning_brief","options_flow","earnings_cal","cisco_pulse"];
+const ORDERED_TABS = ["orchestrator","ai_times","mailman","wallstreet_wolf","cisco_pulse","devdaily","alpha_wolf","compass","strategy_scout","capitol_tracker","options_flow","earnings_cal","morning_brief"];
 
 const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
 
@@ -128,12 +135,22 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
   const statusOf = (id) => agents.find((a) => a.id === id)?.status;
   const anyAlarm = !!sys?.alarm;
   const demo = !!sys?.demo;
-  const navAgents = demo ? NAV_AGENTS.filter((a) => CORE_AGENTS.includes(a.id)) : NAV_AGENTS;
+  const mainList = demo ? MAIN_AGENTS.filter((a) => CORE_AGENTS.includes(a.id)) : MAIN_AGENTS;
+  const [alphaOpen, setAlphaOpen] = useState(true);
   const W = collapsed ? 58 : 232;
 
   const sectionLabel = (text) => collapsed ? null : (
     <div style={{ fontSize: 10, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", marginTop: 12 }}>{text}</div>
   );
+
+  const renderNav = (it, keyPrefix = "") => {
+    const st = statusOf(it.id);
+    const isCapitol = it.id === "capitol_tracker";
+    const badge = isCapitol && capitolCount > 0 && !collapsed
+      ? <span style={{ fontSize: 9.5, fontWeight: 700, background: "#dc262620", color: "#dc2626", padding: "1px 6px", borderRadius: 4, fontFamily: T.mono }}>{capitolCount}</span>
+      : (!collapsed && st) ? <Dot c={dotColor[st] || "#aeb4bf"} s={6} /> : null;
+    return <NavItem key={keyPrefix + it.id} item={it} active={tab === it.id} onClick={() => setTab(it.id)} badge={badge} collapsed={collapsed} />;
+  };
 
   return (
     <div style={{ width: W, flex: `0 0 ${W}px`, background: T.sidebar, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", padding: collapsed ? "14px 8px" : "14px 10px", height: "100vh", position: "sticky", top: 0, overflowY: "auto", overflowX: "hidden", transition: "width .22s ease, flex .22s ease" }}>
@@ -167,16 +184,34 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
         </button>
       )}
 
-      {/* Agents */}
+      {/* Main agents */}
       {sectionLabel(demo ? "Agents · demo mode" : "Agents")}
-      {navAgents.map((it) => {
-        const st = statusOf(it.id);
-        const isCapitol = it.id === "capitol_tracker";
-        const badge = isCapitol && capitolCount > 0 && !collapsed
-          ? <span style={{ fontSize: 9.5, fontWeight: 700, background: "#dc262620", color: "#dc2626", padding: "1px 6px", borderRadius: 4, fontFamily: T.mono }}>{capitolCount}</span>
-          : (!collapsed && st) ? <Dot c={dotColor[st] || "#aeb4bf"} s={6} /> : null;
-        return <NavItem key={it.id} item={it} active={tab === it.id} onClick={() => setTab(it.id)} badge={badge} collapsed={collapsed} />;
-      })}
+      {mainList.map((it) => renderNav(it))}
+
+      {/* Alpha Wolf — master agent + trading pack (hidden in demo mode) */}
+      {!demo && !collapsed && (
+        <>
+          <button onClick={() => setAlphaOpen((o) => !o)} style={{
+            display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", cursor: "pointer",
+            padding: "8px 10px", marginTop: 12, borderRadius: 8, border: "1px solid transparent", background: "transparent", font: "inherit",
+          }}>
+            <span style={{ width: 22, height: 22, borderRadius: 6, background: "#7c3aed18", color: "#7c3aed", display: "grid", placeItems: "center", fontSize: 12, flex: "0 0 auto" }}>🐺</span>
+            <span style={{ flex: 1, fontSize: 10, fontWeight: 800, color: T.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Alpha Wolf</span>
+            <span style={{ fontSize: 10, color: T.ink4 }}>{alphaOpen ? "▾" : "▸"}</span>
+          </button>
+          {alphaOpen && (
+            <div style={{ marginLeft: 14, paddingLeft: 6, borderLeft: `1px solid ${T.line}` }}>
+              {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
+            </div>
+          )}
+        </>
+      )}
+      {!demo && collapsed && (
+        <>
+          <div style={{ height: 1, background: T.line, margin: "10px 8px" }} />
+          {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
+        </>
+      )}
 
       {/* Bottom — Settings pinned */}
       <div style={{ marginTop: "auto", paddingTop: 10, borderTop: `1px solid ${T.line}` }}>

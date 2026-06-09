@@ -22,6 +22,7 @@ from agents import agent9_morning_brief
 from agents import agent10_options_flow
 from agents import agent11_earnings_calendar
 from agents import agent12_cisco_pulse
+from agents import agent13_alpha_wolf
 
 ai_times_job        = agent1_ai_times.ai_times_job
 mailman_job         = agent2_mailman.mailman_job
@@ -34,6 +35,7 @@ morning_brief_job   = agent9_morning_brief.morning_brief_job
 options_flow_job    = agent10_options_flow.options_flow_job
 earnings_cal_job    = agent11_earnings_calendar.earnings_calendar_job
 cisco_pulse_job     = agent12_cisco_pulse.cisco_pulse_job
+alpha_wolf_job      = agent13_alpha_wolf.alpha_wolf_job
 
 scheduler = AsyncIOScheduler()
 
@@ -49,6 +51,7 @@ JOBS = {
     "options_flow":    options_flow_job,
     "earnings_cal":    earnings_cal_job,
     "cisco_pulse":     cisco_pulse_job,
+    "alpha_wolf":      alpha_wolf_job,
 }
 DEFAULT_SCHEDULES = {
     "ai_times":        {"type": "cron",     "hour": 8,  "minute": 0},
@@ -62,6 +65,7 @@ DEFAULT_SCHEDULES = {
     "options_flow":    {"type": "interval", "minutes": 120},
     "earnings_cal":    {"type": "interval", "minutes": 360},
     "cisco_pulse":     {"type": "cron",     "hour": 7,  "minute": 30},
+    "alpha_wolf":      {"type": "cron",     "hour": 8,  "minute": 30},
 }
 PREVIEW = {
     "ai_times":        agent1_ai_times.email_preview,
@@ -74,6 +78,7 @@ PREVIEW = {
     "options_flow":    agent10_options_flow.email_preview,
     "earnings_cal":    agent11_earnings_calendar.email_preview,
     "cisco_pulse":     agent12_cisco_pulse.email_preview,
+    "alpha_wolf":      agent13_alpha_wolf.email_preview,
 }
 
 

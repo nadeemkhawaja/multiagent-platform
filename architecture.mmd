@@ -18,9 +18,12 @@ graph TD
         A4["Agent-4<br/>GitHub Trending"]
     end
 
-    subgraph Extra["Bonus Agents — creativity · hidden in demo mode"]
-        Extras["Wallstreet Compass · Strategy Scout · Capitol Tracker<br/>Morning Brief · Options Flow · Earnings Calendar · Cisco Pulse"]
+    subgraph AlphaCluster["Alpha Wolf — master agent (creativity)"]
+        Alpha["🐺 Alpha Wolf<br/>fuses the pack → Daily + Weekly trade plan"]
+        Pack["The pack (sub-agents):<br/>Wallstreet Compass · Strategy Scout<br/>Capitol Tracker · Options Flow · Earnings Calendar"]
     end
+
+    Cisco["Cisco Pulse<br/>PSIRT · ACI/NDFC · Conferences & News"]
 
     subgraph Local["Local AI — no hosted LLM APIs"]
         Ollama["Ollama · Qwen3<br/>qwen3:8b"]
@@ -32,6 +35,7 @@ graph TD
         Yahoo["Yahoo Finance"]
         GitHub["GitHub API"]
         DevTo["Dev.to API"]
+        CiscoRSS["Cisco RSS<br/>PSIRT · blogs · newsroom"]
         SMTP["Gmail SMTP<br/>daily HTML email"]
     end
 
@@ -39,30 +43,41 @@ graph TD
     Orchestrator --> Scheduler
     Orchestrator <--> DB
     Scheduler -.->|triggers| A1 & A2 & A3 & A4
-    Scheduler -.->|triggers| Extras
+    Scheduler -.->|triggers| Pack & Alpha & Cisco
 
     A1 & A2 & A3 & A4 -->|store| DB
-    Extras -->|store| DB
+    Pack -->|store| DB
 
-    A1 <-->|fetch| YouTube
-    A2 <-->|OAuth scan| Gmail
-    A3 <-->|quotes| Yahoo
-    A4 <-->|trending| GitHub
-    A4 <-->|articles| DevTo
+    A1 <--> YouTube
+    A2 <--> Gmail
+    A3 <--> Yahoo
+    A4 <--> GitHub
+    A4 <--> DevTo
+    Cisco <--> CiscoRSS
+
+    %% Alpha Wolf reads the pack's + Wolf's cached signals from SQLite
+    A3 -->|signals| Alpha
+    Pack -->|signals| Alpha
+
     A1 & A2 & A3 & A4 -->|digest| SMTP
+    Alpha -->|plan| SMTP
+    Cisco -->|digest| SMTP
 
     A1 & A2 & A3 & A4 --> LLMClient
-    Extras --> LLMClient
+    Alpha --> LLMClient
+    Cisco --> LLMClient
     LLMClient -->|acquire permit| Semaphore
     Semaphore <-->|local inference| Ollama
 
     classDef core fill:#ede9fe,stroke:#7c5cf6,color:#2e1065;
     classDef graded fill:#ecfdf5,stroke:#16a34a,color:#064e3b;
-    classDef bonus fill:#f1f5f9,stroke:#94a3b8,color:#334155;
+    classDef master fill:#f5f3ff,stroke:#7c3aed,color:#4c1d95;
+    classDef bonus fill:#f0fdfa,stroke:#0d9488,color:#134e4a;
     classDef local fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
     classDef ext fill:#eff6ff,stroke:#2563eb,color:#1e3a8a;
     class Orchestrator,Scheduler,Semaphore,LLMClient,DB core;
     class A1,A2,A3,A4 graded;
-    class Extras bonus;
+    class Alpha,Pack master;
+    class Cisco bonus;
     class Ollama local;
-    class YouTube,Gmail,Yahoo,GitHub,DevTo,SMTP ext;
+    class YouTube,Gmail,Yahoo,GitHub,DevTo,CiscoRSS,SMTP ext;

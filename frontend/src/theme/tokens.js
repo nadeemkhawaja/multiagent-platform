@@ -47,6 +47,7 @@ export const AGENT_COLOR = {
   options_flow:    "#7c5cf6",
   earnings_cal:    "#16a34a",
   cisco_pulse:     "#0d9488",
+  alpha_wolf:      "#7c3aed",
 };
 
 export const STAT = {

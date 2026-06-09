@@ -41,6 +41,27 @@ FEEDS = [
         "category": "datacenter",
         "icon": "🏢",
     },
+    {
+        "id": "security",
+        "name": "Cisco Security Blog",
+        "url": "https://blogs.cisco.com/security/feed",
+        "category": "security",
+        "icon": "🔒",
+    },
+    {
+        "id": "innovation",
+        "name": "Cisco Innovation Blog",
+        "url": "https://blogs.cisco.com/innovation/feed",
+        "category": "news",
+        "icon": "🚀",
+    },
+    {
+        "id": "newsroom",
+        "name": "Cisco Newsroom & Events",
+        "url": "https://newsroom.cisco.com/c/r/newsroom/en/us/rss.xml",
+        "category": "news",
+        "icon": "📰",
+    },
 ]
 
 # Keywords most relevant to a Cisco ACI/NDFC/Nexus SA
@@ -49,6 +70,16 @@ PRIORITY_KEYWORDS = [
     "NX-OS", "Data Center", "fabric", "spine", "leaf", "overlay", "underlay",
     "CVE", "critical", "high severity", "remote code", "authentication bypass",
     "Intersight", "UCS", "HyperFlex", "9300", "9500",
+    "AI", "Hypershield", "HyperFabric", "Silicon One", "AI POD", "GPU", "AI infrastructure",
+    "Nexus Dashboard", "Cisco Live", "keynote", "announcement", "launch",
+]
+
+# Conference / event / product-announcement signals — surfaced as a separate
+# "Conferences & News" stream on top of the security/advisory feed.
+EVENT_KEYWORDS = [
+    "cisco live", "ciscolive", "keynote", "conference", "announce", "announced",
+    "announcement", "unveil", "unveiled", "launch", "launches", "general availability",
+    "now available", "introduc", "partner summit", "rsac", "mwc", "webinar", "event",
 ]
 
 SEVERITY_KEYWORDS = {
@@ -107,24 +138,29 @@ async def _fetch_feed(feed: dict, client: httpx.AsyncClient) -> list[dict]:
         scored = []
         for item in items[:30]:
             score, severity = _score_item(item)
-            scored.append({**item, "score": score, "severity": severity})
+            combined = (item["title"] + " " + item["desc"]).lower()
+            is_event = item.get("category") == "news" or any(k in combined for k in EVENT_KEYWORDS)
+            if is_event:
+                score += 20
+            scored.append({**item, "score": score, "severity": severity, "event": is_event})
         return scored
     except Exception as e:
         log.warning(f"Feed fetch failed ({feed['id']}): {e}")
         return []
 
-async def build_llm_commentary(items: list) -> str:
-    if not items:
+async def build_llm_commentary(items: list, events: list = None) -> str:
+    if not items and not events:
         return "No Cisco advisories or blog posts retrieved this week."
-    top = items[:6]
-    lines = [f"[{i['severity'].upper()}] {i['title']} ({i['source']})" for i in top]
-    prompt = f"""You are a Cisco ACI/NDFC Solution Architect reviewing the week's Cisco security advisories and blog posts. Summarize the most important items in 3–4 sentences. Focus on anything affecting ACI, NDFC, Nexus 9K, NX-OS, or data center infrastructure. Note any critical CVEs by number if present. /no_think
+    lines = [f"[{i['severity'].upper()}] {i['title']} ({i['source']})" for i in (items or [])[:6]]
+    ev_lines = [f"[EVENT] {e['title']} ({e['source']})" for e in (events or [])[:4]]
+    block = chr(10).join(lines + ev_lines)
+    prompt = f"""You are a Cisco ACI/NDFC Solution Architect reviewing this week's Cisco security advisories, blog posts, and conference/product news. Summarize the most important items in 3-4 sentences. Focus on anything affecting ACI, NDFC, Nexus 9K, NX-OS, or AI/data-center infrastructure, and explicitly call out any major Cisco Live / conference announcements or product launches. Note any critical CVEs by number if present. /no_think
 
-{chr(10).join(lines)}"""
+{block}"""
     try:
         return await generate_completion(prompt, agent_id="cisco_pulse")
     except Exception:
-        return "Several Cisco advisories and updates were retrieved this week. Review critical and high severity items first."
+        return "Several Cisco advisories, updates, and announcements were retrieved this week. Review critical and high severity items first."
 
 async def cisco_pulse_job():
     log.info("Cisco Pulse starting")
@@ -152,7 +188,8 @@ async def cisco_pulse_job():
         other    = [i for i in unique if i["severity"] not in ("critical","high","medium")]
 
         top_items = (critical + high + medium)[:20]
-        commentary = await build_llm_commentary(top_items[:6])
+        events = [i for i in unique if i.get("event")][:12]
+        commentary = await build_llm_commentary(top_items[:6], events[:4])
 
         now = datetime.datetime.now()
         payload = {
@@ -162,6 +199,7 @@ async def cisco_pulse_job():
                 "high":        high,
                 "medium":      medium,
                 "other":       other[:10],
+                "events":      events,
                 "commentary":  commentary,
                 "total":       len(unique),
                 "generated_at": now.strftime("%Y-%m-%d %H:%M"),
@@ -207,6 +245,13 @@ def _item_rows(items: list, limit=8) -> str:
     return rows
 
 def _build_email(pulse: dict) -> str:
+    events_section = ""
+    if pulse.get("events"):
+        events_section = f"""
+        <div style='background:#f5f3ff;border-left:4px solid #7c3aed;padding:14px 20px;margin-bottom:16px;border-radius:0 8px 8px 0'>
+          <div style='font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px'>📰 CONFERENCES &amp; PRODUCT NEWS</div>
+          {_item_rows(pulse['events'], 5)}
+        </div>"""
     critical_section = ""
     if pulse["critical"]:
         critical_section = f"""
@@ -219,13 +264,14 @@ def _build_email(pulse: dict) -> str:
 <div style='max-width:640px;margin:24px auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb'>
   <div style='background:linear-gradient(135deg,#0a3d5c,#0d9488);padding:26px 32px'>
     <div style='font-size:22px;font-weight:800;color:#fff'>◈ Cisco Pulse</div>
-    <div style='font-size:13px;color:#99f6e4;margin-top:4px'>{pulse.get("week_of","—")} · ACI · NDFC · PSIRT · DevNet</div>
+    <div style='font-size:13px;color:#99f6e4;margin-top:4px'>{pulse.get("week_of","—")} · ACI · NDFC · PSIRT · Conferences &amp; News</div>
   </div>
   <div style='padding:20px 32px;background:#f0fdfa;border-bottom:1px solid #e5e7eb'>
     <div style='font-size:14px;line-height:1.6;color:#134e4a'>{pulse.get("commentary","")}</div>
     <div style='font-size:11px;color:#888;margin-top:8px'>{pulse.get("total",0)} items fetched · {len(pulse.get("critical",[]))} critical · {len(pulse.get("high",[]))} high</div>
   </div>
   <div style='padding:20px 32px;border-bottom:1px solid #e5e7eb'>
+    {events_section}
     {critical_section}
     <div style='font-size:12px;font-weight:700;color:#8a909c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px'>HIGH SEVERITY</div>
     {_item_rows(pulse.get("high",[]), 6)}
