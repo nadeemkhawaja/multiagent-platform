@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lufi — Polished (Direction 1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --cardAlt:#fafbfc; --sidebar:#ffffff;
+    --line:#ececf0; --line2:#f1f2f5;
+    --ink:#16181d; --ink2:#4b5360; --ink3:#8a909c; --ink4:#aeb4bf;
+    --violet:#7c5cf6; --green:#16a34a; --red:#e5484d; --amber:#f59e0b; --blue:#2f6feb; --teal:#0d9488;
+    --violetBg:#f1edfe; --greenBg:#eafaf0; --redBg:#fdeced; --amberBg:#fef5e7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;background:var(--bg);color:var(--ink);}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  .sidebar{background:var(--sidebar);border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;gap:4px}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 22px}
+  .brand .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--violet),#a78bfa);display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;box-shadow:0 6px 16px rgba(124,92,246,.35)}
+  .brand .name{font-weight:800;font-size:17px;letter-spacing:-.4px}
+  .brand .tag{font-size:10.5px;color:var(--ink3);font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+  .navgroup{font-size:10px;font-weight:700;color:var(--ink4);text-transform:uppercase;letter-spacing:.6px;padding:14px 10px 6px}
+  .navitem{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:10px;font-size:13.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s}
+  .navitem:hover{background:var(--cardAlt)}
+  .navitem.active{background:var(--violetBg);color:var(--violet)}
+  .navitem .glyph{width:20px;text-align:center;font-size:14px}
+  .navitem .dot{margin-left:auto;width:7px;height:7px;border-radius:50%}
+  .upgrade{margin-top:auto;background:linear-gradient(135deg,#16181d,#3a3f4d);border-radius:14px;padding:16px;color:#fff}
+  .upgrade .t{font-weight:800;font-size:13.5px;margin-bottom:4px}
+  .upgrade .d{font-size:11.5px;color:#c9cdd6;line-height:1.5;margin-bottom:10px}
+  .upgrade button{width:100%;background:linear-gradient(135deg,var(--violet),#a78bfa);border:none;color:#fff;font-weight:700;font-size:12.5px;padding:9px;border-radius:8px;cursor:pointer}
+
+  /* ── Main ──────────────────────────────────────────────── */
+  .main{padding:24px 32px;max-width:1320px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+  .topbar h1{font-size:22px;font-weight:800;letter-spacing:-.5px;margin:0}
+  .topbar .sub{font-size:12.5px;color:var(--ink3);margin-top:3px;font-weight:500}
+  .topactions{display:flex;gap:10px;align-items:center}
+  .pill{font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;background:var(--cardAlt);color:var(--ink3);border:1px solid var(--line)}
+  .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--amber),#fbbf24);display:grid;place-items:center;font-weight:800;color:#fff;font-size:14px}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 1px 3px rgba(20,24,40,.04);transition:.15s}
+  .card:hover{box-shadow:0 8px 24px rgba(20,24,40,.07);transform:translateY(-1px)}
+  .stat-label{font-size:11px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .stat-value{font-size:28px;font-weight:800;letter-spacing:-1px;margin-top:6px}
+  .stat-delta{font-size:12px;font-weight:700;margin-top:4px}
+
+  .row2{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:18px}
+  .card h3{font-size:14px;font-weight:800;margin:0 0 14px;letter-spacing:-.2px;display:flex;align-items:center;justify-content:space-between}
+  .card h3 span.sub{font-size:11px;color:var(--ink3);font-weight:600}
+
+  .agent-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line2)}
+  .agent-row:last-child{border:none}
+  .agent-glyph{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:14px;color:#fff;flex-shrink:0}
+  .agent-meta .n{font-weight:700;font-size:13px}
+  .agent-meta .d{font-size:11px;color:var(--ink3)}
+  .status-pill{margin-left:auto;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px}
+  .status-running{background:var(--greenBg);color:var(--green)}
+  .status-idle{background:var(--cardAlt);color:var(--ink3)}
+
+  .bias-bar{height:10px;border-radius:10px;background:linear-gradient(90deg,rgba(229,72,77,.16),rgba(148,163,184,.12),rgba(22,163,74,.16));position:relative;margin:10px 0}
+  .bias-bar .knob{position:absolute;top:-2px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--green);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+
+  .footer-note{margin-top:28px;font-size:11.5px;color:var(--ink4);text-align:center}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="mark">◎</div>
+      <div>
+        <div class="name">Lufi</div>
+        <div class="tag">Agent Ops Platform</div>
+      </div>
+    </div>
+
+    <div class="navgroup">Overview</div>
+    <div class="navitem active"><span class="glyph">◇</span>Orchestrator</div>
+
+    <div class="navgroup">Core Agents</div>
+    <div class="navitem"><span class="glyph">▶</span>AI-Times <span class="dot" style="background:var(--green)"></span></div>
+    <div class="navitem"><span class="glyph">✉</span>Mailman <span class="dot" style="background:var(--green)"></span></div>
+    <div class="navitem"><span class="glyph">$</span>Wallstreet Wolf <span class="dot" style="background:var(--amber)"></span></div>
+    <div class="navitem"><span class="glyph">⌥</span>GitHub Trending <span class="dot" style="background:var(--ink4)"></span></div>
+
+    <div class="navgroup">Markets Pack</div>
+    <div class="navitem"><span class="glyph">🐺</span>Alpha Wolf</div>
+    <div class="navitem"><span class="glyph">◎</span>Compass</div>
+    <div class="navitem"><span class="glyph">✦</span>Strategy Scout</div>
+    <div class="navitem"><span class="glyph">🏛</span>Capitol Tracker</div>
+    <div class="navitem"><span class="glyph">⚡</span>Options Flow</div>
+
+    <div class="navgroup">Workspace</div>
+    <div class="navitem"><span class="glyph">⚙</span>Settings</div>
+
+    <div class="upgrade">
+      <div class="t">Upgrade to Pro</div>
+      <div class="d">Unlock unlimited agent runs, custom branding & priority LLM queueing.</div>
+      <button>Upgrade — $29/mo</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1>Good morning, Nadeem</h1>
+        <div class="sub">Tuesday, June 10 · 12 agents online · all systems nominal</div>
+      </div>
+      <div class="topactions">
+        <div class="pill mono">◉ Live</div>
+        <div class="pill">⌘K Search</div>
+        <div class="avatar">N</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="stat-label">CPU Load</div>
+        <div class="stat-value mono">34%</div>
+        <div class="stat-delta" style="color:var(--green)">▾ Nominal</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Memory</div>
+        <div class="stat-value mono">58%</div>
+        <div class="stat-delta" style="color:var(--ink3)">— Stable</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">GPU (Qwen3)</div>
+        <div class="stat-value mono">41%</div>
+        <div class="stat-delta" style="color:var(--green)">▾ Nominal</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">LLM Calls Today</div>
+        <div class="stat-value mono">128</div>
+        <div class="stat-delta" style="color:var(--violet)">+18 vs yesterday</div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <h3>Agent fleet <span class="sub">12 agents · live status</span></h3>
+        <div class="agent-row">
+          <div class="agent-glyph" style="background:#e5484d">▶</div>
+          <div class="agent-meta"><div class="n">AI-Times</div><div class="d">AI YouTube digest · daily 08:00</div></div>
+          <div class="status-pill status-running">Running</div>
+        </div>
+        <div class="agent-row">
+          <div class="agent-glyph" style="background:#16a34a">$</div>
+          <div class="agent-meta"><div class="n">Wallstreet Wolf</div><div class="d">Market tracker · every 2h</div></div>
+          <div class="status-pill status-idle">Idle</div>
+        </div>
+        <div class="agent-row">
+          <div class="agent-glyph" style="background:#f59e0b">◎</div>
+          <div class="agent-meta"><div class="n">Wallstreet Compass</div><div class="d">Bias engine · VIX 14.2 (Low)</div></div>
+          <div class="status-pill status-idle">Idle</div>
+        </div>
+        <div class="agent-row">
+          <div class="agent-glyph" style="background:#7c3aed">🐺</div>
+          <div class="agent-meta"><div class="n">Alpha Wolf</div><div class="d">Master strategist · daily 08:30</div></div>
+          <div class="status-pill status-idle">Idle</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Market bias <span class="sub mono">composite +18</span></h3>
+        <div style="font-size:34px;font-weight:800;color:var(--green);letter-spacing:-1px">Bullish</div>
+        <div style="font-size:12px;color:var(--ink3);font-weight:600;margin-top:2px">Risk appetite — buyers in control</div>
+        <div class="bias-bar"><div class="knob" style="left:calc(59% - 7px)"></div></div>
+        <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink4)"><span>BEARISH</span><span>+18</span><span>BULLISH</span></div>
+        <div style="margin-top:12px;padding:10px 12px;background:var(--greenBg);border-radius:10px;font-size:11.5px;color:var(--green);font-weight:700">VIX 14.2 · Low volatility</div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <h3>Wolf movers <span class="sub">today's session</span></h3>
+        <div class="agent-row"><div class="agent-meta"><div class="n mono">NVDA</div></div><div class="status-pill status-running">+4.2%</div></div>
+        <div class="agent-row"><div class="agent-meta"><div class="n mono">AVGO</div></div><div class="status-pill status-running">+3.1%</div></div>
+        <div class="agent-row"><div class="agent-meta"><div class="n mono">INTC</div></div><div class="status-pill" style="background:var(--redBg);color:var(--red)">-2.3%</div></div>
+      </div>
+      <div class="card">
+        <h3>Latest activity</h3>
+        <div style="font-size:12.5px;color:var(--ink2);line-height:2">
+          <div>🏛 Pelosi disclosed a <b>NVDA</b> purchase</div>
+          <div>⚡ Unusual call flow detected on <b>TSLA</b> (IV 82%ile)</div>
+          <div>✦ Strategy Scout found 6 trending setups</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">Direction 1 — Polish current design: same information architecture, refined typography/spacing, branding header, sidebar nav with upgrade CTA.</div>
+  </div>
+</div>
+</body>
+</html>
