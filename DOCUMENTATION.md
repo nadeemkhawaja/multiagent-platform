@@ -7,7 +7,7 @@ digests, and stream live status to a polished React dashboard.
 
 - **Backend:** FastAPI + APScheduler + SQLAlchemy (SQLite), WebSocket live state, `psutil` telemetry
 - **Frontend:** React + Vite (single-page dashboard, light/dark, two layouts)
-- **LLM:** Qwen3 (`qwen3:4b` default) served locally by Ollama — never a paid API
+- **LLM:** Qwen3 (`qwen3.5:4b` default) served locally by Ollama — never a paid API
 - **Persistence:** `orchestrator.db` (SQLite) — agent data, run history, resource samples, config
 - **Email:** SMTP HTML digests per agent
 
@@ -392,7 +392,7 @@ Environment variables (`.env`, see `.env.example`) — **values are never stored
 
 | Var | Used by | Notes |
 |-----|---------|-------|
-| `LLM_MODEL` | all | default `qwen3:4b` |
+| `LLM_MODEL` | all | default `qwen3.5:4b` |
 | `OLLAMA_BASE_URL` | all | default `http://localhost:11434` |
 | `EMBED_MODEL` | memory | local embedding model, default `nomic-embed-text` |
 | `MEMORY_MAX_PER_AGENT` | memory | memory rows kept per agent, default `500` |
@@ -496,7 +496,7 @@ Chronological highlights (newest first):
 ## 12. Running the Platform
 
 **Prerequisites:** Python 3.11+, Node 18+, and **Ollama** running locally with the
-model pulled (`ollama pull qwen3:4b`).
+model pulled (`ollama pull qwen3.5:4b`).
 
 ```bash
 # 1. Backend

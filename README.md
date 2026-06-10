@@ -56,7 +56,7 @@ The local LLM will then process these disparate data sources, filtering out nois
 ### Prerequisites
 - Python 3.12+
 - Node.js (for React frontend)
-- Ollama with `qwen3:4b` installed locally (`ollama pull qwen3:4b`)
+- Ollama with `qwen3.5:4b` installed locally (`ollama pull qwen3.5:4b`)
 - API Keys: YouTube Data API v3, Gmail OAuth 2.0 (`client_secret.json`), GitHub PAT.
 
 ### Backend Setup
