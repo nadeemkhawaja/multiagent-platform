@@ -8,6 +8,7 @@ from database import SessionLocal, AgentData, get_config
 from llm_client import generate_completion
 from orchestrator import orchestrator
 from email_utils import send_html_email
+import memory
 
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 
@@ -175,6 +176,20 @@ async def wallstreet_wolf_job():
         loser_strs = [f"{s['symbol']} ({s['change_pct']}%)" for s in top_losers]
         futures_strs = [f"{FUTURES[s['symbol']][0]} ({'+' if s['change_pct'] >= 0 else ''}{s['change_pct']}%)" for s in futures]
 
+        # Prior snapshot from memory lets the commentary call out what changed
+        # rather than just restating today's state. Failure-isolated: memory
+        # being down never blocks the run.
+        prior_context = ""
+        try:
+            snaps = memory.recent("wallstreet_wolf", k=1, kind="daily_snapshot")
+            if snaps:
+                prior_context = (
+                    f" For context, the previous brief was: {snaps[0]['text']} "
+                    f"Highlight notable changes versus that brief (reversals, momentum, new leaders)."
+                )
+        except Exception as e:
+            print(f"[WallstreetWolf] memory recall failed: {e}")
+
         # Generate LLM commentary — isolated so a failure doesn't abort the data save
         commentary = ""
         try:
@@ -184,6 +199,7 @@ async def wallstreet_wolf_job():
                 f"Top gainers today: {', '.join(gainer_strs)}. "
                 f"Top losers: {', '.join(loser_strs)}. "
                 f"Gold: ${metals[0]['price'] if metals else 'N/A'}, Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
+                f"{prior_context}"
             )
             commentary = await generate_completion(
                 prompt,
@@ -215,6 +231,17 @@ async def wallstreet_wolf_job():
 
         # Send real email
         send_market_email(top_gainers, top_losers, metals, currencies, commentary, futures)
+
+        # Persist a compact snapshot so tomorrow's commentary can reference it
+        try:
+            snapshot = (
+                f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} — "
+                f"Futures: {', '.join(futures_strs) or 'N/A'}. "
+                f"Gainers: {', '.join(gainer_strs)}. Losers: {', '.join(loser_strs)}."
+            )
+            await memory.remember("wallstreet_wolf", snapshot, kind="daily_snapshot")
+        except Exception as e:
+            print(f"[WallstreetWolf] memory save failed: {e}")
 
         orchestrator.update_agent_status("wallstreet_wolf", "idle")
     except Exception as e:

@@ -76,6 +76,20 @@ class Config(Base):
     value = Column(Text)
 
 
+class Memory(Base):
+    """Long-term agent memory: text + optional embedding vector (JSON-encoded).
+    Embeddings come from a local Ollama embed model; rows without one are still
+    usable via recency-based recall."""
+    __tablename__ = "memories"
+    id = Column(Integer, primary_key=True)
+    agent_id = Column(String, index=True)
+    kind = Column(String, index=True, default="note")
+    text = Column(Text)
+    meta = Column(Text, nullable=True)        # JSON dict
+    embedding = Column(Text, nullable=True)   # JSON list[float]
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
