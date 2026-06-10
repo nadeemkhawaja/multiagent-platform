@@ -1,14 +1,14 @@
 import os
 import json
-import asyncio
 from datetime import datetime
-import yfinance as yf
 
 from database import SessionLocal, AgentData, get_config
 from llm_client import generate_completion
 from orchestrator import orchestrator
 from email_utils import send_html_email
+from tools import market as market_tools
 import memory
+import tracing
 
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 
@@ -32,51 +32,11 @@ def get_watchlist():
     return syms if len(syms) >= 20 else DEFAULT_WATCHLIST
 
 
-def _fetch_market_data_sync():
-    """Synchronous yfinance fetch — called via asyncio.to_thread to avoid blocking the event loop."""
+async def fetch_market_data():
+    """Quote fetch lives in tools/market.py now — shared with any agent that needs it."""
     WATCHLIST = get_watchlist()
     all_symbols = WATCHLIST + list(FUTURES.keys()) + METALS + CURRENCIES
-    tickers = yf.Tickers(" ".join(all_symbols))
-
-    data = []
-    for sym in all_symbols:
-        try:
-            ticker = tickers.tickers[sym]
-            info = ticker.fast_info
-
-            last_price = info.last_price
-            prev_close = info.previous_close
-            hist = ticker.history(period="10d")
-            history_prices = hist['Close'].tolist() if not hist.empty else []
-
-            # Fall back to historical close if fast_info returns None (weekends, API gaps)
-            if last_price is None or prev_close is None:
-                if not history_prices:
-                    print(f"[WallstreetWolf] No data available for {sym}, skipping")
-                    continue
-                if last_price is None:
-                    last_price = history_prices[-1]
-                if prev_close is None:
-                    prev_close = history_prices[-2] if len(history_prices) >= 2 else history_prices[-1]
-
-            change = last_price - prev_close
-            change_pct = (change / prev_close) * 100 if prev_close else 0
-
-            data.append({
-                "symbol": sym,
-                "price": round(last_price, 2),
-                "change": round(change, 2),
-                "change_pct": round(change_pct, 2),
-                "history": [round(p, 2) for p in history_prices[-10:]]
-            })
-        except Exception as e:
-            print(f"[WallstreetWolf] Failed to fetch data for {sym}: {e}")
-
-    return data
-
-
-async def fetch_market_data():
-    return await asyncio.to_thread(_fetch_market_data_sync)
+    return await market_tools.quotes(all_symbols)
 
 
 def _fmt_future(s):
@@ -156,7 +116,8 @@ def email_preview() -> str:
 async def wallstreet_wolf_job():
     orchestrator.update_agent_status("wallstreet_wolf", "running")
     try:
-        market_data = await fetch_market_data()
+        with tracing.stage("wallstreet_wolf", "fetch"):
+            market_data = await fetch_market_data()
 
         # Separate stocks, metals, currencies
         watchlist = get_watchlist()

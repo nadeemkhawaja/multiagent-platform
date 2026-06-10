@@ -1,5 +1,6 @@
 import psutil
 import asyncio
+import json
 import time
 import random
 from collections import deque
@@ -8,6 +9,7 @@ from typing import Dict, Any
 
 import httpx
 
+import tracing
 from llm_client import get_llm_state, OLLAMA_BASE_URL
 from database import SessionLocal, ResourceSample, Event, AgentRun, AgentState, init_db, get_config, set_config
 from ws import manager
@@ -291,14 +293,22 @@ class Orchestrator:
                 run = AgentRun(agent_id=agent_name, status="running")
                 db.add(run); db.commit()
                 self._open_runs[agent_name] = run.id
+                tracing.start(agent_name)
             elif status in ("idle", "error"):
                 rid = self._open_runs.pop(agent_name, None)
+                metrics = tracing.finish(agent_name)
                 if rid:
                     run = db.query(AgentRun).get(rid)
                     if run:
                         run.finished_at = datetime.utcnow()
                         run.status = status
                         run.error = error
+                        if metrics:
+                            run.llm_calls = metrics["llm_calls"]
+                            run.tokens_in = metrics["tokens_in"]
+                            run.tokens_out = metrics["tokens_out"]
+                            run.llm_ms = metrics["llm_ms"]
+                            run.stages = json.dumps(metrics["stages"]) if metrics["stages"] else None
                         db.commit()
             db.close()
         except Exception:

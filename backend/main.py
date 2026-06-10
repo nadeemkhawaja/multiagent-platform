@@ -9,12 +9,15 @@ import asyncio
 
 import httpx
 
-from database import init_db, SessionLocal, AgentData, get_config, set_config, all_config
+from database import init_db, SessionLocal, AgentData, AgentRun, get_config, set_config, all_config
 from orchestrator import orchestrator, AGENT_META, AGENT_ORDER, CORE_AGENTS
-from llm_client import OLLAMA_BASE_URL, LLM_MODEL, get_llm_state
+from llm_client import (OLLAMA_BASE_URL, LLM_MODEL, get_llm_state,
+                        provider_status, parse_model_spec, KNOWN_PROVIDERS)
 from ws import manager
+import approvals
 import memory
 import mcp_client
+import tools as tool_registry
 
 from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
 from agents import agent4_devdaily, agent5_compass as compass_mod
@@ -347,16 +350,147 @@ async def get_settings():
         "watchlist": cfg.get("watchlist", ""),
         "capitol_politicians": cfg.get("capitol_politicians", ""),
         "capitol_months": cfg.get("capitol_months", "2"),
+        "require_email_approval": bool(cfg.get("require_email_approval", False)),
     }
 
 
 @app.post("/api/config")
 async def update_settings(body: Dict[str, Any]):
     for k, v in body.items():
-        if k in ("recipient", "key_people", "watchlist", "capitol_politicians", "capitol_months"):
+        if k in ("recipient", "key_people", "watchlist", "capitol_politicians",
+                 "capitol_months", "require_email_approval"):
             set_config(k, v)
     orchestrator.log_event("Settings updated", "#7c5cf6")
     return await get_settings()
+
+
+# ─── Run history & metrics ───────────────────────────────────────────
+def _run_to_dict(r: AgentRun) -> dict:
+    return {
+        "id": r.id, "agent_id": r.agent_id, "status": r.status, "error": r.error,
+        "started_at": r.started_at.isoformat() if r.started_at else None,
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "duration_s": round((r.finished_at - r.started_at).total_seconds(), 1)
+                      if r.started_at and r.finished_at else None,
+        "llm_calls": r.llm_calls or 0,
+        "tokens_in": r.tokens_in or 0,
+        "tokens_out": r.tokens_out or 0,
+        "llm_ms": r.llm_ms or 0,
+        "stages": json.loads(r.stages) if r.stages else {},
+    }
+
+
+@app.get("/api/agent/{agent_name}/runs")
+async def get_agent_runs(agent_name: str, k: int = 20):
+    db = SessionLocal()
+    rows = (db.query(AgentRun).filter_by(agent_id=agent_name)
+            .order_by(AgentRun.started_at.desc(), AgentRun.id.desc())
+            .limit(min(k, 200)).all())
+    db.close()
+    return {"runs": [_run_to_dict(r) for r in rows]}
+
+
+@app.get("/api/metrics")
+async def get_metrics(window: int = 50):
+    """Per-agent aggregates over each agent's last `window` runs."""
+    db = SessionLocal()
+    out = {}
+    for aid in AGENT_ORDER:
+        rows = (db.query(AgentRun).filter_by(agent_id=aid)
+                .order_by(AgentRun.started_at.desc(), AgentRun.id.desc())
+                .limit(min(window, 500)).all())
+        if not rows:
+            continue
+        finished = [r for r in rows if r.finished_at]
+        errors = sum(1 for r in rows if r.status == "error")
+        durations = [(r.finished_at - r.started_at).total_seconds() for r in finished]
+        out[aid] = {
+            "name": AGENT_META[aid]["n"],
+            "runs": len(rows),
+            "errors": errors,
+            "success_rate": round((len(rows) - errors) / len(rows), 3),
+            "avg_duration_s": round(sum(durations) / len(durations), 1) if durations else None,
+            "llm_calls": sum(r.llm_calls or 0 for r in rows),
+            "tokens_in": sum(r.tokens_in or 0 for r in rows),
+            "tokens_out": sum(r.tokens_out or 0 for r in rows),
+            "llm_ms": sum(r.llm_ms or 0 for r in rows),
+        }
+    db.close()
+    return {"window": window, "agents": out}
+
+
+# ─── LLM providers & per-agent models ────────────────────────────────
+@app.get("/api/llm/providers")
+async def llm_providers():
+    return {
+        "default_model": LLM_MODEL,
+        "providers": provider_status(),
+        "agent_models": get_config("agent_models", {}) or {},
+    }
+
+
+class AgentModelUpdate(BaseModel):
+    agent_id: str
+    model: str = ""    # "provider:model" or bare ollama model; empty clears the override
+
+
+@app.post("/api/llm/models")
+async def set_agent_model(body: AgentModelUpdate):
+    if body.agent_id not in AGENT_ORDER:
+        return {"error": f"unknown agent '{body.agent_id}'"}
+    overrides = get_config("agent_models", {}) or {}
+    if body.model:
+        provider, _ = parse_model_spec(body.model)
+        if provider not in KNOWN_PROVIDERS:
+            return {"error": f"unknown provider in '{body.model}'"}
+        overrides[body.agent_id] = body.model
+    else:
+        overrides.pop(body.agent_id, None)
+    set_config("agent_models", overrides)
+    orchestrator.log_event(
+        f"{AGENT_META[body.agent_id]['n']} model → {body.model or 'default'}", "#7c5cf6")
+    return {"agent_models": overrides}
+
+
+# ─── Tool registry ───────────────────────────────────────────────────
+@app.get("/api/tools")
+async def list_tools():
+    return {"tools": tool_registry.all_tools()}
+
+
+class ToolCallRequest(BaseModel):
+    tool: str
+    arguments: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/tools/call")
+async def call_tool(body: ToolCallRequest):
+    try:
+        return {"result": await tool_registry.call(body.tool, body.arguments)}
+    except tool_registry.ToolError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+# ─── Approvals (human-in-the-loop) ───────────────────────────────────
+@app.get("/api/approvals")
+async def get_approvals(status: Optional[str] = None, k: int = 50):
+    return {"approvals": approvals.list_approvals(status=status, k=min(k, 200))}
+
+
+class ApprovalDecision(BaseModel):
+    note: Optional[str] = None
+
+
+@app.post("/api/approvals/{approval_id}/approve")
+async def approve(approval_id: int, body: Optional[ApprovalDecision] = None):
+    return approvals.decide(approval_id, approved=True, note=body.note if body else None)
+
+
+@app.post("/api/approvals/{approval_id}/deny")
+async def deny(approval_id: int, body: Optional[ApprovalDecision] = None):
+    return approvals.decide(approval_id, approved=False, note=body.note if body else None)
 
 
 # ─── Agent memory ────────────────────────────────────────────────────

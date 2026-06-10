@@ -3,10 +3,11 @@
 # Aggregates Wolf, Capitol Tracker, AI-Times from SQLite + wttr.in weather
 # Qwen3 narrative summary → HTML email digest at 06:00 daily
 # ============================================================================
-import asyncio, json, datetime, logging, httpx
+import asyncio, json, datetime, logging
 from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_completion
 from email_utils import send_html_email
+from tools.weather import current_weather
 import memory
 
 log = logging.getLogger("morning_brief")
@@ -15,24 +16,9 @@ CITY = "Murphy+TX"   # weather location
 
 # ---------------------------------------------------------------------------
 async def fetch_weather() -> dict:
-    """wttr.in JSON weather for Murphy, TX (no API key needed)"""
+    """Weather via the shared tools/weather.py tool (wttr.in, no API key)."""
     try:
-        url = f"https://wttr.in/{CITY}?format=j1"
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(url)
-            r.raise_for_status()
-            j = r.json()
-            cur = j["current_condition"][0]
-            temp_f = int(cur["temp_F"])
-            feels_f = int(cur["FeelsLikeF"])
-            desc = cur["weatherDesc"][0]["value"]
-            humidity = cur["humidity"]
-            wind_mph = cur["windspeedMiles"]
-            return {
-                "temp_f": temp_f, "feels_f": feels_f,
-                "desc": desc, "humidity": humidity, "wind_mph": wind_mph,
-                "summary": f"{desc}, {temp_f}°F (feels {feels_f}°F), humidity {humidity}%, wind {wind_mph} mph",
-            }
+        return await current_weather(CITY)
     except Exception as e:
         log.warning(f"Weather fetch failed: {e}")
         return {"summary": "Weather unavailable", "temp_f": None, "desc": "Unknown"}

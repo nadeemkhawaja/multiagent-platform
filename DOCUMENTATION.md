@@ -282,6 +282,11 @@ SQLite (`orchestrator.db`) via SQLAlchemy (`backend/database.py`):
 | `config` | Runtime config overrides (schedules, recipient, key_people, watchlist, aegis_brand) |
 | `system_logs` | General log sink |
 | `memories` | Long-term agent memory: text + local embedding vector for semantic recall |
+| `approvals` | Human-in-the-loop queue: pending/approved/denied actions with payloads |
+
+`agent_runs` also carries per-run telemetry (`llm_calls`, `tokens_in`,
+`tokens_out`, `llm_ms`, `stages`) filled in by `tracing.py`; `init_db()`
+ALTERs these columns into pre-existing databases.
 
 ---
 
@@ -308,6 +313,45 @@ SQLite (`orchestrator.db`) via SQLAlchemy (`backend/database.py`):
 | GET | `/api/mcp/servers/{name}/tools` · `/ping` | List a server's tools / reachability probe |
 | POST/DELETE | `/api/mcp/servers[/{name}]` | Register / remove an MCP server |
 | POST | `/api/mcp/call` | Call a tool on a registered MCP server |
+| GET | `/api/agent/{name}/runs` | Run history with per-run tokens, LLM time, stage timings |
+| GET | `/api/metrics` | Per-agent aggregates: success rate, avg duration, token totals |
+| GET | `/api/llm/providers` | Provider status (ollama/openai/anthropic) + per-agent overrides |
+| POST | `/api/llm/models` | Route an agent to a model, e.g. `anthropic:claude-haiku-4-5` |
+| GET | `/api/tools` | Registered platform tools with JSON schemas |
+| POST | `/api/tools/call` | Invoke a registered tool by name |
+| GET | `/api/approvals` | Approval queue (filter by `?status=pending`) |
+| POST | `/api/approvals/{id}/approve` · `/deny` | Decide a pending approval (approve runs the action) |
+
+### LLM providers (`backend/llm_client.py`)
+
+Local Ollama stays the default. Per-agent overrides route through OpenAI- or
+Anthropic-compatible APIs: set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` and map
+an agent via `POST /api/llm/models` (`{"agent_id": "morning_brief", "model":
+"anthropic:claude-haiku-4-5"}`). Bare model names mean Ollama. Token usage per
+call is recorded onto the agent's open run trace.
+
+### Run tracing (`backend/tracing.py`)
+
+Every run accumulates LLM calls, tokens in/out, LLM wall time, and named stage
+timings (`with tracing.stage(agent_id, "fetch"): …`); the orchestrator
+persists them onto the run's `agent_runs` row. `/api/metrics` aggregates
+success rate, average duration, and token totals per agent.
+
+### Tool registry (`backend/tools/`)
+
+Capabilities are declared once with `@tool(name, description)` — the registry
+derives a JSON schema from type hints, so the same definition serves direct
+agent imports, `/api/tools`, and future LLM function-calling. Built-ins:
+`web.fetch_json`, `weather.current`, `market.quotes` (Wolf's yfinance fetch,
+shared), and `mcp.call` / `mcp.list_tools` bridging registered MCP servers.
+
+### Approvals (`backend/approvals.py`)
+
+Human-in-the-loop primitive: agents park an action (`approvals.request`)
+instead of executing it; approving from the API runs the handler registered
+for that kind. With the `require_email_approval` setting on, **every** agent
+email queues for sign-off — `email_utils.send_html_email` is the single
+chokepoint — and goes out when approved. Default off (behavior unchanged).
 
 ### Agent memory (`backend/memory.py`)
 
