@@ -13,6 +13,8 @@ from database import init_db, SessionLocal, AgentData, get_config, set_config, a
 from orchestrator import orchestrator, AGENT_META, AGENT_ORDER, CORE_AGENTS
 from llm_client import OLLAMA_BASE_URL, LLM_MODEL, get_llm_state
 from ws import manager
+import memory
+import mcp_client
 
 from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
 from agents import agent4_devdaily, agent5_compass as compass_mod
@@ -355,6 +357,92 @@ async def update_settings(body: Dict[str, Any]):
             set_config(k, v)
     orchestrator.log_event("Settings updated", "#7c5cf6")
     return await get_settings()
+
+
+# ─── Agent memory ────────────────────────────────────────────────────
+@app.get("/api/agent/{agent_name}/memories")
+async def get_agent_memories(agent_name: str, k: int = 10, kind: Optional[str] = None):
+    return {"memories": memory.recent(agent_name, k=min(k, 100), kind=kind)}
+
+
+@app.post("/api/agent/{agent_name}/memories/recall")
+async def recall_agent_memories(agent_name: str, body: Dict[str, Any]):
+    query = str(body.get("query", "")).strip()
+    if not query:
+        return {"error": "query is required"}
+    results = await memory.recall(agent_name, query, k=int(body.get("k", 5)),
+                                  kind=body.get("kind"))
+    return {"memories": results}
+
+
+# ─── MCP servers ─────────────────────────────────────────────────────
+def _mask_env(cfg: dict) -> dict:
+    out = dict(cfg)
+    out["env"] = sorted((cfg.get("env") or {}).keys())  # never expose secret values
+    return out
+
+
+@app.get("/api/mcp")
+async def mcp_status():
+    servers = mcp_client.get_servers()
+    return {
+        "available": mcp_client.MCP_AVAILABLE,
+        "servers": {name: _mask_env(cfg) for name, cfg in servers.items()},
+    }
+
+
+@app.get("/api/mcp/servers/{name}/tools")
+async def mcp_server_tools(name: str):
+    try:
+        return {"tools": await mcp_client.list_tools(name)}
+    except mcp_client.MCPError as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/mcp/servers/{name}/ping")
+async def mcp_server_ping(name: str):
+    return await mcp_client.ping(name)
+
+
+class MCPServerConfig(BaseModel):
+    name: str
+    command: str
+    args: Optional[list] = None
+    env: Optional[Dict[str, str]] = None
+    enabled: bool = True
+
+
+@app.post("/api/mcp/servers")
+async def mcp_add_server(body: MCPServerConfig):
+    cfg = mcp_client.set_server(body.name, body.command, body.args, body.env, body.enabled)
+    orchestrator.log_event(f"MCP server '{body.name}' registered", "#7c5cf6")
+    return {"status": "saved", "server": _mask_env(cfg)}
+
+
+@app.delete("/api/mcp/servers/{name}")
+async def mcp_remove_server(name: str):
+    if not mcp_client.remove_server(name):
+        return {"error": f"server '{name}' not found"}
+    orchestrator.log_event(f"MCP server '{name}' removed", "#7c5cf6")
+    return {"status": "removed"}
+
+
+class MCPCallRequest(BaseModel):
+    server: str
+    tool: str
+    arguments: Optional[Dict[str, Any]] = None
+    timeout: Optional[float] = None
+
+
+@app.post("/api/mcp/call")
+async def mcp_call(body: MCPCallRequest):
+    try:
+        return await mcp_client.call_tool(
+            body.server, body.tool, body.arguments,
+            timeout=body.timeout or mcp_client.DEFAULT_TIMEOUT,
+        )
+    except mcp_client.MCPError as e:
+        return {"error": str(e)}
 
 
 # ─── Stress Test ─────────────────────────────────────────────────────

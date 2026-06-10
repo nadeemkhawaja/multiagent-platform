@@ -7,6 +7,7 @@ import asyncio, json, datetime, logging, httpx
 from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_completion
 from email_utils import send_html_email
+import memory
 
 log = logging.getLogger("morning_brief")
 
@@ -64,13 +65,23 @@ async def build_llm_narrative(weather: dict, wolf_snap: dict, capitol_snap: dict
         vids = aitimes_snap["videos"][:3]
         ai_top = "Top AI news: " + "; ".join(v.get("title", "") for v in vids)
 
+    # Yesterday's brief from memory → today's narrative leads with what's new
+    # instead of repeating items already reported. Failure-isolated.
+    prior = ""
+    try:
+        briefs = memory.recent("morning_brief", k=1, kind="brief")
+        if briefs:
+            prior = f"\nYesterday's brief said: \"{briefs[0]['text']}\"\nDo not repeat unchanged items from yesterday — lead with what is new or different.\n"
+    except Exception as e:
+        log.warning(f"memory recall failed: {e}")
+
     prompt = f"""You are a personal morning brief assistant. Write a concise, friendly 3–4 sentence morning narrative for a Cisco Solutions Architect in Murphy, TX who also actively trades stocks and options.
 
 Weather today: {weather.get('summary', 'unknown')}
 Market snapshot: {wolf_top or 'no market data yet'}
 Congressional trading: {capitol_top or 'no trade data yet'}
 AI news: {ai_top or 'no news yet'}
-
+{prior}
 Write a short, confident paragraph summarizing these highlights. Be specific. No bullet points. /no_think"""
 
     try:
@@ -190,6 +201,13 @@ async def morning_brief_job():
             }
         }
         save_agent_data("morning_brief", payload)
+
+        # Remember today's narrative so tomorrow's brief can avoid repeating it
+        try:
+            await memory.remember("morning_brief", narrative, kind="brief",
+                                  meta={"generated_at": now})
+        except Exception as e:
+            log.warning(f"memory save failed: {e}")
 
         # Send email
         recipient = get_config("recipient", "")

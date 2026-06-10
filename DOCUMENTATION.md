@@ -281,6 +281,7 @@ SQLite (`orchestrator.db`) via SQLAlchemy (`backend/database.py`):
 | `agent_state` | Restart counts, last run, last error per agent |
 | `config` | Runtime config overrides (schedules, recipient, key_people, watchlist, aegis_brand) |
 | `system_logs` | General log sink |
+| `memories` | Long-term agent memory: text + local embedding vector for semantic recall |
 
 ---
 
@@ -301,6 +302,33 @@ SQLite (`orchestrator.db`) via SQLAlchemy (`backend/database.py`):
 | POST | `/api/aegis/approve` · `/api/aegis/dismiss` | Moderation decisions |
 | POST | `/api/demo/spike` · `/api/demo/crash` | Demo alarm / crash-recovery |
 | POST | `/api/test-llm` | Ad-hoc LLM call |
+| GET | `/api/agent/{name}/memories` | Recent long-term memories for an agent |
+| POST | `/api/agent/{name}/memories/recall` | Semantic search over an agent's memories |
+| GET | `/api/mcp` | MCP availability + registered servers |
+| GET | `/api/mcp/servers/{name}/tools` · `/ping` | List a server's tools / reachability probe |
+| POST/DELETE | `/api/mcp/servers[/{name}]` | Register / remove an MCP server |
+| POST | `/api/mcp/call` | Call a tool on a registered MCP server |
+
+### Agent memory (`backend/memory.py`)
+
+Agents store what they reported (`remember`) and read it back before the next
+run (`recent` / `recall` / `seen_before`), so output can lead with *what
+changed* instead of restating state. Embeddings come from a local Ollama model
+(`EMBED_MODEL`, default `nomic-embed-text`) — fully local, and every operation
+degrades gracefully to recency-based recall if the embed model is missing.
+Wired into Wallstreet Wolf (commentary references the previous brief) and
+Morning Brief (avoids repeating yesterday's narrative). Capped at
+`MEMORY_MAX_PER_AGENT` rows (default 500), oldest pruned first.
+
+### MCP client (`backend/mcp_client.py`)
+
+Agents and the API can call tools on any [MCP](https://modelcontextprotocol.io)
+server (Gmail, GitHub, market data, 10k+ community servers) through one
+protocol instead of hand-rolled integrations. Servers are registered in the
+`config` table under `mcp_servers` and run as local stdio subprocesses — data
+never leaves the machine. Connections are opened per call so a wedged server
+can't poison shared state; the `mcp` package is optional and its absence just
+disables the feature.
 
 ---
 
@@ -312,6 +340,8 @@ Environment variables (`.env`, see `.env.example`) — **values are never stored
 |-----|---------|-------|
 | `LLM_MODEL` | all | default `qwen3:8b` |
 | `OLLAMA_BASE_URL` | all | default `http://localhost:11434` |
+| `EMBED_MODEL` | memory | local embedding model, default `nomic-embed-text` |
+| `MEMORY_MAX_PER_AGENT` | memory | memory rows kept per agent, default `500` |
 | `DAILY_DIGEST_EMAIL` | all | digest recipient |
 | `SMTP_*` / `SMTP_APP_PASSWORD` | email | SMTP credentials |
 | `YOUTUBE_API_KEY` | AI-Times | YouTube Data API |
