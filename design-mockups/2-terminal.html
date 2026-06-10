@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lufi — Trading Terminal (Direction 2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0c10; --panel:#11141b; --panelAlt:#161a23; --line:#232936;
+    --ink:#e6e9f0; --ink2:#9aa3b5; --ink3:#6b7384; --ink4:#454c5c;
+    --green:#22c55e; --red:#ef4444; --amber:#fbbf24; --violet:#a78bfa; --blue:#60a5fa; --teal:#2dd4bf;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;background:var(--bg);color:var(--ink);font-size:13px}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* ── Ticker tape ───────────────────────────────────────── */
+  .ticker{background:#000;border-bottom:1px solid var(--line);padding:7px 0;overflow:hidden;white-space:nowrap}
+  .ticker-inner{display:inline-flex;gap:28px;font-family:'JetBrains Mono',monospace;font-size:11.5px;padding-left:20px;animation:scroll 30s linear infinite}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .tk-up{color:var(--green)} .tk-dn{color:var(--red)}
+
+  /* ── Top bar ───────────────────────────────────────────── */
+  .topbar{display:flex;align-items:center;gap:18px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .topbar .brand{font-weight:800;font-size:15px;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+  .topbar .brand .mark{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,var(--violet),#7c5cf6);display:grid;place-items:center;font-size:13px;color:#fff}
+  .tabs{display:flex;gap:4px;margin-left:10px}
+  .tab{font-size:11.5px;font-weight:700;color:var(--ink3);padding:6px 12px;border-radius:6px;cursor:pointer;letter-spacing:.3px}
+  .tab.active{color:var(--ink);background:var(--panelAlt);border:1px solid var(--line)}
+  .cmdk{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3);background:var(--panelAlt);border:1px solid var(--line);padding:6px 12px;border-radius:6px}
+  .clock{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--green)}
+
+  /* ── Grid layout ───────────────────────────────────────── */
+  .grid{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr;grid-template-rows:auto auto auto;gap:1px;background:var(--line);padding:1px}
+  .panel{background:var(--panel);padding:14px}
+  .panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .panel-h .t{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2)}
+  .panel-h .badge{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;background:var(--panelAlt);color:var(--ink3)}
+
+  .big-stat{font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;letter-spacing:-1px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border:none}
+  .sym{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px}
+  .name{color:var(--ink3);font-size:10.5px}
+  .chg-up{color:var(--green);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px}
+  .chg-dn{color:var(--red);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px}
+
+  .span2{grid-column:span 2}
+  .span4{grid-column:span 4}
+  .span1-5{grid-column:span 1}
+
+  .bias-track{height:6px;border-radius:6px;background:linear-gradient(90deg,var(--red),var(--ink4),var(--green));position:relative;margin:10px 0 4px}
+  .bias-track .dot{position:absolute;top:-3px;width:12px;height:12px;border-radius:50%;background:#000;border:2px solid var(--green)}
+
+  .gauge-row{display:flex;gap:14px}
+  .gauge{flex:1;text-align:center}
+  .gauge .ring{width:56px;height:56px;border-radius:50%;border:5px solid var(--panelAlt);border-top-color:var(--teal);margin:0 auto 6px;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700}
+  .gauge .lbl{font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase}
+
+  .log-line{font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 0;color:var(--ink2);border-bottom:1px solid var(--line)}
+  .log-line:last-child{border:none}
+  .log-line .t{color:var(--ink4);margin-right:8px}
+
+  .footer-note{padding:14px 18px;font-size:11px;color:var(--ink4);text-align:center;background:var(--panel);border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+  <div class="ticker"><div class="ticker-inner">
+    <span class="tk-up">/ES 5,432.25 +0.42%</span>
+    <span class="tk-dn">/NQ 19,210.50 -0.18%</span>
+    <span class="tk-up">NVDA 138.20 +4.20%</span>
+    <span class="tk-up">AVGO 1,820.40 +3.10%</span>
+    <span class="tk-dn">INTC 21.85 -2.30%</span>
+    <span class="tk-up">VIX 14.20 -0.80</span>
+    <span class="tk-up">BTC-USD 71,240 +1.90%</span>
+    <span class="tk-up">/ES 5,432.25 +0.42%</span>
+    <span class="tk-dn">/NQ 19,210.50 -0.18%</span>
+    <span class="tk-up">NVDA 138.20 +4.20%</span>
+    <span class="tk-up">AVGO 1,820.40 +3.10%</span>
+    <span class="tk-dn">INTC 21.85 -2.30%</span>
+    <span class="tk-up">VIX 14.20 -0.80</span>
+    <span class="tk-up">BTC-USD 71,240 +1.90%</span>
+  </div></div>
+
+  <div class="topbar">
+    <div class="brand"><div class="mark">◎</div>Lufi Terminal</div>
+    <div class="tabs">
+      <div class="tab active">OVERVIEW</div>
+      <div class="tab">COMPASS</div>
+      <div class="tab">WOLF</div>
+      <div class="tab">OPTIONS</div>
+      <div class="tab">CONGRESS</div>
+      <div class="tab">AGENTS</div>
+    </div>
+    <div class="clock mono">PRE-MARKET · 06:42 ET</div>
+    <div class="cmdk">⌘K Run / Search / Jump</div>
+  </div>
+
+  <div class="grid">
+    <!-- Composite bias -->
+    <div class="panel span2">
+      <div class="panel-h"><span class="t">Composite Bias</span><span class="badge">QWEN3 READ</span></div>
+      <div class="big-stat" style="color:var(--green)">+18 BULLISH</div>
+      <div class="bias-track"><div class="dot" style="left:59%"></div></div>
+      <div style="font-size:11.5px;color:var(--ink2);line-height:1.6;margin-top:8px">
+        /ES holding above pivot 5,418 with tech and comms leading. VIX at 14.2 (Low) argues for normal sizing.
+        Watch /NQ R1 19,260 for continuation.
+      </div>
+    </div>
+
+    <!-- VIX + system -->
+    <div class="panel span2">
+      <div class="panel-h"><span class="t">System &amp; Volatility</span><span class="badge mono">VIX 14.2 LOW</span></div>
+      <div class="gauge-row">
+        <div class="gauge"><div class="ring" style="border-top-color:var(--green)">34%</div><div class="lbl">CPU</div></div>
+        <div class="gauge"><div class="ring" style="border-top-color:var(--blue)">58%</div><div class="lbl">RAM</div></div>
+        <div class="gauge"><div class="ring" style="border-top-color:var(--violet)">41%</div><div class="lbl">GPU</div></div>
+        <div class="gauge"><div class="ring" style="border-top-color:var(--amber)">22%</div><div class="lbl">DISK</div></div>
+      </div>
+    </div>
+
+    <!-- Sector bias -->
+    <div class="panel">
+      <div class="panel-h"><span class="t">Sector Bias</span></div>
+      <div class="row"><span class="name">Technology</span><span class="chg-up">+34</span></div>
+      <div class="row"><span class="name">Comms</span><span class="chg-up">+22</span></div>
+      <div class="row"><span class="name">Energy</span><span class="chg-dn">-12</span></div>
+      <div class="row"><span class="name">Financials</span><span class="chg-up">+8</span></div>
+      <div class="row"><span class="name">Utilities</span><span class="chg-dn">-18</span></div>
+    </div>
+
+    <!-- Wolf movers -->
+    <div class="panel">
+      <div class="panel-h"><span class="t">Wolf — Top Movers</span></div>
+      <div class="row"><span class="sym">NVDA</span><span class="chg-up">+4.20%</span></div>
+      <div class="row"><span class="sym">AVGO</span><span class="chg-up">+3.10%</span></div>
+      <div class="row"><span class="sym">AMD</span><span class="chg-up">+2.40%</span></div>
+      <div class="row"><span class="sym">INTC</span><span class="chg-dn">-2.30%</span></div>
+      <div class="row"><span class="sym">CSCO</span><span class="chg-dn">-1.10%</span></div>
+    </div>
+
+    <!-- Options flow -->
+    <div class="panel">
+      <div class="panel-h"><span class="t">Options Flow</span><span class="badge">UNUSUAL</span></div>
+      <div class="row"><span class="sym">TSLA</span><span class="chg-up">CALL · IV 82%ile</span></div>
+      <div class="row"><span class="sym">COIN</span><span class="chg-up">CALL · IV 76%ile</span></div>
+      <div class="row"><span class="sym">PLTR</span><span class="chg-dn">PUT · IV 71%ile</span></div>
+    </div>
+
+    <!-- Earnings -->
+    <div class="panel">
+      <div class="panel-h"><span class="t">Earnings This Week</span></div>
+      <div class="row"><span class="sym">AAPL</span><span class="name mono">in 2d · ±4.5%</span></div>
+      <div class="row"><span class="sym">AMD</span><span class="name mono">in 4d · ±6.1%</span></div>
+      <div class="row"><span class="sym">AVGO</span><span class="name mono">in 6d · ±5.8%</span></div>
+    </div>
+
+    <!-- Congress -->
+    <div class="panel">
+      <div class="panel-h"><span class="t">Capitol Tracker</span><span class="badge mono">net +3</span></div>
+      <div class="row"><span class="name">Pelosi · NVDA</span><span class="chg-up">BUY</span></div>
+      <div class="row"><span class="name">Tuberville · TSLA</span><span class="chg-up">BUY</span></div>
+      <div class="row"><span class="name">McClain · AAPL</span><span class="chg-dn">SELL</span></div>
+    </div>
+
+    <!-- Agent fleet -->
+    <div class="panel span2">
+      <div class="panel-h"><span class="t">Agent Fleet</span><span class="badge mono">12 ONLINE</span></div>
+      <div class="row"><span class="name">▶ AI-Times</span><span class="chg-up">RUNNING</span></div>
+      <div class="row"><span class="name">$ Wallstreet Wolf</span><span class="name mono">idle · next 2h</span></div>
+      <div class="row"><span class="name">◎ Compass</span><span class="name mono">idle · next 60m</span></div>
+      <div class="row"><span class="name">🐺 Alpha Wolf</span><span class="name mono">idle · daily 08:30</span></div>
+    </div>
+
+    <!-- Event log -->
+    <div class="panel span2">
+      <div class="panel-h"><span class="t">Event Log</span></div>
+      <div class="log-line"><span class="t">06:41</span>🏛 Pelosi disclosed a NVDA purchase</div>
+      <div class="log-line"><span class="t">06:38</span>⚡ Unusual call flow detected on TSLA (IV 82%ile)</div>
+      <div class="log-line"><span class="t">06:30</span>◎ Compass composite +18 (Bullish), VIX 14.2 (Low)</div>
+      <div class="log-line"><span class="t">06:15</span>▶ AI-Times run completed — 8 videos curated</div>
+    </div>
+  </div>
+
+  <div class="footer-note">Direction 2 — Trading terminal: dense multi-panel grid, dark-first, ticker tape, command palette, everything visible at once.</div>
+</body>
+</html>

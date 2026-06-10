@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 
-from database import SessionLocal, AgentData
+from database import SessionLocal, AgentData, get_config, set_config
 from llm_client import generate_json
 from orchestrator import orchestrator
 from email_utils import send_html_email
@@ -15,6 +15,54 @@ DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL")
 # Cap the (slow) local-LLM curation. If Qwen3 doesn't return in time we fall back
 # to YouTube's own view-count ranking so a run always finishes promptly.
 CURATE_TIMEOUT = float(os.getenv("AI_TIMES_CURATE_TIMEOUT", "60"))
+
+# Verified AI labs / big-tech channels — pulled in alongside the keyword search so
+# major announcements from the companies actually driving AI news always make the
+# candidate pool, not just whatever ranks highest for a generic query.
+TRUSTED_NEWS_CHANNELS = [
+    ("@GoogleDeepMind", "Google DeepMind"),
+    ("@GoogleForDevelopers", "Google for Developers"),
+    ("@AIatMeta", "Meta AI"),
+    ("@MicrosoftResearch", "Microsoft Research"),
+    ("@OpenAI", "OpenAI"),
+    ("@nvidia", "NVIDIA"),
+    ("@Cisco", "Cisco"),
+    ("@AristaNetworksInc", "Arista Networks"),
+]
+
+# Top long-form AI commentators / interview shows — used to fill the
+# "Personality / Interviews" bucket with recognized creators.
+TRUSTED_PERSONALITY_CHANNELS = [
+    ("@lexfridman", "Lex Fridman"),
+    ("@TwoMinutePapers", "Two Minute Papers"),
+    ("@YannicKilcher", "Yannic Kilcher"),
+    ("@aiexplained-official", "AI Explained"),
+    ("@mreflow", "Matt Wolfe"),
+]
+
+# Scripts whose presence (above a small share of letters) marks a title as
+# non-English even when YouTube's relevanceLanguage hint lets it through.
+_NON_LATIN_RE = re.compile(
+    r"[؀-ۿݐ-ݿ"   # Arabic
+    r"ऀ-ॿ"                  # Devanagari
+    r"぀-ヿ㐀-鿿"     # Japanese / CJK
+    r"가-힯"                  # Hangul
+    r"Ѐ-ӿ"                  # Cyrillic
+    r"฀-๿]"                 # Thai
+)
+
+
+def _is_english(title: str, default_audio_lang: str = None, default_lang: str = None) -> bool:
+    """Best-effort English filter. Trusts YouTube's per-video language metadata
+    when present; otherwise falls back to a script-based heuristic on the title."""
+    for lang in (default_audio_lang, default_lang):
+        if lang:
+            return lang.lower().startswith("en")
+    letters = [c for c in (title or "") if c.isalpha()]
+    if not letters:
+        return True
+    non_latin = sum(1 for c in letters if _NON_LATIN_RE.match(c))
+    return (non_latin / len(letters)) < 0.3
 
 
 def _iso_duration(s: str) -> str:
@@ -37,45 +85,142 @@ def _human_views(n) -> str:
     return str(n)
 
 
-def _fetch_candidates_sync(query: str, n: int = 12):
+def _video_from_item(it: dict, trusted: bool = False) -> dict:
+    sn, cd, st = it.get("snippet", {}), it.get("contentDetails", {}), it.get("statistics", {})
+    return {
+        "title": sn.get("title", ""),
+        "channel": sn.get("channelTitle", ""),
+        "date": sn.get("publishedAt", ""),
+        "thumbnail": sn.get("thumbnails", {}).get("high", {}).get("url", ""),
+        "url": f"https://www.youtube.com/watch?v={it['id']}",
+        "duration": _iso_duration(cd.get("duration", "")),
+        "views": _human_views(st.get("viewCount")),
+        "trusted": trusted,
+        "_lang_audio": sn.get("defaultAudioLanguage"),
+        "_lang_default": sn.get("defaultLanguage"),
+        "_title_raw": sn.get("title", ""),
+    }
+
+
+def _strip_internal(v: dict) -> dict:
+    return {k: val for k, val in v.items() if not k.startswith("_")}
+
+
+def _fetch_candidates_sync(query: str, n: int = 12, durations=("medium",)):
     """Synchronous YouTube Data API fetch (googleapiclient is sync) — called via
     asyncio.to_thread so the event loop stays free and WebSocket status updates
-    keep flowing while the request is in flight."""
+    keep flowing while the request is in flight. Searches once per entry in
+    `durations` (e.g. medium clips + long-form interviews) and merges results."""
     if not YOUTUBE_API_KEY:
         print("[AI-Times] Missing YOUTUBE_API_KEY")
         return []
     try:
         youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
         published_after = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
-        search = youtube.search().list(
-            part="snippet", q=query, type="video", order="viewCount", videoDuration="medium",
-            maxResults=n, publishedAfter=published_after, relevanceLanguage="en", regionCode="US",
-        ).execute()
-        ids = [it["id"]["videoId"] for it in search.get("items", []) if it.get("id", {}).get("videoId")]
-        if not ids:
-            return []
-        details = youtube.videos().list(part="contentDetails,statistics,snippet", id=",".join(ids)).execute()
-        vids = []
-        for it in details.get("items", []):
-            sn, cd, st = it.get("snippet", {}), it.get("contentDetails", {}), it.get("statistics", {})
-            vids.append({
-                "title": sn.get("title", ""),
-                "channel": sn.get("channelTitle", ""),
-                "date": sn.get("publishedAt", ""),
-                "thumbnail": sn.get("thumbnails", {}).get("high", {}).get("url", ""),
-                "url": f"https://www.youtube.com/watch?v={it['id']}",
-                "duration": _iso_duration(cd.get("duration", "")),
-                "views": _human_views(st.get("viewCount")),
-            })
+        vids, seen = [], set()
+        for duration in durations:
+            search = youtube.search().list(
+                part="snippet", q=query, type="video", order="viewCount", videoDuration=duration,
+                maxResults=n, publishedAfter=published_after, relevanceLanguage="en", regionCode="US",
+            ).execute()
+            ids = [it["id"]["videoId"] for it in search.get("items", []) if it.get("id", {}).get("videoId")]
+            ids = [i for i in ids if i not in seen]
+            if not ids:
+                continue
+            details = youtube.videos().list(part="contentDetails,statistics,snippet", id=",".join(ids)).execute()
+            for it in details.get("items", []):
+                v = _video_from_item(it)
+                if not _is_english(v["_title_raw"], v["_lang_audio"], v["_lang_default"]):
+                    continue
+                vids.append(v)
+                seen.add(it["id"])
         return vids
     except Exception as e:
         print(f"[AI-Times] Error fetching candidates: {e}")
         return []
 
 
-async def fetch_candidates(query: str, n: int = 12):
-    """Fetch a candidate pool with real duration + view counts (US / English, last 7 days)."""
-    return await asyncio.to_thread(_fetch_candidates_sync, query, n)
+def _resolve_channel_ids_sync(handles: list[str]) -> dict[str, str]:
+    """Resolve @handles -> channelId, cached for a week so a daily run doesn't
+    burn extra quota re-resolving the same trusted channels."""
+    cache = get_config("ai_times_channel_ids", {}) or {}
+    cached_at = cache.get("_resolved_at")
+    if cached_at:
+        try:
+            if datetime.utcnow() - datetime.fromisoformat(cached_at) < timedelta(days=7):
+                return {h: cid for h, cid in cache.items() if h in handles}
+        except ValueError:
+            pass
+
+    if not YOUTUBE_API_KEY:
+        return {}
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    resolved = {}
+    for handle in handles:
+        try:
+            r = youtube.channels().list(part="id", forHandle=handle.lstrip("@")).execute()
+            items = r.get("items", [])
+            if items:
+                resolved[handle] = items[0]["id"]
+        except Exception as e:
+            print(f"[AI-Times] Could not resolve channel {handle}: {e}")
+    if resolved:
+        resolved["_resolved_at"] = datetime.utcnow().isoformat()
+        set_config("ai_times_channel_ids", resolved)
+    return {h: cid for h, cid in resolved.items() if h != "_resolved_at"}
+
+
+def _fetch_trusted_channel_videos_sync(channel_map: dict[str, str], names: dict[str, str],
+                                       days: int = 7, per_channel: int = 2) -> list:
+    """Recent uploads from a curated allow-list of verified AI-lab / big-tech /
+    top-creator channels — marked `trusted` so curation can prioritize them."""
+    if not YOUTUBE_API_KEY or not channel_map:
+        return []
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    published_after = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+    vids = []
+    for handle, channel_id in channel_map.items():
+        try:
+            search = youtube.search().list(
+                part="snippet", channelId=channel_id, type="video", order="date",
+                maxResults=per_channel, publishedAfter=published_after,
+            ).execute()
+            ids = [it["id"]["videoId"] for it in search.get("items", []) if it.get("id", {}).get("videoId")]
+            if not ids:
+                continue
+            details = youtube.videos().list(part="contentDetails,statistics,snippet", id=",".join(ids)).execute()
+            for it in details.get("items", []):
+                v = _video_from_item(it, trusted=True)
+                if not _is_english(v["_title_raw"], v["_lang_audio"], v["_lang_default"]):
+                    continue
+                vids.append(v)
+        except Exception as e:
+            print(f"[AI-Times] Trusted channel fetch failed for {names.get(handle, handle)}: {e}")
+    return vids
+
+
+async def fetch_candidates(query: str, n: int = 12, durations=("medium",), trusted_channels=None):
+    """Fetch a candidate pool: keyword-search results plus recent uploads from a
+    curated allow-list of trusted channels, English-only, US, last 7 days."""
+    keyword_vids, trusted_vids = await asyncio.gather(
+        asyncio.to_thread(_fetch_candidates_sync, query, n, durations),
+        _fetch_trusted_pool(trusted_channels or []),
+    )
+    seen, merged = set(), []
+    for v in trusted_vids + keyword_vids:   # trusted sources first
+        if v["url"] not in seen:
+            merged.append(_strip_internal(v))
+            seen.add(v["url"])
+    return merged
+
+
+async def _fetch_trusted_pool(trusted_channels: list) -> list:
+    if not trusted_channels:
+        return []
+    handles = [h for h, _ in trusted_channels]
+    names = dict(trusted_channels)
+    channel_map = await asyncio.to_thread(_resolve_channel_ids_sync, handles)
+    return await asyncio.to_thread(_fetch_trusted_channel_videos_sync, channel_map, names)
 
 
 async def curate(news_cand, people_cand):
@@ -84,11 +229,16 @@ async def curate(news_cand, people_cand):
     returns only the chosen indices (no per-video blurbs), which keeps generation short.
     """
     def fmt(lst):
-        return "\n".join(f"[{i}] {v['title']} — {v['channel']}" for i, v in enumerate(lst)) or "(none)"
+        return "\n".join(
+            f"[{i}] {v['title']} — {v['channel']}{' (official)' if v.get('trusted') else ''}"
+            for i, v in enumerate(lst)
+        ) or "(none)"
 
     prompt = (
         "You are the editor of a US English AI-news video digest. From each candidate list, choose the 5 "
-        "MOST newsworthy videos, avoiding near-duplicate topics. Return ONLY compact JSON of the form: "
+        "MOST newsworthy videos, avoiding near-duplicate topics. Videos marked '(official)' are from "
+        "verified AI-lab / big-tech / top-creator channels — prefer these when they're relevant, especially "
+        "for major product or research announcements. Return ONLY compact JSON of the form: "
         '{"intro":"one engaging sentence","news":[<index>,<index>,<index>,<index>,<index>],'
         '"personality":[<index>,<index>,<index>,<index>,<index>]}. '
         "Each array holds exactly 5 candidate indices. Do not add any other keys or text.\n\n"
@@ -190,10 +340,15 @@ async def ai_times_job():
     orchestrator.update_agent_status("ai_times", "running")
     try:
         # 1) Fetch both candidate pools concurrently (was sequential — ~2x faster).
+        # News pool = keyword search (medium-length clips) + recent uploads from
+        # verified AI-lab/big-tech channels. Personality pool = keyword search
+        # (medium + long-form) + recent uploads from top AI commentators —
+        # all English-only (last 7 days, US region).
         orchestrator.set_progress("ai_times", "Fetching latest AI videos from YouTube…")
         news_cand, people_cand = await asyncio.gather(
-            fetch_candidates("AI news", 8),
-            fetch_candidates("AI personality interview", 8),
+            fetch_candidates("AI news", 8, durations=("medium",), trusted_channels=TRUSTED_NEWS_CHANNELS),
+            fetch_candidates("AI personality interview", 8, durations=("medium", "long"),
+                            trusted_channels=TRUSTED_PERSONALITY_CHANNELS),
         )
 
         # 2) Curate with the local LLM (the slow step — serialized Qwen3 inference).

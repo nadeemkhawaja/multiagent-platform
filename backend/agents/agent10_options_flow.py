@@ -33,6 +33,19 @@ def _safe_float(val, default=0.0) -> float:
     except Exception:
         return default
 
+def _realized_vol(hist) -> float:
+    """Annualized realized volatility from ~2 months of daily close-to-close returns."""
+    try:
+        closes = hist["Close"].dropna()
+        if len(closes) < 5:
+            return 0.0
+        returns = closes.pct_change().dropna()
+        if returns.empty:
+            return 0.0
+        return float(returns.std() * math.sqrt(252))
+    except Exception:
+        return 0.0
+
 async def _analyze_ticker(ticker: str) -> dict | None:
     """Run options analysis for one ticker using yfinance."""
     try:
@@ -94,13 +107,16 @@ async def _analyze_ticker(ticker: str) -> dict | None:
             pc_ratio = put_vol / call_vol if call_vol > 0 else 0
             avg_iv   = (call_iv + put_iv) / 2 if (call_iv + put_iv) > 0 else 0
 
-            # Simple IV percentile approximation: compare vs historical volatility
-            hist_vol_raw = info.get("beta", None)  # proxy: not ideal, but available
-            # Better: compare avg_iv to 52w range as rough IV rank
-            week52_hi = _safe_float(info.get("fiftyTwoWeekHigh", 0))
-            week52_lo = _safe_float(info.get("fiftyTwoWeekLow",  spot))
-            hv_estimate = (week52_hi - week52_lo) / max(week52_lo, 1) * 0.4  # rough annualized
-            iv_pct = min(99, max(1, int((avg_iv / max(hv_estimate, 0.01)) * 50)))
+            # IV rank: compare current avg IV to realized (historical) volatility.
+            # avg_iv == realized_vol -> ~50%ile; richer/cheaper IV shifts the rank up/down.
+            hist = t.history(period="2mo")
+            realized_vol = _realized_vol(hist)
+            if realized_vol <= 0:
+                # Fallback when history is unavailable: rough 52w-range based estimate.
+                week52_hi = _safe_float(info.get("fiftyTwoWeekHigh", 0))
+                week52_lo = _safe_float(info.get("fiftyTwoWeekLow",  spot))
+                realized_vol = (week52_hi - week52_lo) / max(week52_lo, 1) * 0.4
+            iv_pct = min(99, max(1, int((avg_iv / max(realized_vol, 0.01)) * 50)))
 
             signals = call_signals + put_signals
             signals.sort(key=lambda x: x["premium_k"], reverse=True)

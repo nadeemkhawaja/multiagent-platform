@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lufi — SaaS Dashboard (Direction 3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f5f6fb; --card:#ffffff; --sidebar:#16181d; --sidebarAlt:#22252e;
+    --line:#eceef3; --ink:#16181d; --ink2:#5b6472; --ink3:#9aa1ad; --ink4:#c6cad3;
+    --brand:#7c5cf6; --brandSoft:#efeafe; --green:#16a34a; --greenSoft:#eafaf0;
+    --red:#e5484d; --redSoft:#fdeced; --amber:#f59e0b; --amberSoft:#fef5e7; --blue:#2f6feb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;background:var(--bg);color:var(--ink)}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+
+  /* ── Sidebar (dark, SaaS-style) ───────────────────────── */
+  .sidebar{background:var(--sidebar);color:#fff;padding:24px 18px;display:flex;flex-direction:column;gap:6px}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 24px}
+  .brand .mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,var(--brand),#a78bfa);display:grid;place-items:center;font-weight:800;font-size:17px}
+  .brand .name{font-weight:800;font-size:18px;letter-spacing:-.4px}
+  .brand .plan{font-size:10px;color:#9aa1ad;font-weight:700;letter-spacing:.5px;background:#2a2e38;padding:2px 7px;border-radius:5px;display:inline-block;margin-top:2px}
+
+  .org-switch{display:flex;align-items:center;gap:10px;background:var(--sidebarAlt);border-radius:12px;padding:10px 12px;margin-bottom:18px;cursor:pointer}
+  .org-switch .ic{width:28px;height:28px;border-radius:8px;background:var(--brand);display:grid;place-items:center;font-size:13px;font-weight:800}
+  .org-switch .meta .n{font-size:12.5px;font-weight:700}
+  .org-switch .meta .d{font-size:10px;color:#9aa1ad}
+  .org-switch .chev{margin-left:auto;color:#9aa1ad;font-size:11px}
+
+  .navgroup{font-size:10px;font-weight:700;color:#6b7384;text-transform:uppercase;letter-spacing:.6px;padding:14px 10px 6px}
+  .navitem{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:600;color:#c6cad3;cursor:pointer}
+  .navitem:hover{background:var(--sidebarAlt)}
+  .navitem.active{background:var(--brand);color:#fff}
+  .navitem .glyph{width:20px;text-align:center;font-size:14px}
+  .navitem .badge{margin-left:auto;font-size:10px;font-weight:800;background:#2a2e38;color:#fff;padding:2px 7px;border-radius:6px}
+
+  .profile{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--sidebarAlt)}
+  .profile .av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--amber),#fbbf24);display:grid;place-items:center;font-weight:800;font-size:13px}
+  .profile .meta .n{font-size:12.5px;font-weight:700}
+  .profile .meta .d{font-size:10px;color:#9aa1ad}
+
+  /* ── Main ──────────────────────────────────────────────── */
+  .main{padding:0}
+  .topbar{display:flex;align-items:center;gap:16px;padding:18px 32px;background:#fff;border-bottom:1px solid var(--line)}
+  .search{flex:1;max-width:420px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-size:12.5px;color:var(--ink3)}
+  .icbtn{width:36px;height:36px;border-radius:10px;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center;font-size:14px;color:var(--ink2);position:relative}
+  .icbtn .ping{position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--red)}
+  .cta{margin-left:auto;background:var(--brand);color:#fff;font-weight:700;font-size:12.5px;padding:9px 16px;border-radius:9px;border:none}
+
+  .content{padding:28px 32px}
+  .onboard{background:linear-gradient(135deg,var(--brand),#9b7bf9);border-radius:18px;padding:22px 26px;color:#fff;display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+  .onboard .t{font-size:18px;font-weight:800;letter-spacing:-.3px}
+  .onboard .d{font-size:12.5px;color:#e6deff;margin-top:4px;max-width:480px;line-height:1.5}
+  .onboard .progress{display:flex;gap:6px;margin-top:10px}
+  .onboard .progress span{width:34px;height:5px;border-radius:5px;background:rgba(255,255,255,.3)}
+  .onboard .progress span.done{background:#fff}
+  .onboard button{background:#fff;color:var(--brand);font-weight:800;border:none;padding:11px 20px;border-radius:10px;font-size:12.5px}
+
+  h2.section{font-size:14px;font-weight:800;letter-spacing:-.2px;margin:0 0 14px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+  .card .top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card .icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:15px;color:#fff}
+  .card .lbl{font-size:11px;color:var(--ink3);font-weight:700;text-transform:uppercase}
+  .card .val{font-size:24px;font-weight:800;letter-spacing:-.5px}
+  .card .delta{font-size:11.5px;font-weight:700;margin-top:4px}
+
+  .grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+  .panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .panel-h h3{font-size:14px;font-weight:800;margin:0}
+  .panel-h .link{font-size:11.5px;color:var(--brand);font-weight:700;cursor:pointer}
+
+  .agent-card{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:12px;margin-bottom:10px}
+  .agent-card:last-child{margin:0}
+  .agent-card .icon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:#fff;font-size:15px;flex-shrink:0}
+  .agent-card .meta .n{font-weight:700;font-size:13px}
+  .agent-card .meta .d{font-size:11px;color:var(--ink3)}
+  .badge-status{margin-left:auto;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:20px}
+
+  .activity-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .activity-item:last-child{border:none}
+  .activity-item .dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+  .activity-item .txt{font-size:12.5px;color:var(--ink2);line-height:1.5}
+  .activity-item .ts{font-size:10.5px;color:var(--ink3);margin-top:2px}
+
+  .footer-note{padding:18px 32px;font-size:11px;color:var(--ink3);text-align:center}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="mark">◎</div>
+      <div>
+        <div class="name">Lufi</div>
+        <div class="plan">PRO PLAN</div>
+      </div>
+    </div>
+
+    <div class="org-switch">
+      <div class="ic">N</div>
+      <div class="meta"><div class="n">Nadeem's Workspace</div><div class="d">12 agents · 1 seat</div></div>
+      <div class="chev">▾</div>
+    </div>
+
+    <div class="navgroup">Workspace</div>
+    <div class="navitem active"><span class="glyph">▣</span>Dashboard</div>
+    <div class="navitem"><span class="glyph">◇</span>Orchestrator</div>
+    <div class="navitem"><span class="glyph">📊</span>Reports</div>
+
+    <div class="navgroup">Agents</div>
+    <div class="navitem"><span class="glyph">▶</span>AI-Times</div>
+    <div class="navitem"><span class="glyph">✉</span>Mailman</div>
+    <div class="navitem"><span class="glyph">🐺</span>Alpha Wolf <span class="badge">6</span></div>
+    <div class="navitem"><span class="glyph">⌥</span>GitHub Trending</div>
+
+    <div class="navgroup">Account</div>
+    <div class="navitem"><span class="glyph">⚙</span>Settings</div>
+    <div class="navitem"><span class="glyph">💳</span>Billing</div>
+    <div class="navitem"><span class="glyph">👥</span>Team</div>
+
+    <div class="profile">
+      <div class="av">N</div>
+      <div class="meta"><div class="n">Nadeem Khawaja</div><div class="d">nadeem@lufi.ai</div></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search">🔍 Search agents, runs, tickers…</div>
+      <div class="icbtn">🔔<span class="ping"></span></div>
+      <div class="icbtn">☾</div>
+      <button class="cta">+ New Agent</button>
+    </div>
+
+    <div class="content">
+      <div class="onboard">
+        <div>
+          <div class="t">Welcome back — your fleet ran 128 times today</div>
+          <div class="d">Finish setup to unlock daily email digests and Slack alerts. 3 of 4 steps complete.</div>
+          <div class="progress"><span class="done"></span><span class="done"></span><span class="done"></span><span></span></div>
+        </div>
+        <button>Finish setup</button>
+      </div>
+
+      <h2 class="section">Overview</h2>
+      <div class="grid4">
+        <div class="card">
+          <div class="top"><div class="icon" style="background:var(--brand)">⚙</div><div class="lbl">Active Agents</div></div>
+          <div class="val">12</div>
+          <div class="delta" style="color:var(--green)">All systems nominal</div>
+        </div>
+        <div class="card">
+          <div class="top"><div class="icon" style="background:var(--green)">$</div><div class="lbl">Market Bias</div></div>
+          <div class="val" style="color:var(--green)">+18</div>
+          <div class="delta" style="color:var(--ink3)">Bullish · VIX 14.2 Low</div>
+        </div>
+        <div class="card">
+          <div class="top"><div class="icon" style="background:var(--amber)">⚡</div><div class="lbl">Unusual Flow</div></div>
+          <div class="val">3</div>
+          <div class="delta" style="color:var(--ink3)">tickers flagged today</div>
+        </div>
+        <div class="card">
+          <div class="top"><div class="icon" style="background:var(--blue)">✉</div><div class="lbl">Emails Triaged</div></div>
+          <div class="val">42</div>
+          <div class="delta" style="color:var(--green)">+12 vs yesterday</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-h"><h3>Your agents</h3><span class="link">Manage all →</span></div>
+          <div class="agent-card">
+            <div class="icon" style="background:#e5484d">▶</div>
+            <div class="meta"><div class="n">AI-Times</div><div class="d">AI YouTube digest · daily 08:00</div></div>
+            <div class="badge-status" style="background:var(--greenSoft);color:var(--green)">Running</div>
+          </div>
+          <div class="agent-card">
+            <div class="icon" style="background:#16a34a">$</div>
+            <div class="meta"><div class="n">Wallstreet Wolf</div><div class="d">Market tracker · every 2h</div></div>
+            <div class="badge-status" style="background:var(--amberSoft);color:var(--amber)">Idle</div>
+          </div>
+          <div class="agent-card">
+            <div class="icon" style="background:#f59e0b">◎</div>
+            <div class="meta"><div class="n">Wallstreet Compass</div><div class="d">Bias engine · pre-market brief 07:00</div></div>
+            <div class="badge-status" style="background:var(--amberSoft);color:var(--amber)">Idle</div>
+          </div>
+          <div class="agent-card">
+            <div class="icon" style="background:#7c3aed">🐺</div>
+            <div class="meta"><div class="n">Alpha Wolf</div><div class="d">Master strategist · daily 08:30</div></div>
+            <div class="badge-status" style="background:var(--amberSoft);color:var(--amber)">Idle</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h"><h3>Recent activity</h3><span class="link">View log →</span></div>
+          <div class="activity-item">
+            <div class="dot" style="background:var(--red)"></div>
+            <div><div class="txt">🏛 Pelosi disclosed a <b>NVDA</b> purchase</div><div class="ts">2 min ago</div></div>
+          </div>
+          <div class="activity-item">
+            <div class="dot" style="background:var(--brand)"></div>
+            <div><div class="txt">⚡ Unusual call flow on <b>TSLA</b> (IV 82%ile)</div><div class="ts">6 min ago</div></div>
+          </div>
+          <div class="activity-item">
+            <div class="dot" style="background:var(--green)"></div>
+            <div><div class="txt">◎ Compass: composite +18, VIX 14.2 (Low)</div><div class="ts">12 min ago</div></div>
+          </div>
+          <div class="activity-item">
+            <div class="dot" style="background:var(--blue)"></div>
+            <div><div class="txt">▶ AI-Times curated 8 new videos</div><div class="ts">28 min ago</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">Direction 3 — SaaS dashboard: dark sidebar with org/plan switcher, onboarding banner, widget cards, billing/team nav — broadly sellable beyond finance.</div>
+  </div>
+</div>
+</body>
+</html>

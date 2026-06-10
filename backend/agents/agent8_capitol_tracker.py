@@ -17,6 +17,7 @@ Scheduled: daily 07:00.
 import os
 import json
 import asyncio
+from collections import Counter
 from datetime import datetime, timedelta, date
 from typing import Optional
 
@@ -445,12 +446,16 @@ def _stats(trades: list) -> dict:
     purchases = sum(1 for t in trades if "purchase" in t.get("type", "").lower() or "buy" in t.get("type", "").lower())
     sales = sum(1 for t in trades if "sale" in t.get("type", "").lower() or "sell" in t.get("type", "").lower())
     pols = list(dict.fromkeys(t["politician"] for t in trades))
+    ticker_counts = Counter(t["ticker"] for t in trades if t.get("ticker"))
+    top_tickers = [{"ticker": tk, "count": n} for tk, n in ticker_counts.most_common(5)]
     return {
         "total": len(trades),
         "purchases": purchases,
         "sales": sales,
+        "net_activity": purchases - sales,
         "politicians_found": len(pols),
         "politicians_list": pols[:10],
+        "top_tickers": top_tickers,
     }
 
 
@@ -478,7 +483,8 @@ def build_digest_html(payload: dict) -> str:
     <html><body style='font-family:Arial,sans-serif;background:#f9fafb;color:#111827;padding:24px;max-width:900px;margin:auto'>
       <h2 style='color:#dc2626'>🏛 Capitol Tracker — Congressional Stock Trades</h2>
       <p style='color:#6b7280;font-size:12px'>Tracking: {', '.join(politicians)} · Last {months} months · {fetched[:19]} UTC</p>
-      <p><b>{stats.get('total',0)}</b> trades found — <b style='color:#16a34a'>{stats.get('purchases',0)} purchases</b> · <b style='color:#dc2626'>{stats.get('sales',0)} sales</b> · {stats.get('politicians_found',0)} politicians</p>
+      <p><b>{stats.get('total',0)}</b> trades found — <b style='color:#16a34a'>{stats.get('purchases',0)} purchases</b> · <b style='color:#dc2626'>{stats.get('sales',0)} sales</b> · net {stats.get('net_activity',0):+d} · {stats.get('politicians_found',0)} politicians</p>
+      {f'<p style="color:#6b7280;font-size:12px">Most-traded tickers: ' + ', '.join(f"{tt['ticker']} ({tt['count']})" for tt in stats.get('top_tickers', [])) + '</p>' if stats.get('top_tickers') else ''}
       {f'<p style="background:#fef3c7;padding:12px;border-radius:8px;font-style:italic">{commentary}</p>' if commentary else ''}
       <table style='width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden'>
         <thead><tr style='background:#f3f4f6'>
