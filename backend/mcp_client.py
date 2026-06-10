@@ -5,12 +5,16 @@ Lets agents call tools on any MCP server — Gmail, GitHub, market data, or any
 of the thousands of community servers — through one protocol instead of
 hand-rolled API integrations.
 
-Servers are registered in the config table under "mcp_servers":
+Servers are registered in the config table under "mcp_servers". Two kinds:
 
-    {"gmail": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-gmail"],
-               "env": {}, "enabled": true}}
+    local (stdio subprocess — data never leaves the machine):
+      {"gmail": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-gmail"],
+                 "env": {}, "enabled": true}}
 
-Servers run as local stdio subprocesses, so data never leaves the machine.
+    remote (streamable HTTP — hosted servers like Zapier MCP):
+      {"zapier": {"url": "https://mcp.zapier.com/api/mcp/...",
+                  "headers": {"Authorization": "Bearer ..."}, "enabled": true}}
+
 A connection is opened per call rather than held open: scheduled agents call
 tools at most every few minutes, and per-call sessions mean a crashed or
 wedged server can never poison a shared connection.
@@ -25,6 +29,7 @@ from database import get_config, set_config
 try:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
+    from mcp.client.streamable_http import streamablehttp_client
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
@@ -43,15 +48,17 @@ def get_servers() -> dict:
     return servers if isinstance(servers, dict) else {}
 
 
-def set_server(name: str, command: str, args: list = None, env: dict = None,
-               enabled: bool = True) -> dict:
+def set_server(name: str, command: str = None, args: list = None, env: dict = None,
+               enabled: bool = True, url: str = None, headers: dict = None) -> dict:
+    """Register a local server (command + args) or a remote one (url + headers)."""
+    if not command and not url:
+        raise MCPError("an MCP server needs either a command (local) or a url (remote)")
     servers = get_servers()
-    servers[name] = {
-        "command": command,
-        "args": args or [],
-        "env": env or {},
-        "enabled": bool(enabled),
-    }
+    if url:
+        servers[name] = {"url": url, "headers": headers or {}, "enabled": bool(enabled)}
+    else:
+        servers[name] = {"command": command, "args": args or [],
+                         "env": env or {}, "enabled": bool(enabled)}
     set_config(CONFIG_KEY, servers)
     return servers[name]
 
@@ -80,17 +87,25 @@ async def _with_session(name: str, fn, timeout: float = DEFAULT_TIMEOUT):
     if not MCP_AVAILABLE:
         raise MCPError("mcp package not installed — add 'mcp' to requirements and pip install")
     cfg = _server_params(name)
-    params = StdioServerParameters(
-        command=cfg["command"],
-        args=cfg.get("args") or [],
-        env=cfg.get("env") or None,
-    )
 
-    async def _run():
-        async with stdio_client(params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                return await fn(session)
+    if cfg.get("url"):
+        async def _run():
+            async with streamablehttp_client(cfg["url"], headers=cfg.get("headers") or None) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    return await fn(session)
+    else:
+        params = StdioServerParameters(
+            command=cfg["command"],
+            args=cfg.get("args") or [],
+            env=cfg.get("env") or None,
+        )
+
+        async def _run():
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    return await fn(session)
 
     try:
         return await asyncio.wait_for(_run(), timeout=timeout)

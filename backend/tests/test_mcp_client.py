@@ -73,6 +73,21 @@ def test_set_get_remove_server_roundtrip(db):
     assert mcp_client.remove_server("gmail") is False
 
 
+def test_set_remote_server_with_url(db):
+    mcp_client.set_server("zapier", url="https://mcp.zapier.com/api/mcp/x",
+                          headers={"Authorization": "Bearer secret"})
+    cfg = mcp_client.get_servers()["zapier"]
+    assert cfg["url"] == "https://mcp.zapier.com/api/mcp/x"
+    assert cfg["headers"] == {"Authorization": "Bearer secret"}
+    assert "command" not in cfg
+    assert mcp_client._server_params("zapier") == cfg
+
+
+def test_set_server_requires_command_or_url(db):
+    with pytest.raises(mcp_client.MCPError, match="command .* or a url"):
+        mcp_client.set_server("broken")
+
+
 def test_get_servers_empty_and_malformed_config(db):
     assert mcp_client.get_servers() == {}
     database.set_config(mcp_client.CONFIG_KEY, "not-a-dict")

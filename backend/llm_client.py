@@ -14,16 +14,29 @@ load_dotenv()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 
-# Cloud providers are opt-in: configure a key and route an agent to them via
-# the "agent_models" config ({"agent_id": "anthropic:claude-haiku-4-5-20251001"}).
+# Frontier providers are opt-in: configure a key and route an agent to them via
+# the "agent_models" config ({"agent_id": "anthropic:claude-haiku-4-5"}).
 # Local Ollama stays the default for everything else.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+GROK_API_KEY = os.getenv("XAI_API_KEY", os.getenv("GROK_API_KEY", ""))
+GROK_BASE_URL = os.getenv("GROK_BASE_URL", "https://api.x.ai/v1")
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 
-KNOWN_PROVIDERS = ("ollama", "openai", "anthropic")
+KNOWN_PROVIDERS = ("ollama", "openai", "anthropic", "grok")
+
+# Dropdown suggestions for the Settings UI — any model name works via the API.
+SUGGESTED_MODELS = {
+    "grok": ["grok-4-fast", "grok-3-mini"],
+    "openai": ["gpt-4o-mini", "gpt-4o"],
+    "anthropic": ["claude-haiku-4-5", "claude-sonnet-4-6"],
+}
+
+
+class ConfigError(Exception):
+    """Provider misconfiguration (e.g. missing API key) — not worth retrying."""
 
 
 def parse_model_spec(spec: str):
@@ -55,6 +68,7 @@ def provider_status() -> dict:
         "ollama": {"configured": True, "base_url": OLLAMA_BASE_URL},
         "openai": {"configured": bool(OPENAI_API_KEY), "base_url": OPENAI_BASE_URL},
         "anthropic": {"configured": bool(ANTHROPIC_API_KEY), "base_url": ANTHROPIC_BASE_URL},
+        "grok": {"configured": bool(GROK_API_KEY), "base_url": GROK_BASE_URL},
     }
 
 # Single-permit semaphore: only one agent calls the model at a time → fully
@@ -120,9 +134,11 @@ async def _call_ollama(client, model, system_prompt, prompt, json_mode):
     return content, tokens_in, tokens_out, rate
 
 
-async def _call_openai(client, model, system_prompt, prompt, json_mode):
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not set")
+async def _call_openai_compatible(client, base_url, api_key, key_name,
+                                  model, system_prompt, prompt, json_mode):
+    """Shared caller for OpenAI-API-compatible providers (OpenAI, Grok/xAI)."""
+    if not api_key:
+        raise ConfigError(f"{key_name} not set")
     payload = {
         "model": model,
         "messages": [
@@ -134,9 +150,9 @@ async def _call_openai(client, model, system_prompt, prompt, json_mode):
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     r = await client.post(
-        f"{OPENAI_BASE_URL}/chat/completions",
+        f"{base_url}/chat/completions",
         json=payload,
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        headers={"Authorization": f"Bearer {api_key}"},
         timeout=120.0,
     )
     r.raise_for_status()
@@ -146,9 +162,19 @@ async def _call_openai(client, model, system_prompt, prompt, json_mode):
     return content.strip(), int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), 0
 
 
+async def _call_openai(client, model, system_prompt, prompt, json_mode):
+    return await _call_openai_compatible(client, OPENAI_BASE_URL, OPENAI_API_KEY,
+                                         "OPENAI_API_KEY", model, system_prompt, prompt, json_mode)
+
+
+async def _call_grok(client, model, system_prompt, prompt, json_mode):
+    return await _call_openai_compatible(client, GROK_BASE_URL, GROK_API_KEY,
+                                         "XAI_API_KEY", model, system_prompt, prompt, json_mode)
+
+
 async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
     if not ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY not set")
+        raise ConfigError("ANTHROPIC_API_KEY not set")
     system = system_prompt
     if json_mode:
         system += " Respond with valid JSON only — no prose, no code fences."
@@ -171,7 +197,8 @@ async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
     return content.strip(), int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)), 0
 
 
-_PROVIDER_CALLS = {"ollama": _call_ollama, "openai": _call_openai, "anthropic": _call_anthropic}
+_PROVIDER_CALLS = {"ollama": _call_ollama, "openai": _call_openai,
+                   "anthropic": _call_anthropic, "grok": _call_grok}
 
 
 async def generate_completion(
@@ -227,6 +254,10 @@ async def generate_completion(
                             _CACHE.pop(next(iter(_CACHE)))
                         _CACHE[key] = (time.time(), content)
                     return content
+                except ConfigError as e:
+                    # Misconfiguration won't fix itself — fail fast, no retries.
+                    print(f"LLM provider misconfigured: {e}")
+                    return f"Error: {e}"
                 except Exception as e:
                     last_err = e
                     await asyncio.sleep(0.6 * (attempt + 1))

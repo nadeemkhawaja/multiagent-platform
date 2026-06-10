@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance } from "../theme/ui";
-import { getConfig, saveConfig, getSchedules, setSchedule, getHealth } from "../state/api";
+import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel } from "../state/api";
 
 const inputStyle = () => ({
   width: "100%", marginTop: 6, border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px",
@@ -67,18 +67,71 @@ function ScheduleRow({ agent, info, onSave }) {
   );
 }
 
+const PROVIDER_LABEL = { grok: "Grok (xAI) · free", openai: "OpenAI · paid", anthropic: "Claude (Anthropic) · paid" };
+
+function ModelRow({ agent, name, llm, onSave }) {
+  const col = AGENT_COLOR[agent] || T.violet;
+  const current = llm.agent_models?.[agent] || "";
+  const [saving, setSaving] = useState(false);
+
+  const options = [];
+  for (const [prov, models] of Object.entries(llm.suggested_models || {})) {
+    const configured = llm.providers?.[prov]?.configured;
+    options.push({
+      label: PROVIDER_LABEL[prov] || prov,
+      configured,
+      specs: models.map((m) => `${prov}:${m}`),
+    });
+  }
+  const known = new Set(options.flatMap((g) => g.specs));
+
+  const change = async (e) => {
+    setSaving(true);
+    await onSave(agent, e.target.value);
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr auto", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <span style={{ width: 26, height: 26, borderRadius: 7, background: col + "1a", color: col, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>●</span>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{name}</span>
+      </div>
+      <select value={current} onChange={change} style={{ ...inputStyle(), marginTop: 0 }}>
+        <option value="">Local · {llm.default_model} (default)</option>
+        {!known.has(current) && current && <option value={current}>{current} (custom)</option>}
+        {options.map((g) => (
+          <optgroup key={g.label} label={g.configured ? g.label : `${g.label} — no API key`}>
+            {g.specs.map((spec) => (
+              <option key={spec} value={spec} disabled={!g.configured}>{spec.split(":").slice(1).join(":")}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      <span style={{ fontSize: 11, color: T.ink4, minWidth: 56 }}>{saving ? "Saving…" : current ? "frontier" : "local"}</span>
+    </div>
+  );
+}
+
 export default function Settings({ theme, setTheme, mode, setMode }) {
   const [config, setConfig] = useState(null);
   const [schedules, setSchedules] = useState(null);
   const [health, setHealth] = useState(null);
+  const [llm, setLlm] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
 
   const load = useCallback(async () => {
     setConfig(await getConfig().catch(() => ({})));
     setSchedules(await getSchedules().catch(() => ({})));
     setHealth(await getHealth().catch(() => null));
+    setLlm(await getLLMProviders().catch(() => null));
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const onModelSave = async (agent, model) => {
+    await setAgentModel(agent, model);
+    setLlm(await getLLMProviders().catch(() => llm));
+  };
 
   const saveSettings = async () => {
     const c = await saveConfig(config);
@@ -141,6 +194,31 @@ export default function Settings({ theme, setTheme, mode, setMode }) {
               </Field>
             </div>
           )}
+        </Card>
+
+        {/* AI models */}
+        <Card pad={20}>
+          <SectionTitle sub="Local Qwen by default — route any agent to a frontier model (applies on its next run)">AI models</SectionTitle>
+          {llm ? (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                {Object.entries(llm.providers || {}).map(([prov, st]) => (
+                  <Pill key={prov} c={st.configured ? T.green : T.ink4} bg={st.configured ? T.greenBg : T.line2}>
+                    <Dot c={st.configured ? T.green : T.ink4} />{prov}{st.configured ? "" : " · no key"}
+                  </Pill>
+                ))}
+              </div>
+              {schedules && Object.entries(schedules).map(([agent, info]) => (
+                <ModelRow key={agent} agent={agent} name={info.name} llm={llm} onSave={onModelSave} />
+              ))}
+              <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>
+                Frontier providers need an API key in <span style={{ fontFamily: T.mono }}>.env</span>:
+                <span style={{ fontFamily: T.mono }}> XAI_API_KEY</span> (Grok),
+                <span style={{ fontFamily: T.mono }}> OPENAI_API_KEY</span>,
+                <span style={{ fontFamily: T.mono }}> ANTHROPIC_API_KEY</span> — then restart the backend.
+              </div>
+            </>
+          ) : <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>}
         </Card>
 
         {/* Schedules */}

@@ -22,6 +22,7 @@ def test_parse_model_spec_defaults_to_ollama():
 def test_parse_model_spec_provider_prefixes():
     assert llm_client.parse_model_spec("anthropic:claude-haiku-4-5") == ("anthropic", "claude-haiku-4-5")
     assert llm_client.parse_model_spec("openai:gpt-4o-mini") == ("openai", "gpt-4o-mini")
+    assert llm_client.parse_model_spec("grok:grok-4-fast") == ("grok", "grok-4-fast")
     assert llm_client.parse_model_spec("ollama:llama3:8b") == ("ollama", "llama3:8b")
 
 
@@ -36,8 +37,12 @@ def test_resolve_model_honors_agent_override(monkeypatch):
 
 def test_provider_status_shape():
     st = llm_client.provider_status()
-    assert set(st.keys()) == {"ollama", "openai", "anthropic"}
+    assert set(st.keys()) == {"ollama", "openai", "anthropic", "grok"}
     assert st["ollama"]["configured"] is True
+
+
+def test_suggested_models_cover_frontier_providers():
+    assert set(llm_client.SUGGESTED_MODELS.keys()) == {"grok", "openai", "anthropic"}
 
 
 # ── provider routing (mocked HTTP) ───────────────────────────────────────────
@@ -75,6 +80,22 @@ def test_generate_completion_routes_to_openai(monkeypatch):
     assert "/no_think" not in captured["json"]["messages"][1]["content"]
 
 
+def test_generate_completion_routes_to_grok(monkeypatch):
+    captured = {}
+    _patch_post(monkeypatch, {
+        "choices": [{"message": {"content": "grok says hi"}}],
+        "usage": {"prompt_tokens": 8, "completion_tokens": 2},
+    }, captured)
+    monkeypatch.setattr(llm_client, "GROK_API_KEY", "xai-test")
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("grok", "grok-4-fast"))
+
+    out = asyncio.run(llm_client.generate_completion("hello", use_cache=False))
+    assert out == "grok says hi"
+    assert captured["url"] == "https://api.x.ai/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer xai-test"
+    assert captured["json"]["model"] == "grok-4-fast"
+
+
 def test_generate_completion_routes_to_anthropic_with_json_mode(monkeypatch):
     captured = {}
     _patch_post(monkeypatch, {
@@ -110,14 +131,17 @@ def test_generate_completion_ollama_records_tokens_to_trace(monkeypatch):
     assert metrics["tokens_out"] == 25
 
 
-def test_missing_api_key_returns_error_string(monkeypatch):
+def test_missing_api_key_fails_fast_without_retries(monkeypatch):
     monkeypatch.setattr(llm_client, "ANTHROPIC_API_KEY", "")
     monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-test"))
 
-    async def no_delay(_seconds):
-        return None
-    monkeypatch.setattr(asyncio, "sleep", no_delay)
+    slept = {"n": 0}
+
+    async def count_sleep(_seconds):
+        slept["n"] += 1
+    monkeypatch.setattr(asyncio, "sleep", count_sleep)
 
     out = asyncio.run(llm_client.generate_completion("hello", use_cache=False))
     assert out.startswith("Error:")
     assert "ANTHROPIC_API_KEY" in out
+    assert slept["n"] == 0   # ConfigError short-circuits the retry loop

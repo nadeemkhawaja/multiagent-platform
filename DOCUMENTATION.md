@@ -324,11 +324,13 @@ ALTERs these columns into pre-existing databases.
 
 ### LLM providers (`backend/llm_client.py`)
 
-Local Ollama stays the default. Per-agent overrides route through OpenAI- or
-Anthropic-compatible APIs: set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` and map
-an agent via `POST /api/llm/models` (`{"agent_id": "morning_brief", "model":
-"anthropic:claude-haiku-4-5"}`). Bare model names mean Ollama. Token usage per
-call is recorded onto the agent's open run trace.
+Local Ollama (Qwen3) stays the default. Per-agent overrides route to frontier
+providers — Grok/xAI (`XAI_API_KEY`), OpenAI (`OPENAI_API_KEY`), or Anthropic
+(`ANTHROPIC_API_KEY`) — via Settings → AI models in the dashboard, or
+`POST /api/llm/models` (`{"agent_id": "morning_brief", "model":
+"grok:grok-4-fast"}`). Bare model names mean Ollama. Missing API keys fail
+fast with a clear error; token usage per call is recorded onto the agent's
+open run trace.
 
 ### Run tracing (`backend/tracing.py`)
 
@@ -369,10 +371,11 @@ Morning Brief (avoids repeating yesterday's narrative). Capped at
 Agents and the API can call tools on any [MCP](https://modelcontextprotocol.io)
 server (Gmail, GitHub, market data, 10k+ community servers) through one
 protocol instead of hand-rolled integrations. Servers are registered in the
-`config` table under `mcp_servers` and run as local stdio subprocesses — data
-never leaves the machine. Connections are opened per call so a wedged server
-can't poison shared state; the `mcp` package is optional and its absence just
-disables the feature.
+`config` table under `mcp_servers` — either local stdio subprocesses
+(`command` + `args`; data never leaves the machine) or remote streamable-HTTP
+servers (`url` + `headers`; e.g. Zapier MCP and other hosted servers).
+Connections are opened per call so a wedged server can't poison shared state;
+the `mcp` package is optional and its absence just disables the feature.
 
 ---
 
@@ -386,6 +389,9 @@ Environment variables (`.env`, see `.env.example`) — **values are never stored
 | `OLLAMA_BASE_URL` | all | default `http://localhost:11434` |
 | `EMBED_MODEL` | memory | local embedding model, default `nomic-embed-text` |
 | `MEMORY_MAX_PER_AGENT` | memory | memory rows kept per agent, default `500` |
+| `XAI_API_KEY` | llm | enables the Grok provider (`grok:` model specs) |
+| `OPENAI_API_KEY` | llm | enables the OpenAI provider (`openai:` model specs) |
+| `ANTHROPIC_API_KEY` | llm | enables the Anthropic provider (`anthropic:` model specs) |
 | `DAILY_DIGEST_EMAIL` | all | digest recipient |
 | `SMTP_*` / `SMTP_APP_PASSWORD` | email | SMTP credentials |
 | `YOUTUBE_API_KEY` | AI-Times | YouTube Data API |

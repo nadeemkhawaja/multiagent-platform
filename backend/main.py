@@ -11,8 +11,8 @@ import httpx
 
 from database import init_db, SessionLocal, AgentData, AgentRun, get_config, set_config, all_config
 from orchestrator import orchestrator, AGENT_META, AGENT_ORDER, CORE_AGENTS
-from llm_client import (OLLAMA_BASE_URL, LLM_MODEL, get_llm_state,
-                        provider_status, parse_model_spec, KNOWN_PROVIDERS)
+from llm_client import (OLLAMA_BASE_URL, LLM_MODEL, get_llm_state, provider_status,
+                        parse_model_spec, KNOWN_PROVIDERS, SUGGESTED_MODELS)
 from ws import manager
 import approvals
 import memory
@@ -426,6 +426,7 @@ async def llm_providers():
         "default_model": LLM_MODEL,
         "providers": provider_status(),
         "agent_models": get_config("agent_models", {}) or {},
+        "suggested_models": SUGGESTED_MODELS,
     }
 
 
@@ -512,7 +513,11 @@ async def recall_agent_memories(agent_name: str, body: Dict[str, Any]):
 # ─── MCP servers ─────────────────────────────────────────────────────
 def _mask_env(cfg: dict) -> dict:
     out = dict(cfg)
-    out["env"] = sorted((cfg.get("env") or {}).keys())  # never expose secret values
+    # never expose secret values (env vars, auth headers) — keys only
+    if "env" in cfg or "command" in cfg:
+        out["env"] = sorted((cfg.get("env") or {}).keys())
+    if "headers" in cfg or "url" in cfg:
+        out["headers"] = sorted((cfg.get("headers") or {}).keys())
     return out
 
 
@@ -540,15 +545,21 @@ async def mcp_server_ping(name: str):
 
 class MCPServerConfig(BaseModel):
     name: str
-    command: str
+    command: Optional[str] = None       # local stdio server
     args: Optional[list] = None
     env: Optional[Dict[str, str]] = None
+    url: Optional[str] = None           # remote streamable-HTTP server
+    headers: Optional[Dict[str, str]] = None
     enabled: bool = True
 
 
 @app.post("/api/mcp/servers")
 async def mcp_add_server(body: MCPServerConfig):
-    cfg = mcp_client.set_server(body.name, body.command, body.args, body.env, body.enabled)
+    try:
+        cfg = mcp_client.set_server(body.name, body.command, body.args, body.env,
+                                    body.enabled, url=body.url, headers=body.headers)
+    except mcp_client.MCPError as e:
+        return {"error": str(e)}
     orchestrator.log_event(f"MCP server '{body.name}' registered", "#7c5cf6")
     return {"status": "saved", "server": _mask_env(cfg)}
 
