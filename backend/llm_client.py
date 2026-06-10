@@ -12,7 +12,7 @@ import tracing
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:4b")
 
 # Frontier providers are opt-in: configure a key and route an agent to them via
 # the "agent_models" config ({"agent_id": "anthropic:claude-haiku-4-5"}).
