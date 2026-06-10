@@ -17,8 +17,8 @@ Zapier Agents) and recommends where to invest next.
 - **Operational reliability.** Watchdog auto-restart, semaphore-serialized LLM
   access, durable run history, and a live resource dashboard are stronger ops
   ergonomics than most open-source frameworks ship out of the box.
-- **Real working agents.** 13 domain agents with real integrations (Gmail,
-  YouTube, yfinance, Reddit, Congress feeds) — most frameworks ship toy examples.
+- **Real working agents.** 12 domain agents with real integrations (Gmail,
+  YouTube, yfinance, Congress feeds) — most frameworks ship toy examples.
 
 **Structural gaps vs. the market** (from the codebase survey):
 
@@ -31,7 +31,7 @@ Zapier Agents) and recommends where to invest next.
 | Agent communication | Flat supervisor, no agent-to-agent | Graphs (LangGraph), handoffs (OpenAI SDK), conversations (AutoGen) |
 | Streaming | `stream: False` | Full/per-node token streaming standard across frameworks |
 | Tracing & cost metrics | Dashboard telemetry only | Run-level traces, token/cost/latency breakdowns (LangSmith, built-in vendor tracing) |
-| Human-in-the-loop | One-off (Aegis approvals) | First-class framework primitive (LangGraph's key selling point) |
+| Human-in-the-loop | Email preview modal only | First-class framework primitive (LangGraph's key selling point) |
 | Deployment | start.sh / stop.sh | Docker is table stakes |
 | Guardrails | HTML escaping, JSON mode | Prompt-injection defenses, output validation, approval layers |
 
@@ -67,7 +67,7 @@ reusable tools (a `tools/` package with typed signatures). This is the
 architectural pattern shared by every surveyed framework — n8n's AI Agent node
 composes tools, CrewAI agents declare them, vendor SDKs schema-validate them.
 It also makes MCP integration (#1) natural: MCP servers just become another
-tool source. The 13 agents currently duplicate fetch/parse/retry logic that a
+tool source. The 12 agents currently duplicate fetch/parse/retry logic that a
 registry would centralize.
 
 ### 4. Persistent agent memory + lightweight RAG
@@ -75,9 +75,9 @@ registry would centralize.
 Agents currently have amnesia — every run re-fetches and re-summarizes from
 scratch. n8n 2.0's headline features were persistent agent memory and vector-DB
 RAG. Concretely valuable here: Wolf and Compass could reference prior market
-analyses ("VIX regime changed since yesterday"), Aegis could learn from past
-approved/dismissed replies, and Morning Brief could deduplicate against what it
-already reported. A local embedding model via Ollama + SQLite-vec (or Chroma)
+analyses ("VIX regime changed since yesterday") and Morning Brief could
+deduplicate against what it already reported. A local embedding model via
+Ollama + SQLite-vec (or Chroma)
 keeps this consistent with the local-first story.
 
 ### 5. Run-level tracing and cost metrics
@@ -89,13 +89,14 @@ agent platforms generally — teams are inventing their own because no protocol
 mandates it. The `agent_runs` table is already in place; extend it with token
 and stage-timing columns and surface trends in the dashboard.
 
-### 6. Generalize human-in-the-loop into a primitive
+### 6. Add a human-in-the-loop approval primitive
 
-Aegis already has the right idea (suggest, never auto-post, approve via UI).
-Promote that pattern into an orchestrator-level `approval` primitive any agent
-can use — e.g. Mailman drafts requiring sign-off before send. Human-in-the-loop
-is LangGraph's flagship production feature; this platform can match it with
-modest effort because the WebSocket + dashboard plumbing already exists.
+Beyond the email preview modal, the platform has no approve-before-act
+mechanism. Add an orchestrator-level `approval` primitive any agent can use —
+e.g. Mailman drafts requiring sign-off before send, or trade alerts requiring
+acknowledgment. Human-in-the-loop is LangGraph's flagship production feature;
+this platform can match it with modest effort because the WebSocket + dashboard
+plumbing already exists.
 
 ### 7. Docker packaging
 
