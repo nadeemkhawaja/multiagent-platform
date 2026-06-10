@@ -325,12 +325,14 @@ ALTERs these columns into pre-existing databases.
 ### LLM providers (`backend/llm_client.py`)
 
 Local Ollama (Qwen3) stays the default. Per-agent overrides route to frontier
-providers — Grok/xAI (`XAI_API_KEY`), OpenAI (`OPENAI_API_KEY`), or Anthropic
-(`ANTHROPIC_API_KEY`) — via Settings → AI models in the dashboard, or
-`POST /api/llm/models` (`{"agent_id": "morning_brief", "model":
-"grok:grok-4-fast"}`). Bare model names mean Ollama. Missing API keys fail
-fast with a clear error; token usage per call is recorded onto the agent's
-open run trace.
+providers — Grok/xAI, OpenAI, or Anthropic — via Settings → AI models in the
+dashboard, or `POST /api/llm/models` (`{"agent_id": "morning_brief", "model":
+"grok:grok-4-fast"}`). Bare model names mean Ollama. API keys can be pasted
+directly in Settings → AI models (saved to the local SQLite config via
+`POST /api/llm/keys`, applied immediately — no restart) or set as env vars
+(`XAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), which act as a
+fallback. Missing API keys fail fast with a clear error; token usage per call
+is recorded onto the agent's open run trace.
 
 ### Run tracing (`backend/tracing.py`)
 

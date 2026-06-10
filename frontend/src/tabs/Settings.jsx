@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance } from "../theme/ui";
-import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel } from "../state/api";
+import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel, setProviderKey } from "../state/api";
 
 const inputStyle = () => ({
   width: "100%", marginTop: 6, border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px",
@@ -68,11 +68,40 @@ function ScheduleRow({ agent, info, onSave }) {
 }
 
 const PROVIDER_LABEL = { grok: "Grok (xAI) · free", openai: "OpenAI · paid", anthropic: "Claude (Anthropic) · paid" };
+const KEY_PLACEHOLDER = { grok: "xai-…", openai: "sk-…", anthropic: "sk-ant-…" };
+
+function ProviderKeyRow({ prov, st, onSave }) {
+  const [val, setVal] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => { setBusy(true); await onSave(prov, val.trim()); setVal(""); setBusy(false); };
+  const clear = async () => { setBusy(true); await onSave(prov, ""); setBusy(false); };
+
+  const status = !st.configured ? "no key"
+    : st.source === "ui" ? `key saved ${st.key_hint || ""} · active now`
+    : `key from .env ${st.key_hint || ""}`;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr auto auto", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{PROVIDER_LABEL[prov] || prov}</div>
+        <div style={{ fontSize: 10.5, color: st.configured ? T.green : T.ink4, marginTop: 2 }}>{status}</div>
+      </div>
+      <input type="password" autoComplete="off" value={val} onChange={(e) => setVal(e.target.value)}
+        placeholder={st.configured ? "Replace key…" : `Paste key (${KEY_PLACEHOLDER[prov] || "…"})`}
+        style={{ ...inputStyle(), marginTop: 0 }} />
+      <Btn size="sm" onClick={save} disabled={busy || !val.trim()}>{busy ? "…" : "Save"}</Btn>
+      <Btn size="sm" onClick={clear} disabled={busy || st.source !== "ui"}>Clear</Btn>
+    </div>
+  );
+}
 
 function ModelRow({ agent, name, llm, onSave }) {
   const col = AGENT_COLOR[agent] || T.violet;
   const current = llm.agent_models?.[agent] || "";
   const [saving, setSaving] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customVal, setCustomVal] = useState("");
 
   const options = [];
   for (const [prov, models] of Object.entries(llm.suggested_models || {})) {
@@ -86,9 +115,16 @@ function ModelRow({ agent, name, llm, onSave }) {
   const known = new Set(options.flatMap((g) => g.specs));
 
   const change = async (e) => {
+    if (e.target.value === "__custom__") { setCustomVal(current); setCustomMode(true); return; }
     setSaving(true);
     await onSave(agent, e.target.value);
     setSaving(false);
+  };
+  const saveCustom = async () => {
+    setSaving(true);
+    await onSave(agent, customVal.trim());
+    setSaving(false);
+    setCustomMode(false);
   };
 
   return (
@@ -97,17 +133,29 @@ function ModelRow({ agent, name, llm, onSave }) {
         <span style={{ width: 26, height: 26, borderRadius: 7, background: col + "1a", color: col, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>●</span>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{name}</span>
       </div>
-      <select value={current} onChange={change} style={{ ...inputStyle(), marginTop: 0 }}>
-        <option value="">Local · {llm.default_model} (default)</option>
-        {!known.has(current) && current && <option value={current}>{current} (custom)</option>}
-        {options.map((g) => (
-          <optgroup key={g.label} label={g.configured ? g.label : `${g.label} — no API key`}>
-            {g.specs.map((spec) => (
-              <option key={spec} value={spec} disabled={!g.configured}>{spec.split(":").slice(1).join(":")}</option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      {customMode ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input value={customVal} onChange={(e) => setCustomVal(e.target.value)} autoFocus
+            placeholder="provider:model — e.g. grok:grok-4, openai:o3-mini, or any Ollama model"
+            style={{ ...inputStyle(), marginTop: 0 }}
+            onKeyDown={(e) => { if (e.key === "Enter") saveCustom(); if (e.key === "Escape") setCustomMode(false); }} />
+          <Btn size="sm" onClick={saveCustom} disabled={saving || !customVal.trim()}>Save</Btn>
+          <Btn size="sm" onClick={() => setCustomMode(false)}>✕</Btn>
+        </div>
+      ) : (
+        <select value={current} onChange={change} style={{ ...inputStyle(), marginTop: 0 }}>
+          <option value="">Local · {llm.default_model} (default)</option>
+          {!known.has(current) && current && <option value={current}>{current} (custom)</option>}
+          {options.map((g) => (
+            <optgroup key={g.label} label={g.configured ? g.label : `${g.label} — no API key`}>
+              {g.specs.map((spec) => (
+                <option key={spec} value={spec} disabled={!g.configured}>{spec.split(":").slice(1).join(":")}</option>
+              ))}
+            </optgroup>
+          ))}
+          <option value="__custom__">Custom model…</option>
+        </select>
+      )}
       <span style={{ fontSize: 11, color: T.ink4, minWidth: 56 }}>{saving ? "Saving…" : current ? "frontier" : "local"}</span>
     </div>
   );
@@ -130,6 +178,11 @@ export default function Settings({ theme, setTheme, mode, setMode }) {
 
   const onModelSave = async (agent, model) => {
     await setAgentModel(agent, model);
+    setLlm(await getLLMProviders().catch(() => llm));
+  };
+
+  const onKeySave = async (provider, key) => {
+    await setProviderKey(provider, key);
     setLlm(await getLLMProviders().catch(() => llm));
   };
 
@@ -208,14 +261,19 @@ export default function Settings({ theme, setTheme, mode, setMode }) {
                   </Pill>
                 ))}
               </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "6px 0 2px" }}>Provider API keys</div>
+              {["grok", "openai", "anthropic"].map((prov) => (
+                <ProviderKeyRow key={prov} prov={prov} st={llm.providers?.[prov] || {}} onSave={onKeySave} />
+              ))}
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 2px" }}>Model per agent</div>
               {schedules && Object.entries(schedules).map(([agent, info]) => (
                 <ModelRow key={agent} agent={agent} name={info.name} llm={llm} onSave={onModelSave} />
               ))}
               <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>
-                Frontier providers need an API key in <span style={{ fontFamily: T.mono }}>.env</span>:
-                <span style={{ fontFamily: T.mono }}> XAI_API_KEY</span> (Grok),
-                <span style={{ fontFamily: T.mono }}> OPENAI_API_KEY</span>,
-                <span style={{ fontFamily: T.mono }}> ANTHROPIC_API_KEY</span> — then restart the backend.
+                Keys saved here apply immediately — no restart. <span style={{ fontFamily: T.mono }}>.env</span> vars
+                (<span style={{ fontFamily: T.mono }}>XAI_API_KEY</span>, <span style={{ fontFamily: T.mono }}>OPENAI_API_KEY</span>,
+                <span style={{ fontFamily: T.mono }}> ANTHROPIC_API_KEY</span>) still work as a fallback.
+                Agents without an override always use local <span style={{ fontFamily: T.mono }}>{llm.default_model}</span>.
               </div>
             </>
           ) : <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>}

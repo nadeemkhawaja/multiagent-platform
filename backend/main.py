@@ -453,6 +453,27 @@ async def set_agent_model(body: AgentModelUpdate):
     return {"agent_models": overrides}
 
 
+class ProviderKeyUpdate(BaseModel):
+    provider: str
+    api_key: str = ""  # empty clears the UI-stored key (.env fallback still applies)
+
+
+@app.post("/api/llm/keys")
+async def set_provider_key(body: ProviderKeyUpdate):
+    prov = body.provider.lower().strip()
+    if prov not in ("openai", "anthropic", "grok"):
+        return {"error": f"unknown provider '{body.provider}'"}
+    keys = get_config("provider_keys", {}) or {}
+    if body.api_key.strip():
+        keys[prov] = body.api_key.strip()
+    else:
+        keys.pop(prov, None)
+    set_config("provider_keys", keys)
+    orchestrator.log_event(
+        f"{prov} API key {'saved' if body.api_key.strip() else 'cleared'} in Settings", "#7c5cf6")
+    return {"providers": provider_status()}
+
+
 # ─── Tool registry ───────────────────────────────────────────────────
 @app.get("/api/tools")
 async def list_tools():

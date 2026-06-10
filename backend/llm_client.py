@@ -62,14 +62,37 @@ def resolve_model(agent_id: str = None):
     return parse_model_spec(spec or LLM_MODEL)
 
 
+def _ui_keys() -> dict:
+    """API keys saved from the Settings UI (provider_keys config row)."""
+    try:
+        from database import get_config
+        return get_config("provider_keys", {}) or {}
+    except Exception:
+        return {}
+
+
+def get_api_key(provider: str) -> str:
+    """Settings-UI key first, then environment — so keys pasted in the
+    dashboard take effect immediately without a backend restart."""
+    env = {"openai": OPENAI_API_KEY, "anthropic": ANTHROPIC_API_KEY, "grok": GROK_API_KEY}
+    return _ui_keys().get(provider) or env.get(provider, "")
+
+
 def provider_status() -> dict:
     """Which providers are usable right now (key presence, not reachability)."""
-    return {
-        "ollama": {"configured": True, "base_url": OLLAMA_BASE_URL},
-        "openai": {"configured": bool(OPENAI_API_KEY), "base_url": OPENAI_BASE_URL},
-        "anthropic": {"configured": bool(ANTHROPIC_API_KEY), "base_url": ANTHROPIC_BASE_URL},
-        "grok": {"configured": bool(GROK_API_KEY), "base_url": GROK_BASE_URL},
-    }
+    ui = _ui_keys()
+    env = {"openai": OPENAI_API_KEY, "anthropic": ANTHROPIC_API_KEY, "grok": GROK_API_KEY}
+    bases = {"openai": OPENAI_BASE_URL, "anthropic": ANTHROPIC_BASE_URL, "grok": GROK_BASE_URL}
+    out = {"ollama": {"configured": True, "base_url": OLLAMA_BASE_URL, "source": "local"}}
+    for prov in ("openai", "anthropic", "grok"):
+        key = ui.get(prov) or env.get(prov, "")
+        out[prov] = {
+            "configured": bool(key),
+            "base_url": bases[prov],
+            "source": "ui" if ui.get(prov) else ("env" if env.get(prov) else None),
+            "key_hint": f"…{key[-4:]}" if key else "",
+        }
+    return out
 
 # Single-permit semaphore: only one agent calls the model at a time → fully
 # serialized inference, no contention, no circular waits, no deadlocks.
@@ -138,7 +161,7 @@ async def _call_openai_compatible(client, base_url, api_key, key_name,
                                   model, system_prompt, prompt, json_mode):
     """Shared caller for OpenAI-API-compatible providers (OpenAI, Grok/xAI)."""
     if not api_key:
-        raise ConfigError(f"{key_name} not set")
+        raise ConfigError(f"{key_name} not set — add a key in Settings → AI models or .env")
     payload = {
         "model": model,
         "messages": [
@@ -163,18 +186,19 @@ async def _call_openai_compatible(client, base_url, api_key, key_name,
 
 
 async def _call_openai(client, model, system_prompt, prompt, json_mode):
-    return await _call_openai_compatible(client, OPENAI_BASE_URL, OPENAI_API_KEY,
+    return await _call_openai_compatible(client, OPENAI_BASE_URL, get_api_key("openai"),
                                          "OPENAI_API_KEY", model, system_prompt, prompt, json_mode)
 
 
 async def _call_grok(client, model, system_prompt, prompt, json_mode):
-    return await _call_openai_compatible(client, GROK_BASE_URL, GROK_API_KEY,
+    return await _call_openai_compatible(client, GROK_BASE_URL, get_api_key("grok"),
                                          "XAI_API_KEY", model, system_prompt, prompt, json_mode)
 
 
 async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
-    if not ANTHROPIC_API_KEY:
-        raise ConfigError("ANTHROPIC_API_KEY not set")
+    api_key = get_api_key("anthropic")
+    if not api_key:
+        raise ConfigError("ANTHROPIC_API_KEY not set — add a key in Settings → AI models or .env")
     system = system_prompt
     if json_mode:
         system += " Respond with valid JSON only — no prose, no code fences."
@@ -187,7 +211,7 @@ async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
     r = await client.post(
         f"{ANTHROPIC_BASE_URL}/v1/messages",
         json=payload,
-        headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"},
+        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
         timeout=120.0,
     )
     r.raise_for_status()
