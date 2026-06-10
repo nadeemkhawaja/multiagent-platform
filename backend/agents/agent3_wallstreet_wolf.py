@@ -45,7 +45,7 @@ def _fetch_market_data_sync():
 
             last_price = info.last_price
             prev_close = info.previous_close
-            hist = ticker.history(period="5d")
+            hist = ticker.history(period="10d")
             history_prices = hist['Close'].tolist() if not hist.empty else []
 
             # Fall back to historical close if fast_info returns None (weekends, API gaps)
@@ -66,7 +66,7 @@ def _fetch_market_data_sync():
                 "price": round(last_price, 2),
                 "change": round(change, 2),
                 "change_pct": round(change_pct, 2),
-                "history": [round(p, 2) for p in history_prices[-5:]]
+                "history": [round(p, 2) for p in history_prices[-10:]]
             })
         except Exception as e:
             print(f"[WallstreetWolf] Failed to fetch data for {sym}: {e}")

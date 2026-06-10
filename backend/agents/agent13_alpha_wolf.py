@@ -49,7 +49,9 @@ def _compass_summary(d: dict) -> str:
     sectors = c.get("sectors", []) or []
     sec = ", ".join(f"{s.get('k')} {s.get('bias'):+d}" for s in sectors
                     if isinstance(s.get("bias"), int)) or "n/a"
-    return (f"Composite bias: {c.get('composite','?')} (-100 bearish..+100 bullish). "
+    vix = c.get("vix") or {}
+    vix_txt = f" VIX {vix.get('level','?')} ({vix.get('regime','?')} volatility)." if vix else ""
+    return (f"Composite bias: {c.get('composite','?')} (-100 bearish..+100 bullish).{vix_txt} "
             f"Sector bias: {sec}. Compass read: {str(c.get('read',''))[:300]}")
 
 

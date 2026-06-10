@@ -81,6 +81,7 @@ export default function Compass({ status, agentError }) {
   const news = c.news || [];
   const futures = c.futures || [];
   const levels = c.levels || [];
+  const vix = c.vix;
   const empty = !sectors.length && !news.length && !futures.length && !levels.length;
   const overall = c.composite ?? (sectors.length ? Math.round(sectors.reduce((a, s) => a + s.bias, 0) / sectors.length) : 0);
   const read = c.read;
@@ -129,6 +130,14 @@ export default function Compass({ status, agentError }) {
             <div style={{ fontSize: 12, color: T.ink3, marginTop: 2, fontWeight: 600 }}>{toneDesc}</div>
             <div style={{ marginTop: 10 }}><BiasMeter score={overall} h={12} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.mono, fontSize: 10.5, color: T.ink4, marginTop: 5 }}><span>BEARISH</span><span>{overall > 0 ? "+" : ""}{overall}</span><span>BULLISH</span></div>
+            {vix && (
+              <div style={{ marginTop: 12 }}>
+                <Pill mono c={vix.regime === "Elevated" ? T.red : vix.regime === "Low" ? T.green : T.amber}
+                  bg={vix.regime === "Elevated" ? T.redBg : vix.regime === "Low" ? T.greenBg : T.amberBg}>
+                  VIX {vix.level} · {vix.regime} ({vix.change > 0 ? "+" : ""}{vix.change})
+                </Pill>
+              </div>
+            )}
           </div>
           <div style={{ borderLeft: `1px solid ${T.line2}`, paddingLeft: 28 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
