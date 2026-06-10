@@ -10,7 +10,7 @@
 
    ```bash
    ollama list                 # confirm a Qwen3 model is present
-   ollama pull qwen3:8b        # or set LLM_MODEL=qwen3:4b in .env for a faster demo
+   ollama pull qwen3.5:4b        # or set LLM_MODEL=qwen3.5:4b in .env for a faster demo
    ```
 
 2. **Settings filled in** — `.env` has `DAILY_DIGEST_EMAIL`, `SMTP_APP_PASSWORD`, `YOUTUBE_API_KEY`, `GITHUB_TOKEN`, `KEY_PEOPLE`; `backend/credentials.json` present.

@@ -15,7 +15,7 @@ import tracing
 
 # ── model spec parsing ───────────────────────────────────────────────────────
 def test_parse_model_spec_defaults_to_ollama():
-    assert llm_client.parse_model_spec("qwen3:8b") == ("ollama", "qwen3:8b")
+    assert llm_client.parse_model_spec("qwen3.5:4b") == ("ollama", "qwen3.5:4b")
     assert llm_client.parse_model_spec("llama3") == ("ollama", "llama3")
 
 
@@ -118,7 +118,7 @@ def test_generate_completion_ollama_records_tokens_to_trace(monkeypatch):
         "message": {"content": "local answer"},
         "prompt_eval_count": 50, "eval_count": 25, "eval_duration": int(1e9),
     }, captured)
-    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("ollama", "qwen3:8b"))
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("ollama", "qwen3.5:4b"))
 
     tracing.start("trace_agent")
     out = asyncio.run(llm_client.generate_completion("hello", agent_id="trace_agent", use_cache=False))

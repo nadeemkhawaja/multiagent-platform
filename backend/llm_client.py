@@ -41,7 +41,7 @@ class ConfigError(Exception):
 
 def parse_model_spec(spec: str):
     """'anthropic:claude-haiku-4-5' → ('anthropic', 'claude-haiku-4-5');
-    bare model names ('qwen3:8b') default to ollama."""
+    bare model names ('qwen3.5:4b') default to ollama."""
     if spec and ":" in spec:
         head, rest = spec.split(":", 1)
         if head in KNOWN_PROVIDERS and rest:
