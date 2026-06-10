@@ -100,3 +100,6 @@ export const emailPreview = (id) => jsonGet(`/api/agent/${id}/email-preview`);
 // ── LLM providers / per-agent models ────────────────────────────────────────
 export const getLLMProviders = () => jsonGet("/api/llm/providers");
 export const setAgentModel = (agent_id, model) => jsonPost("/api/llm/models", { agent_id, model });
+
+// ── Run metrics ─────────────────────────────────────────────────────────────
+export const getMetrics = (window = 50) => jsonGet(`/api/metrics?window=${window}`);

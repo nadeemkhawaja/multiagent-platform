@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, Ring, SectionTitle, TabHeader, Btn } from "../theme/ui";
 import { CpuIcon, RamIcon, DiskIcon, GpuIcon, NetIcon } from "../theme/icons";
-import { API_BASE, setDemoMode, spikeResource, crashAgent } from "../state/api";
+import { API_BASE, setDemoMode, spikeResource, crashAgent, getMetrics } from "../state/api";
 
 // ── All agents the Home overview knows about ─────────────────────────────────
 const ALL_AGENTS = [
@@ -333,6 +333,63 @@ const SKELETON = {
   agents: [], llm: { holder: null, queue: [], heldS: 0, tokens: 0, rate: 0 }, events: [], alarm: null,
 };
 
+function fmtTokens(n) {
+  if (!n) return "—";
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
+}
+
+function RunMetrics() {
+  const [metrics, setMetrics] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try { const m = await getMetrics(); if (alive) setMetrics(m); } catch { /* backend offline */ }
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const rows = Object.entries(metrics?.agents || {});
+  const th = { padding: "6px 10px", textAlign: "left", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 };
+  const td = { padding: "7px 10px", fontSize: 12.5, fontFamily: T.mono, borderTop: `1px solid ${T.line2}` };
+
+  return (
+    <Card pad={20}>
+      <SectionTitle sub={`per-agent telemetry over each agent's last ${metrics?.window ?? 50} runs`}>Run metrics</SectionTitle>
+      {rows.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: T.ink3 }}>No completed runs yet — metrics appear after agents run.</div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={th}>Agent</th><th style={th}>Runs</th><th style={th}>Success</th>
+            <th style={th}>Avg time</th><th style={th}>LLM calls</th><th style={th}>Tokens in</th><th style={th}>Tokens out</th>
+          </tr></thead>
+          <tbody>
+            {rows.map(([aid, m]) => {
+              const col = AGENT_COLOR[aid] || T.violet;
+              const ok = m.success_rate >= 0.9;
+              return (
+                <tr key={aid}>
+                  <td style={{ ...td, fontFamily: T.sans, fontWeight: 700 }}>
+                    <span style={{ color: col, marginRight: 7 }}>●</span>{m.name}
+                  </td>
+                  <td style={td}>{m.runs}</td>
+                  <td style={{ ...td, color: ok ? T.green : T.amber, fontWeight: 700 }}>{Math.round(m.success_rate * 100)}%</td>
+                  <td style={td}>{m.avg_duration_s != null ? `${m.avg_duration_s}s` : "—"}</td>
+                  <td style={td}>{m.llm_calls || "—"}</td>
+                  <td style={td}>{fmtTokens(m.tokens_in)}</td>
+                  <td style={td}>{fmtTokens(m.tokens_out)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
 export default function Orchestrator({ sys, online, theme = "aria", onNavigate }) {
   const [ackd, setAckd] = useState(false);
   const s = sys || SKELETON;
@@ -390,6 +447,9 @@ export default function Orchestrator({ sys, online, theme = "aria", onNavigate }
 
         {/* ── LLM semaphore — assignment requirement: 1 permit, no deadlocks ── */}
         <Semaphore s={s} />
+
+        {/* ── Per-run telemetry (tokens, latency, success rate) ────────────── */}
+        <RunMetrics />
       </div>
     </div>
   );

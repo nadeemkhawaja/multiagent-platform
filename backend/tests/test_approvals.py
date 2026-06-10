@@ -137,6 +137,17 @@ def test_email_gate_approval_sends_the_email(db, monkeypatch):
                     "html": "<p>body</p>", "from": "Wolf"}
 
 
+def test_demo_mode_bypasses_email_gate(db, monkeypatch):
+    database.set_config("require_email_approval", True)
+    database.set_config("demo_mode", True)
+    sent = {}
+    monkeypatch.setattr(email_utils, "_send_now", lambda *a, **kw: sent.update({"a": a}) or True)
+
+    email_utils.send_html_email("to@x.com", "Demo Email", "<p>x</p>")
+    assert sent                                 # sent immediately, no approval
+    assert approvals.list_approvals() == []
+
+
 def test_email_gate_off_sends_directly(db, monkeypatch):
     database.set_config("require_email_approval", False)
     sent = {}
