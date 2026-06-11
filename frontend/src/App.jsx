@@ -1,7 +1,7 @@
 // ============================================================================
 // App.jsx — shell: collapsible nav, command palette, toasts, keyboard shortcuts
 // ============================================================================
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
 import { T, applyMode, AGENT_COLOR } from "./theme/tokens";
 import { Dot } from "./theme/ui";
 import { useSystemState, useAgentData } from "./state/api";
@@ -67,6 +67,43 @@ const TABS = {
 const ORDERED_TABS = ["orchestrator","ai_times","mailman","wallstreet_wolf","cisco_pulse","devdaily","alpha_wolf","compass","strategy_scout","capitol_tracker","options_flow","earnings_cal","morning_brief"];
 
 const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
+
+// ── Tab error boundary ───────────────────────────────────────────────────────
+// A crash inside one tab must never blank the whole app: catch it, show the
+// error inline, and keep the sidebar alive so the user can navigate away.
+// Keyed by tab in App so switching tabs resets the boundary automatically.
+class TabErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[TabErrorBoundary] tab crashed:", error, info?.componentStack);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ padding: 40 }}>
+        <div style={{ background: T.card, border: `1px solid ${T.red}44`, borderRadius: 14, padding: "22px 26px", maxWidth: 640 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: T.red, marginBottom: 8 }}>⚠ This tab crashed while rendering</div>
+          <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginBottom: 12 }}>
+            The rest of the app is still running — switch to another tab, or reload this one.
+            This usually means the agent saved data in an unexpected shape; re-running the agent typically fixes it.
+          </div>
+          <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.ink3, background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 12px", marginBottom: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {String(this.state.error?.message || this.state.error)}
+          </div>
+          <button onClick={() => this.setState({ error: null })} style={{ padding: "7px 16px", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink2, cursor: "pointer", fontSize: 12.5, fontFamily: T.sans, fontWeight: 600 }}>
+            Reload tab
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
 // ── Keyboard shortcut help overlay ──────────────────────────────────────────
 function ShortcutHelp({ onClose }) {
@@ -298,7 +335,9 @@ export default function App() {
         collapsed={collapsed} setCollapsed={setCollapsed}
         onCmdK={() => setCmdOpen(true)}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>{content}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <TabErrorBoundary key={tab}>{content}</TabErrorBoundary>
+      </div>
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}

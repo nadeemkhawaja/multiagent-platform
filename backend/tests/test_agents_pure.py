@@ -408,3 +408,62 @@ def test_portfolio_summary_tracks_equity_and_return():
     assert s["equity"] == 100_500.0
     assert s["unrealized_pnl"] == 500.0
     assert s["return_pct"] == 0.5
+
+
+# ── Alpha Wolf: plan sanitization (LLM output does not always honor schema) ──
+def test_sanitize_plan_coerces_object_fields_to_text():
+    from agents.agent13_alpha_wolf import _sanitize_plan
+    messy = {
+        "headline": {"text": "Risk-on into CPI", "confidence": 0.8},
+        "stance": "risk-on",
+        "regime": ["Bullish regime", "vol compressed"],
+        "confluence": [{"ticker": "NVDA", "feeds": ["flow", "congress"]}],
+        "daily": {"bias": "bullish", "summary": {"note": "Buy dips."},
+                  "ideas": [{"ticker": "nvda", "direction": "LONG",
+                             "thesis": {"reason": "AI demand"},
+                             "trigger": {"level": 120}, "risk": "below 110"}]},
+        "weekly": {"bias": "sideways", "summary": "Wait.",
+                   "themes": [{"name": "AI capex"}], "ideas": "none"},
+        "avoid": [{"ticker": "COIN", "why": "SEC ruling"}],
+        "catalysts": "CPI Thursday",
+        "risk_notes": {"sizing": "2% per trade"},
+    }
+    plan = _sanitize_plan(messy)
+    assert plan["headline"] == "Risk-on into CPI — 0.8"
+    assert plan["stance"] == "RISK-ON"
+    assert plan["regime"] == "Bullish regime, vol compressed"
+    assert plan["confluence"] == ["NVDA — flow, congress"]
+    assert plan["daily"]["bias"] == "BULLISH"
+    assert plan["daily"]["summary"] == "Buy dips."
+    idea = plan["daily"]["ideas"][0]
+    assert idea == {"ticker": "NVDA", "direction": "long", "thesis": "AI demand",
+                    "risk": "below 110", "trigger": "120"}
+    assert plan["weekly"]["bias"] == "NEUTRAL"          # invalid bias → NEUTRAL
+    assert plan["weekly"]["themes"] == ["AI capex"]
+    assert plan["weekly"]["ideas"] == []                # non-list ideas dropped
+    assert plan["avoid"] == ["COIN — SEC ruling"]
+    assert plan["catalysts"] == ["CPI Thursday"]
+    assert plan["risk_notes"] == "2% per trade"
+    # every value the UI renders directly is now a plain string
+    for v in [plan["headline"], plan["regime"], plan["risk_notes"],
+              *plan["confluence"], *plan["avoid"], *plan["catalysts"],
+              *plan["weekly"]["themes"]]:
+        assert isinstance(v, str)
+
+
+def test_sanitize_plan_handles_garbage_input():
+    from agents.agent13_alpha_wolf import _sanitize_plan
+    for garbage in (None, "not a dict", [], {"daily": "x", "weekly": 7}):
+        plan = _sanitize_plan(garbage)
+        assert plan["stance"] == "NEUTRAL"
+        assert plan["daily"]["ideas"] == [] and plan["weekly"]["ideas"] == []
+
+
+def test_sanitize_plan_drops_ideas_without_ticker():
+    from agents.agent13_alpha_wolf import _sanitize_plan
+    plan = _sanitize_plan({"daily": {"ideas": [
+        {"direction": "long", "thesis": "no ticker"},
+        "just a string",
+        {"ticker": "AMD", "direction": "long"},
+    ]}})
+    assert [i["ticker"] for i in plan["daily"]["ideas"]] == ["AMD"]
