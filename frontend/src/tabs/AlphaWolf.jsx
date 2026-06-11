@@ -1,12 +1,13 @@
 // ============================================================================
 // AlphaWolf.jsx — Master agent. Synthesizes the trading pack (Wolf, Compass,
 // Strategy Scout, Capitol Tracker, Options Flow, Earnings) into a Daily +
-// Weekly trade game-plan. Educational only — never places trades.
+// Weekly trade game-plan, then executes the daily ideas on a simulated
+// paper-trading portfolio (virtual capital, live prices — no real money).
 // ============================================================================
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
-import { useAgentData, triggerAgent } from "../state/api";
+import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
 
 const PURPLE = "#7c3aed"; const PURPLE_BG = "#f5f3ff";
@@ -61,6 +62,109 @@ function IdeaCard({ idea, weekly }) {
   );
 }
 
+function pnlColor(v) { return (v ?? 0) >= 0 ? T.green : T.red; }
+const fmt$ = (v) => (v == null ? "—" : `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+function Stat({ label, value, color }) {
+  return (
+    <div style={{ minWidth: 110 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: ".5px" }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, fontFamily: T.mono, color: color || T.ink, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function ActionPill({ action }) {
+  const buy = action === "BUY" || action === "COVER";
+  const c = buy ? T.green : T.red;
+  return <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fff", background: c, padding: "2px 8px", borderRadius: 4 }}>{action}</span>;
+}
+
+function PortfolioCard({ portfolio, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  if (!portfolio) return null;
+  const { settings = {}, summary = {}, positions = [], trades = [] } = portfolio;
+
+  const toggle = async () => {
+    setBusy(true);
+    await setWolfExecution({ enabled: !settings.enabled });
+    await onChanged(); setBusy(false);
+  };
+  const reset = async () => {
+    if (!window.confirm("Reset the paper portfolio? All positions and trade history will be cleared.")) return;
+    setBusy(true);
+    await resetWolfPortfolio();
+    await onChanged(); setBusy(false);
+  };
+
+  return (
+    <Card pad={20} style={{ borderColor: PURPLE + "33" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <SectionTitle sub="simulated fills at live prices · virtual capital">⚡ Paper Trading Portfolio</SectionTitle>
+        <div style={{ flex: 1 }} />
+        <button onClick={toggle} disabled={busy} style={{
+          fontSize: 11, fontWeight: 800, padding: "5px 12px", borderRadius: 8, cursor: "pointer",
+          border: `1px solid ${settings.enabled ? T.green : T.line}`,
+          background: settings.enabled ? T.green + "16" : T.line2,
+          color: settings.enabled ? T.green : T.ink3 }}>
+          {settings.enabled ? "● Auto-execute ON" : "○ Auto-execute OFF"}
+        </button>
+        <button onClick={reset} disabled={busy} style={{
+          fontSize: 11, fontWeight: 700, padding: "5px 12px", borderRadius: 8, cursor: "pointer",
+          border: `1px solid ${T.line}`, background: T.card, color: T.ink3 }}>
+          Reset
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 16 }}>
+        <Stat label="Equity" value={fmt$(summary.equity)} />
+        <Stat label="Cash" value={fmt$(summary.cash)} />
+        <Stat label="Unrealized P&L" value={fmt$(summary.unrealized_pnl)} color={pnlColor(summary.unrealized_pnl)} />
+        <Stat label="Realized P&L" value={fmt$(summary.realized_pnl)} color={pnlColor(summary.realized_pnl)} />
+        <Stat label="Return" value={`${(summary.return_pct ?? 0) >= 0 ? "+" : ""}${summary.return_pct ?? 0}%`} color={pnlColor(summary.return_pct)} />
+      </div>
+
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: T.ink3, marginBottom: 6 }}>Open positions ({positions.length})</div>
+      {positions.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginBottom: 16 }}>
+          {positions.map((p) => (
+            <div key={p.ticker} style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", background: T.card }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 14, color: T.ink }}>{p.ticker}</span>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: dirColor(p.direction), background: dirColor(p.direction) + "16", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{p.direction}</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 12.5, color: pnlColor(p.pnl) }}>{(p.pnl ?? 0) >= 0 ? "+" : ""}{fmt$(p.pnl)}</span>
+              </div>
+              <div style={{ fontSize: 11, color: T.ink3, marginTop: 5, fontFamily: T.mono }}>
+                {p.shares} sh · in {fmt$(p.entry_price)} · last {fmt$(p.last_price)}
+              </div>
+              <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 3 }}>{p.entry_date}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: T.ink4, marginBottom: 16 }}>No open positions — run the plan to put capital to work.</div>
+      )}
+
+      {trades.length > 0 && (<>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: T.ink3, marginBottom: 6 }}>Recent trades</div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {trades.slice(0, 10).map((t, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: i < Math.min(trades.length, 10) - 1 ? `1px solid ${T.line2}` : "none", fontSize: 12 }}>
+              <ActionPill action={t.action} />
+              <span style={{ fontFamily: T.mono, fontWeight: 800, color: T.ink }}>{t.ticker}</span>
+              <span style={{ color: T.ink3, fontFamily: T.mono }}>{t.shares} sh @ {fmt$(t.price)}</span>
+              {t.pnl != null && <span style={{ fontFamily: T.mono, fontWeight: 700, color: pnlColor(t.pnl) }}>{t.pnl >= 0 ? "+" : ""}{fmt$(t.pnl)}</span>}
+              <span style={{ flex: 1, color: T.ink4, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.reason}</span>
+              <span style={{ color: T.ink4, fontSize: 10.5, whiteSpace: "nowrap" }}>{t.ts}</span>
+            </div>
+          ))}
+        </div>
+      </>)}
+    </Card>
+  );
+}
+
 function PlanBlock({ title, plan, weekly }) {
   const ideas = plan?.ideas || [];
   return (
@@ -89,13 +193,24 @@ function PlanBlock({ title, plan, weekly }) {
 export default function AlphaWolf({ status, agentError }) {
   const { data, refresh } = useAgentData("alpha_wolf");
   const [refreshing, setRefreshing] = useState(false);
+  const [portfolio, setPortfolio] = useState(null);
   const plan = data?.plan || null;
   const busy = refreshing || status === "running";
+
+  const refreshPortfolio = useCallback(async () => {
+    try { setPortfolio(await getWolfPortfolio()); } catch { /* backend offline */ }
+  }, []);
+  useEffect(() => {
+    refreshPortfolio();
+    const id = setInterval(refreshPortfolio, 15000);
+    return () => clearInterval(id);
+  }, [refreshPortfolio]);
 
   const run = async () => {
     setRefreshing(true);
     await triggerAgent("alpha_wolf");
     setTimeout(refresh, 8000); setTimeout(refresh, 20000); setTimeout(refresh, 35000);
+    setTimeout(refreshPortfolio, 20000); setTimeout(refreshPortfolio, 36000);
     setTimeout(() => setRefreshing(false), 3000);
   };
 
@@ -105,7 +220,7 @@ export default function AlphaWolf({ status, agentError }) {
   return (
     <div>
       <TabHeader icon="🐺" color={PURPLE} title="Alpha Wolf"
-        sub="Master strategist · fuses the trading pack into a Daily + Weekly plan"
+        sub="Master strategist · fuses the pack into a Daily + Weekly plan and executes it (paper)"
         actions={<>
           <Pill mono c={T.ink3}>daily · 08:30</Pill>
           {plan && <Pill c={PURPLE} bg={PURPLE_BG}>{sourcesUsed.length}/6 agents</Pill>}
@@ -133,6 +248,34 @@ export default function AlphaWolf({ status, agentError }) {
           </div>
           {plan?.generated_at && <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>Last synthesized: {plan.generated_at}</div>}
         </Card>
+
+        {/* Paper portfolio — always visible so the trader can track P&L */}
+        <PortfolioCard portfolio={portfolio} onChanged={refreshPortfolio} />
+
+        {/* Execution report from the latest run */}
+        {plan?.execution && (
+          plan.execution.enabled === false ? (
+            <Card pad={14} style={{ background: T.cardAlt }}>
+              <div style={{ fontSize: 12.5, color: T.ink3 }}>⏸ {plan.execution.note || "Trade execution was OFF for the last run."}</div>
+            </Card>
+          ) : (plan.execution.executed || []).length > 0 && (
+            <Card pad={16} style={{ borderColor: T.green + "44", background: T.green + "08" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.green, marginBottom: 8 }}>
+                ⚡ Executed {plan.execution.executed.length} trade{plan.execution.executed.length !== 1 ? "s" : ""} on the last run
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {plan.execution.executed.map((t, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5,
+                    border: `1px solid ${T.line}`, borderRadius: 8, padding: "4px 10px", background: T.card }}>
+                    <ActionPill action={t.action} />
+                    <b style={{ fontFamily: T.mono }}>{t.ticker}</b>
+                    <span style={{ color: T.ink3, fontFamily: T.mono }}>{t.shares} sh @ {fmt$(t.price)}</span>
+                  </span>
+                ))}
+              </div>
+            </Card>
+          )
+        )}
 
         {!plan ? (
           <EmptyState icon="🐺" title="No game-plan yet"

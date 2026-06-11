@@ -2,8 +2,9 @@
 # Agent 13 — Alpha Wolf (Master Agent)
 # Leads the pack: ingests the cached output of six trading sub-agents
 # (Wallstreet Wolf, Wallstreet Compass, Strategy Scout, Capitol Tracker,
-# Options Flow, Earnings Calendar), then makes ONE local-LLM call to
-# synthesize a ranked Daily + Weekly trade game-plan. Educational only.
+# Options Flow, Earnings Calendar), makes ONE local-LLM call to synthesize
+# a ranked Daily + Weekly trade game-plan, then EXECUTES the daily ideas
+# through the paper broker (simulated fills at live prices, virtual capital).
 # ============================================================================
 import os
 import datetime
@@ -13,6 +14,7 @@ from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_json
 from orchestrator import orchestrator
 from email_utils import send_html_email
+import paper_broker
 
 log = logging.getLogger("alpha_wolf")
 
@@ -30,8 +32,9 @@ SUB_AGENTS = {
     "earnings_cal":    "calendar",
 }
 
-DISCLAIMER = ("Educational analysis only — not financial advice. Alpha Wolf aggregates signals "
-              "and never places trades. Do your own research and manage risk.")
+DISCLAIMER = ("Educational analysis only — not financial advice. Alpha Wolf executes trades in a "
+              "simulated paper-trading portfolio with virtual capital; no real money ever moves. "
+              "Do your own research and manage risk.")
 
 
 # ── Compact summaries of each sub-agent's latest output (fed to the LLM) ──────
@@ -174,6 +177,14 @@ async def alpha_wolf_job():
         plan["sources_used"] = sources_used
         plan["generated_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
+        orchestrator.set_progress(AGENT_ID, "Executing trades on the paper portfolio…")
+        try:
+            plan["execution"] = await paper_broker.execute_plan(plan)
+        except Exception as e:
+            log.error(f"Alpha Wolf execution error: {e}", exc_info=True)
+            plan["execution"] = {"enabled": True, "executed": [], "skipped": [],
+                                 "note": f"Execution failed: {e}"}
+
         save_agent_data(AGENT_ID, {"plan": plan})
 
         recipient = get_config("recipient", "") or DAILY_DIGEST_EMAIL
@@ -182,8 +193,12 @@ async def alpha_wolf_job():
                             _build_email(plan), sender_name="Alpha Wolf")
 
         orchestrator.update_agent_status(AGENT_ID, "idle")
-        orchestrator.log_event(f"Alpha Wolf synthesized a plan from {len(sources_used)}/6 sub-agents", "#7c3aed")
-        log.info(f"Alpha Wolf complete — {len(sources_used)} sources")
+        n_exec = len((plan.get("execution") or {}).get("executed", []))
+        orchestrator.log_event(
+            f"Alpha Wolf synthesized a plan from {len(sources_used)}/6 sub-agents"
+            + (f" · executed {n_exec} paper trade{'s' if n_exec != 1 else ''}" if n_exec else ""),
+            "#7c3aed")
+        log.info(f"Alpha Wolf complete — {len(sources_used)} sources, {n_exec} trades executed")
     except Exception as e:
         log.error(f"Alpha Wolf error: {e}", exc_info=True)
         orchestrator.update_agent_status(AGENT_ID, "error", str(e))
@@ -209,6 +224,44 @@ def _idea_rows(ideas: list, weekly: bool = False) -> str:
           <div style='font-size:11.5px;color:#666;margin-top:3px'><b>{third_label}:</b> {third_val} &nbsp;·&nbsp; <b>Risk:</b> {x.get('risk','')}</div>
         </div>"""
     return rows
+
+
+def _execution_section(execution: dict) -> str:
+    if not execution:
+        return ""
+    if not execution.get("enabled"):
+        return ""
+    executed = execution.get("executed", []) or []
+    summary = execution.get("summary", {}) or {}
+    if executed:
+        rows = ""
+        for t in executed[:8]:
+            a = str(t.get("action", ""))
+            ac = "#16a34a" if a in ("BUY", "COVER") else "#dc2626"
+            pnl = t.get("pnl")
+            pnl_txt = (f" &nbsp;·&nbsp; <b style='color:{'#16a34a' if pnl >= 0 else '#dc2626'}'>P&amp;L {pnl:+,.2f}</b>"
+                       if isinstance(pnl, (int, float)) else "")
+            rows += (f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:12.5px;color:#444'>"
+                     f"<span style='font-size:10px;font-weight:800;color:#fff;background:{ac};padding:2px 8px;"
+                     f"border-radius:4px'>{a}</span> "
+                     f"<span style='font-family:monospace;font-weight:800'>{t.get('ticker')}</span> "
+                     f"{t.get('shares')} sh @ ${t.get('price')}{pnl_txt}"
+                     f"<div style='font-size:11px;color:#888;margin-top:2px'>{t.get('reason','')}</div></div>")
+    else:
+        rows = "<div style='font-size:12.5px;color:#888'>No new trades this run — portfolio unchanged.</div>"
+    eq = summary.get("equity")
+    ret = summary.get("return_pct")
+    stat = ""
+    if eq is not None:
+        rc = "#16a34a" if (ret or 0) >= 0 else "#dc2626"
+        stat = (f"<div style='font-size:12px;color:#444;margin-top:10px'><b>Portfolio:</b> ${eq:,.2f} equity "
+                f"· ${summary.get('cash', 0):,.2f} cash · {summary.get('open_positions', 0)} open positions "
+                f"· <b style='color:{rc}'>{ret:+.2f}%</b> all-time</div>")
+    return f"""
+  <div style='padding:20px 32px;border-bottom:1px solid #e5e7eb;background:#fafaf9'>
+    <div style='font-size:13px;font-weight:800;color:#8a909c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px'>⚡ Trades Executed (paper)</div>
+    {rows}{stat}
+  </div>"""
 
 
 def _bias_pill(bias: str) -> str:
@@ -251,7 +304,7 @@ def _build_email(plan: dict) -> str:
     <div style='font-size:13px;color:#444;line-height:1.5;margin-bottom:6px'>{daily.get('summary','')}</div>
     {_idea_rows(daily.get('ideas', []))}
   </div>
-
+{_execution_section(plan.get('execution', {}) or {})}
   <div style='padding:20px 32px;border-bottom:1px solid #e5e7eb'>
     <div style='font-size:13px;font-weight:800;color:#8a909c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px'>Weekly Plan {_bias_pill(weekly.get('bias'))}</div>
     <div style='font-size:13px;color:#444;line-height:1.5;margin-bottom:4px'>{weekly.get('summary','')}</div>

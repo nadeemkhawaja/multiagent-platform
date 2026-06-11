@@ -15,6 +15,7 @@ from llm_client import OLLAMA_BASE_URL, LLM_MODEL, get_llm_state
 from ws import manager
 import memory
 import mcp_client
+import paper_broker
 
 from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
 from agents import agent4_devdaily, agent5_compass as compass_mod
@@ -357,6 +358,38 @@ async def update_settings(body: Dict[str, Any]):
             set_config(k, v)
     orchestrator.log_event("Settings updated", "#7c5cf6")
     return await get_settings()
+
+
+# ─── Alpha Wolf paper trading ────────────────────────────────────────
+@app.get("/api/alpha-wolf/portfolio")
+async def alpha_wolf_portfolio(refresh: bool = False):
+    """Portfolio snapshot: settings, equity summary, open positions, trade log.
+    refresh=true re-marks positions at live prices before returning."""
+    return await paper_broker.portfolio_view(refresh_prices=refresh)
+
+
+class ExecutionSettings(BaseModel):
+    enabled: Optional[bool] = None
+    capital: Optional[float] = None
+    position_pct: Optional[float] = None
+    max_positions: Optional[int] = None
+
+
+@app.post("/api/alpha-wolf/execution")
+async def alpha_wolf_execution(body: ExecutionSettings):
+    settings = paper_broker.save_settings(body.enabled, body.capital,
+                                          body.position_pct, body.max_positions)
+    if body.enabled is not None:
+        orchestrator.log_event(
+            f"Alpha Wolf paper-trade execution {'enabled' if settings['enabled'] else 'disabled'}", "#7c3aed")
+    return {"status": "saved", "settings": settings}
+
+
+@app.post("/api/alpha-wolf/portfolio/reset")
+async def alpha_wolf_portfolio_reset():
+    out = paper_broker.reset_portfolio()
+    orchestrator.log_event("Alpha Wolf paper portfolio reset to starting capital", "#7c3aed")
+    return out
 
 
 # ─── Agent memory ────────────────────────────────────────────────────

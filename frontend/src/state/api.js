@@ -89,6 +89,11 @@ export const setDemoMode = (enabled) => jsonPost("/api/demo/mode", { enabled });
 export const aegisApprove = (id, reply) => jsonPost("/api/aegis/approve", { id, reply });
 export const aegisDismiss = (id) => jsonPost("/api/aegis/dismiss", { id });
 
+// ── Alpha Wolf paper trading ─────────────────────────────────────────────────
+export const getWolfPortfolio = (refresh = false) => jsonGet(`/api/alpha-wolf/portfolio${refresh ? "?refresh=true" : ""}`);
+export const setWolfExecution = (body) => jsonPost("/api/alpha-wolf/execution", body);
+export const resetWolfPortfolio = () => jsonPost("/api/alpha-wolf/portfolio/reset");
+
 // ── Settings / schedules / health / email preview ───────────────────────────
 export const getConfig = () => jsonGet("/api/config");
 export const saveConfig = (body) => jsonPost("/api/config", body);
