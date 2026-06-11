@@ -4,7 +4,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance } from "../theme/ui";
-import { getConfig, saveConfig, getSchedules, setSchedule, getHealth } from "../state/api";
+import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel, setProviderKey,
+         getMCP, addMCPServer, removeMCPServer, pingMCPServer, getMCPTools } from "../state/api";
 
 const inputStyle = () => ({
   width: "100%", marginTop: 6, border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px",
@@ -67,18 +68,263 @@ function ScheduleRow({ agent, info, onSave }) {
   );
 }
 
+const PROVIDER_LABEL = { grok: "Grok (xAI) · free", openai: "OpenAI · paid", anthropic: "Claude (Anthropic) · paid" };
+const KEY_PLACEHOLDER = { grok: "xai-…", openai: "sk-…", anthropic: "sk-ant-…" };
+
+function ProviderKeyRow({ prov, st, onSave }) {
+  const [val, setVal] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => { setBusy(true); await onSave(prov, val.trim()); setVal(""); setBusy(false); };
+  const clear = async () => { setBusy(true); await onSave(prov, ""); setBusy(false); };
+
+  const status = !st.configured ? "no key"
+    : st.source === "ui" ? `key saved ${st.key_hint || ""} · active now`
+    : `key from .env ${st.key_hint || ""}`;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr auto auto", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{PROVIDER_LABEL[prov] || prov}</div>
+        <div style={{ fontSize: 10.5, color: st.configured ? T.green : T.ink4, marginTop: 2 }}>{status}</div>
+      </div>
+      <input type="password" autoComplete="off" value={val} onChange={(e) => setVal(e.target.value)}
+        placeholder={st.configured ? "Replace key…" : `Paste key (${KEY_PLACEHOLDER[prov] || "…"})`}
+        style={{ ...inputStyle(), marginTop: 0 }} />
+      <Btn size="sm" onClick={save} disabled={busy || !val.trim()}>{busy ? "…" : "Save"}</Btn>
+      <Btn size="sm" onClick={clear} disabled={busy || st.source !== "ui"}>Clear</Btn>
+    </div>
+  );
+}
+
+function ModelRow({ agent, name, llm, onSave }) {
+  const col = AGENT_COLOR[agent] || T.violet;
+  const current = llm.agent_models?.[agent] || "";
+  const [saving, setSaving] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customVal, setCustomVal] = useState("");
+
+  const options = [];
+  for (const [prov, models] of Object.entries(llm.suggested_models || {})) {
+    const configured = llm.providers?.[prov]?.configured;
+    options.push({
+      label: PROVIDER_LABEL[prov] || prov,
+      configured,
+      specs: models.map((m) => `${prov}:${m}`),
+    });
+  }
+  const known = new Set(options.flatMap((g) => g.specs));
+
+  const change = async (e) => {
+    if (e.target.value === "__custom__") { setCustomVal(current); setCustomMode(true); return; }
+    setSaving(true);
+    await onSave(agent, e.target.value);
+    setSaving(false);
+  };
+  const saveCustom = async () => {
+    setSaving(true);
+    await onSave(agent, customVal.trim());
+    setSaving(false);
+    setCustomMode(false);
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr auto", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <span style={{ width: 26, height: 26, borderRadius: 7, background: col + "1a", color: col, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>●</span>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{name}</span>
+      </div>
+      {customMode ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input value={customVal} onChange={(e) => setCustomVal(e.target.value)} autoFocus
+            placeholder="provider:model — e.g. grok:grok-4, openai:o3-mini, or any Ollama model"
+            style={{ ...inputStyle(), marginTop: 0 }}
+            onKeyDown={(e) => { if (e.key === "Enter") saveCustom(); if (e.key === "Escape") setCustomMode(false); }} />
+          <Btn size="sm" onClick={saveCustom} disabled={saving || !customVal.trim()}>Save</Btn>
+          <Btn size="sm" onClick={() => setCustomMode(false)}>✕</Btn>
+        </div>
+      ) : (
+        <select value={current} onChange={change} style={{ ...inputStyle(), marginTop: 0 }}>
+          <option value="">Local · {llm.default_model} (default)</option>
+          {!known.has(current) && current && <option value={current}>{current} (custom)</option>}
+          {options.map((g) => (
+            <optgroup key={g.label} label={g.configured ? g.label : `${g.label} — no API key`}>
+              {g.specs.map((spec) => (
+                <option key={spec} value={spec} disabled={!g.configured}>{spec.split(":").slice(1).join(":")}</option>
+              ))}
+            </optgroup>
+          ))}
+          <option value="__custom__">Custom model…</option>
+        </select>
+      )}
+      <span style={{ fontSize: 11, color: T.ink4, minWidth: 56 }}>{saving ? "Saving…" : current ? "frontier" : "local"}</span>
+    </div>
+  );
+}
+
+function MCPServerRow({ name, cfg, onRemove }) {
+  const [ping, setPing] = useState(null);
+  const [tools, setTools] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const doPing = async () => {
+    setBusy(true); setPing(null);
+    setPing(await pingMCPServer(name).catch((e) => ({ reachable: false, error: String(e) })));
+    setBusy(false);
+  };
+  const doTools = async () => {
+    if (tools) { setTools(null); return; }   // toggle off
+    setBusy(true);
+    const r = await getMCPTools(name).catch((e) => ({ error: String(e) }));
+    setTools(r.error ? { error: r.error } : { list: r.tools || [] });
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ padding: "11px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ width: 26, height: 26, borderRadius: 7, background: T.violet + "1a", color: T.violet, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>⌁</span>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{name} {!cfg.enabled && <span style={{ fontSize: 10, color: T.ink4 }}>(disabled)</span>}</div>
+          <div style={{ fontSize: 11, color: T.ink3, fontFamily: T.mono }}>{cfg.command} {(cfg.args || []).join(" ")}</div>
+          {(cfg.env || []).length > 0 && (
+            <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 2 }}>env: {(cfg.env || []).join(", ")}</div>
+          )}
+        </div>
+        <Btn size="sm" onClick={doPing} disabled={busy}>{busy ? "…" : "Ping"}</Btn>
+        <Btn size="sm" onClick={doTools} disabled={busy}>{tools ? "Hide tools" : "Tools"}</Btn>
+        <Btn size="sm" onClick={() => onRemove(name)} disabled={busy}>Remove</Btn>
+      </div>
+      {ping && (
+        <div style={{ fontSize: 11.5, marginTop: 6, color: ping.reachable ? T.green : T.red }}>
+          {ping.reachable ? `● reachable · ${ping.tools} tool${ping.tools === 1 ? "" : "s"}` : `○ unreachable — ${ping.error || "no response"}`}
+        </div>
+      )}
+      {tools && (
+        <div style={{ marginTop: 8, padding: "10px 12px", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 9 }}>
+          {tools.error ? (
+            <div style={{ fontSize: 11.5, color: T.red }}>{tools.error}</div>
+          ) : tools.list.length === 0 ? (
+            <div style={{ fontSize: 11.5, color: T.ink4 }}>No tools exposed.</div>
+          ) : tools.list.map((t, i) => (
+            <div key={i} style={{ padding: "5px 0", borderBottom: i < tools.list.length - 1 ? `1px solid ${T.line2}` : "none" }}>
+              <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.violet }}>{t.name}</span>
+              {t.description && <span style={{ fontSize: 11, color: T.ink3 }}> — {String(t.description).slice(0, 140)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MCPCard() {
+  const [mcp, setMcp] = useState(null);
+  const [form, setForm] = useState({ name: "", command: "", args: "", env: "" });
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setMcp(await getMCP().catch(() => null));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const add = async () => {
+    setError(null);
+    if (!form.name.trim() || !form.command.trim()) { setError("Name and command are required."); return; }
+    const env = {};
+    for (const line of form.env.split("\n")) {
+      const t = line.trim();
+      if (!t) continue;
+      const i = t.indexOf("=");
+      if (i < 1) { setError(`Bad env line: "${t}" — use KEY=VALUE, one per line.`); return; }
+      env[t.slice(0, i).trim()] = t.slice(i + 1).trim();
+    }
+    setAdding(true);
+    const r = await addMCPServer({
+      name: form.name.trim(), command: form.command.trim(),
+      args: form.args.trim() ? form.args.trim().split(/\s+/) : [],
+      env, enabled: true,
+    }).catch((e) => ({ error: String(e) }));
+    setAdding(false);
+    if (r.error) { setError(r.error); return; }
+    setForm({ name: "", command: "", args: "", env: "" });
+    load();
+  };
+
+  const remove = async (name) => {
+    if (!window.confirm(`Remove MCP server "${name}"?`)) return;
+    await removeMCPServer(name);
+    load();
+  };
+
+  const servers = Object.entries(mcp?.servers || {});
+  return (
+    <Card pad={20}>
+      <SectionTitle sub="Connect Model Context Protocol servers — their tools become callable by the platform">MCP servers</SectionTitle>
+      {!mcp ? (
+        <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>
+      ) : (
+        <>
+          {!mcp.available && (
+            <div style={{ fontSize: 12, color: T.amber, background: T.amberBg, border: `1px solid ${T.amber}44`, borderRadius: 9, padding: "9px 12px", marginBottom: 10 }}>
+              The <span style={{ fontFamily: T.mono }}>mcp</span> Python package isn't installed on the backend —
+              servers can be registered but not called. Install with <span style={{ fontFamily: T.mono }}>pip install mcp</span>.
+            </div>
+          )}
+          {servers.length === 0
+            ? <div style={{ fontSize: 12.5, color: T.ink4, padding: "6px 0 12px" }}>No MCP servers registered yet.</div>
+            : servers.map(([name, cfg]) => <MCPServerRow key={name} name={name} cfg={cfg} onRemove={remove} />)}
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 2px" }}>Add server</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            <Field label="Name" hint="Identifier, e.g. filesystem, github">
+              <input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="filesystem" style={inputStyle()} />
+            </Field>
+            <Field label="Command" hint="Executable that starts the server (stdio)">
+              <input value={form.command} onChange={(e) => setF("command", e.target.value)} placeholder="npx" style={inputStyle()} />
+            </Field>
+            <Field label="Arguments" hint="Space-separated">
+              <input value={form.args} onChange={(e) => setF("args", e.target.value)} placeholder="-y @modelcontextprotocol/server-filesystem /tmp" style={inputStyle()} />
+            </Field>
+            <Field label="Environment" hint="KEY=VALUE, one per line — values are never shown back">
+              <textarea rows={2} value={form.env} onChange={(e) => setF("env", e.target.value)} placeholder={"GITHUB_TOKEN=ghp_…"} style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.55 }} />
+            </Field>
+          </div>
+          {error && <div style={{ fontSize: 12, color: T.red, marginBottom: 8 }}>{error}</div>}
+          <Btn size="sm" kind="primary" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add MCP server"}</Btn>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function Settings({ theme, setTheme, mode, setMode }) {
   const [config, setConfig] = useState(null);
   const [schedules, setSchedules] = useState(null);
   const [health, setHealth] = useState(null);
+  const [llm, setLlm] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
 
   const load = useCallback(async () => {
     setConfig(await getConfig().catch(() => ({})));
     setSchedules(await getSchedules().catch(() => ({})));
     setHealth(await getHealth().catch(() => null));
+    setLlm(await getLLMProviders().catch(() => null));
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const onModelSave = async (agent, model) => {
+    await setAgentModel(agent, model);
+    setLlm(await getLLMProviders().catch(() => llm));
+  };
+
+  const onKeySave = async (provider, key) => {
+    await setProviderKey(provider, key);
+    setLlm(await getLLMProviders().catch(() => llm));
+  };
 
   const saveSettings = async () => {
     const c = await saveConfig(config);
@@ -142,6 +388,39 @@ export default function Settings({ theme, setTheme, mode, setMode }) {
             </div>
           )}
         </Card>
+
+        {/* AI models */}
+        <Card pad={20}>
+          <SectionTitle sub="Local Qwen by default — route any agent to a frontier model (applies on its next run)">AI models</SectionTitle>
+          {llm ? (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                {Object.entries(llm.providers || {}).map(([prov, st]) => (
+                  <Pill key={prov} c={st.configured ? T.green : T.ink4} bg={st.configured ? T.greenBg : T.line2}>
+                    <Dot c={st.configured ? T.green : T.ink4} />{prov}{st.configured ? "" : " · no key"}
+                  </Pill>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "6px 0 2px" }}>Provider API keys</div>
+              {["grok", "openai", "anthropic"].map((prov) => (
+                <ProviderKeyRow key={prov} prov={prov} st={llm.providers?.[prov] || {}} onSave={onKeySave} />
+              ))}
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 2px" }}>Model per agent</div>
+              {schedules && Object.entries(schedules).map(([agent, info]) => (
+                <ModelRow key={agent} agent={agent} name={info.name} llm={llm} onSave={onModelSave} />
+              ))}
+              <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>
+                Keys saved here apply immediately — no restart. <span style={{ fontFamily: T.mono }}>.env</span> vars
+                (<span style={{ fontFamily: T.mono }}>XAI_API_KEY</span>, <span style={{ fontFamily: T.mono }}>OPENAI_API_KEY</span>,
+                <span style={{ fontFamily: T.mono }}> ANTHROPIC_API_KEY</span>) still work as a fallback.
+                Agents without an override always use local <span style={{ fontFamily: T.mono }}>{llm.default_model}</span>.
+              </div>
+            </>
+          ) : <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>}
+        </Card>
+
+        {/* MCP servers */}
+        <MCPCard />
 
         {/* Schedules */}
         <Card pad={20}>

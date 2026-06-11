@@ -22,8 +22,20 @@ const SOURCE_LABELS = {
 };
 const ALL_SOURCES = Object.keys(SOURCE_LABELS);
 
+// The plan comes from a local LLM and is not guaranteed to match the schema —
+// a field that should be a string sometimes arrives as an object or array.
+// React throws on object children, so coerce everything to text before render.
+function txt(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(txt).filter(Boolean).join(", ");
+  if (typeof v === "object") return Object.values(v).map(txt).filter(Boolean).join(" — ");
+  return String(v);
+}
+
 function dirColor(d) {
-  const v = String(d || "").toLowerCase();
+  const v = txt(d).toLowerCase();
   return v === "long" ? T.green : v === "short" ? T.red : T.ink3;
 }
 function biasColor(b) {
@@ -46,17 +58,19 @@ function StancePill({ stance }) {
 function IdeaCard({ idea, weekly }) {
   const dc = dirColor(idea.direction);
   const thirdLabel = weekly ? "Catalyst" : "Trigger";
-  const thirdVal = weekly ? idea.catalyst : idea.trigger;
+  const thirdVal = txt(weekly ? idea.catalyst : idea.trigger);
+  const thesis = txt(idea.thesis);
+  const risk = txt(idea.risk);
   return (
     <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: "12px 14px", background: T.card }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 15, color: T.ink }}>{idea.ticker || "—"}</span>
-        <span style={{ fontSize: 9.5, fontWeight: 800, color: dc, background: dc + "16", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{idea.direction || "n/a"}</span>
+        <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 15, color: T.ink }}>{txt(idea.ticker) || "—"}</span>
+        <span style={{ fontSize: 9.5, fontWeight: 800, color: dc, background: dc + "16", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{txt(idea.direction) || "n/a"}</span>
       </div>
-      {idea.thesis && <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.45, marginTop: 6 }}>{idea.thesis}</div>}
+      {thesis && <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.45, marginTop: 6 }}>{thesis}</div>}
       <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 6, lineHeight: 1.5 }}>
         {thirdVal && <div><b style={{ color: T.ink2 }}>{thirdLabel}:</b> {thirdVal}</div>}
-        {idea.risk && <div><b style={{ color: T.ink2 }}>Risk:</b> {idea.risk}</div>}
+        {risk && <div><b style={{ color: T.ink2 }}>Risk:</b> {risk}</div>}
       </div>
     </div>
   );
@@ -173,10 +187,10 @@ function PlanBlock({ title, plan, weekly }) {
         <SectionTitle sub={weekly ? "swing / position horizon" : "today's actionable read"}>{title}</SectionTitle>
         <BiasPill bias={plan?.bias} />
       </div>
-      {plan?.summary && <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginBottom: 12 }}>{plan.summary}</div>}
+      {plan?.summary && <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginBottom: 12 }}>{txt(plan.summary)}</div>}
       {weekly && plan?.themes?.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-          {plan.themes.map((t, i) => <span key={i} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: PURPLE + "14", color: PURPLE, fontWeight: 600 }}>{t}</span>)}
+          {plan.themes.map((t, i) => <span key={i} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: PURPLE + "14", color: PURPLE, fontWeight: 600 }}>{txt(t)}</span>)}
         </div>
       )}
       {ideas.length > 0 ? (
@@ -287,7 +301,7 @@ export default function AlphaWolf({ status, agentError }) {
             <Card pad={20} style={{ background: PURPLE_BG, borderColor: PURPLE + "44" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <StancePill stance={plan.stance} />
-                <div style={{ fontSize: 16, fontWeight: 800, color: "#4c1d95", flex: 1, minWidth: 0, lineHeight: 1.4 }}>{plan.headline}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#4c1d95", flex: 1, minWidth: 0, lineHeight: 1.4 }}>{txt(plan.headline)}</div>
               </div>
             </Card>
           )}
@@ -299,7 +313,7 @@ export default function AlphaWolf({ status, agentError }) {
                 <LufiAvatar size={38} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>Market regime <span style={{ fontSize: 11, color: T.ink4 }}>by Alpha Wolf · Qwen3</span></div>
-                  <div style={{ fontSize: 13.5, color: "#4c1d95", lineHeight: 1.55 }}>{plan.regime}</div>
+                  <div style={{ fontSize: 13.5, color: "#4c1d95", lineHeight: 1.55 }}>{txt(plan.regime)}</div>
                 </div>
               </div>
             </Card>
@@ -310,7 +324,7 @@ export default function AlphaWolf({ status, agentError }) {
             <Card pad={20} style={{ borderColor: PURPLE + "33" }}>
               <SectionTitle sub="where multiple agents line up — highest conviction">🎯 Confluence</SectionTitle>
               <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
-                {plan.confluence.map((c, i) => <li key={i}>{c}</li>)}
+                {plan.confluence.map((c, i) => <li key={i}>{txt(c)}</li>)}
               </ul>
             </Card>
           )}
@@ -324,7 +338,7 @@ export default function AlphaWolf({ status, agentError }) {
               <SectionTitle sub="upcoming events to watch">Catalysts</SectionTitle>
               {(plan.catalysts || []).length > 0 ? (
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
-                  {plan.catalysts.map((c, i) => <li key={i}>{c}</li>)}
+                  {plan.catalysts.map((c, i) => <li key={i}>{txt(c)}</li>)}
                 </ul>
               ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>None flagged.</div>}
             </Card>
@@ -332,13 +346,13 @@ export default function AlphaWolf({ status, agentError }) {
               <SectionTitle sub="what to stay away from">⛔ Avoid</SectionTitle>
               {(plan.avoid || []).length > 0 ? (
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
-                  {plan.avoid.map((c, i) => <li key={i}>{c}</li>)}
+                  {plan.avoid.map((c, i) => <li key={i}>{txt(c)}</li>)}
                 </ul>
               ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>Nothing flagged.</div>}
             </Card>
             <Card pad={20}>
               <SectionTitle sub="how to size and protect">Risk management</SectionTitle>
-              <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginTop: 8 }}>{plan.risk_notes || "—"}</div>
+              <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginTop: 8 }}>{txt(plan.risk_notes) || "—"}</div>
             </Card>
           </div>
 
@@ -349,7 +363,7 @@ export default function AlphaWolf({ status, agentError }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                 {Object.entries(inputs).map(([k, v]) => (
                   <div key={k} style={{ fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>
-                    <span style={{ fontWeight: 800, color: PURPLE, fontFamily: T.mono, fontSize: 11 }}>{k}</span> &nbsp;{v}
+                    <span style={{ fontWeight: 800, color: PURPLE, fontFamily: T.mono, fontSize: 11 }}>{k}</span> &nbsp;{txt(v)}
                   </div>
                 ))}
               </div>
@@ -357,7 +371,7 @@ export default function AlphaWolf({ status, agentError }) {
           )}
 
           {/* Disclaimer */}
-          <div style={{ fontSize: 11, color: T.ink4, lineHeight: 1.5, padding: "0 4px" }}>{plan.disclaimer}</div>
+          <div style={{ fontSize: 11, color: T.ink4, lineHeight: 1.5, padding: "0 4px" }}>{txt(plan.disclaimer)}</div>
         </>)}
       </div>
     </div>

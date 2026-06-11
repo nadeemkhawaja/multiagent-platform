@@ -13,6 +13,10 @@ async function jsonGet(path) {
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
+async function jsonDelete(path) {
+  const r = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
+  return r.json().catch(() => ({}));
+}
 async function jsonPost(path, body) {
   const r = await fetch(`${API_BASE}${path}`, {
     method: "POST",
@@ -101,3 +105,21 @@ export const getSchedules = () => jsonGet("/api/schedules");
 export const setSchedule = (agent, body) => jsonPost(`/api/schedules/${agent}`, body);
 export const getHealth = () => jsonGet("/api/health");
 export const emailPreview = (id) => jsonGet(`/api/agent/${id}/email-preview`);
+
+// ── LLM providers / per-agent models ────────────────────────────────────────
+export const getLLMProviders = () => jsonGet("/api/llm/providers");
+export const setAgentModel = (agent_id, model) => jsonPost("/api/llm/models", { agent_id, model });
+export const setProviderKey = (provider, api_key) => jsonPost("/api/llm/keys", { provider, api_key });
+
+// ── Per-agent AI assistant ──────────────────────────────────────────────────
+export const agentAssist = (id, prompt) => jsonPost(`/api/agent/${id}/assist`, { prompt });
+
+// ── MCP servers ─────────────────────────────────────────────────────────────
+export const getMCP = () => jsonGet("/api/mcp");
+export const addMCPServer = (body) => jsonPost("/api/mcp/servers", body);
+export const removeMCPServer = (name) => jsonDelete(`/api/mcp/servers/${encodeURIComponent(name)}`);
+export const pingMCPServer = (name) => jsonGet(`/api/mcp/servers/${encodeURIComponent(name)}/ping`);
+export const getMCPTools = (name) => jsonGet(`/api/mcp/servers/${encodeURIComponent(name)}/tools`);
+
+// ── Run metrics ─────────────────────────────────────────────────────────────
+export const getMetrics = (window = 50) => jsonGet(`/api/metrics?window=${window}`);

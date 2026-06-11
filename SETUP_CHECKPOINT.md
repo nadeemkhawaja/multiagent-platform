@@ -9,7 +9,7 @@
 
 | Item | Status |
 |------|--------|
-| Ollama + qwen3:8b | ✅ Running |
+| Ollama + qwen3.5:4b | ✅ Running |
 | Node v26 | ✅ OK |
 | Python 3.12 (via Homebrew) | ✅ `python3.12 --version` → 3.12.1 |
 | Project root | `/Users/nkhawaja/Downloads/Claud Programming/MultiAgent Platform` |
@@ -34,7 +34,7 @@
 
 ```
 OLLAMA_BASE_URL=http://localhost:11434
-LLM_MODEL=qwen3:8b
+LLM_MODEL=qwen3.5:4b
 DAILY_DIGEST_EMAIL=nadeem.khawaja@gmail.com
 SMTP_APP_PASSWORD=<16-char app password>
 YOUTUBE_API_KEY=<AIza...>

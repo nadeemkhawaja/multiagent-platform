@@ -104,6 +104,78 @@ def _gather():
     return summaries, sources_used
 
 
+# ── Plan sanitization ─────────────────────────────────────────────────────────
+# The local LLM does not always honor the schema: string fields sometimes come
+# back as dicts/lists, list fields as scalars. The UI, the email, and the paper
+# broker all consume this plan, so coerce every field to its expected type.
+def _as_text(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, list):
+        return ", ".join(filter(None, (_as_text(x) for x in v)))
+    if isinstance(v, dict):
+        return " — ".join(filter(None, (_as_text(x) for x in v.values())))
+    return str(v)
+
+
+def _as_text_list(v, limit: int = 8) -> list:
+    items = v if isinstance(v, list) else ([v] if v else [])
+    return [t for t in (_as_text(x) for x in items[:limit]) if t]
+
+
+def _sanitize_idea(idea, weekly: bool) -> dict:
+    if not isinstance(idea, dict):
+        return {}
+    direction = _as_text(idea.get("direction")).lower()
+    out = {
+        "ticker": _as_text(idea.get("ticker")).upper()[:10],
+        "direction": direction if direction in ("long", "short", "neutral") else "neutral",
+        "thesis": _as_text(idea.get("thesis")),
+        "risk": _as_text(idea.get("risk")),
+    }
+    if weekly:
+        out["catalyst"] = _as_text(idea.get("catalyst"))
+    else:
+        out["trigger"] = _as_text(idea.get("trigger"))
+    return out
+
+
+def _sanitize_horizon(h, weekly: bool) -> dict:
+    h = h if isinstance(h, dict) else {}
+    bias = _as_text(h.get("bias")).upper()
+    out = {
+        "bias": bias if bias in ("BULLISH", "BEARISH", "NEUTRAL") else "NEUTRAL",
+        "summary": _as_text(h.get("summary")),
+        "ideas": [i for i in (_sanitize_idea(x, weekly) for x in (h.get("ideas") or [])[:6])
+                  if i.get("ticker")],
+    }
+    if weekly:
+        out["themes"] = _as_text_list(h.get("themes"), 6)
+    return out
+
+
+def _sanitize_plan(plan: dict) -> dict:
+    plan = plan if isinstance(plan, dict) else {}
+    stance = _as_text(plan.get("stance")).upper()
+    return {
+        "headline": _as_text(plan.get("headline")),
+        "stance": stance if stance in ("RISK-ON", "RISK-OFF", "NEUTRAL") else "NEUTRAL",
+        "regime": _as_text(plan.get("regime")),
+        "confluence": _as_text_list(plan.get("confluence"), 4),
+        "daily": _sanitize_horizon(plan.get("daily"), weekly=False),
+        "weekly": _sanitize_horizon(plan.get("weekly"), weekly=True),
+        "avoid": _as_text_list(plan.get("avoid"), 6),
+        "catalysts": _as_text_list(plan.get("catalysts"), 8),
+        "risk_notes": _as_text(plan.get("risk_notes")),
+    }
+
+
 # ── LLM synthesis → structured Daily + Weekly plan ───────────────────────────
 async def _synthesize(summaries: dict) -> dict:
     context = "\n".join(f"- {k}: {v}" for k, v in summaries.items())
@@ -164,7 +236,11 @@ async def alpha_wolf_job():
 
         orchestrator.set_progress(AGENT_ID, "Synthesizing the game-plan with Qwen3…")
         plan = await _synthesize(summaries)
-        if not plan:
+        if plan:
+            plan = _sanitize_plan(plan)
+        # fall back only when synthesis produced nothing usable
+        if not plan or not (plan.get("headline") or plan.get("regime")
+                            or plan["daily"]["ideas"] or plan["weekly"]["ideas"]):
             plan = {
                 "headline": "Not enough intel yet — run the pack, then re-run Alpha Wolf.",
                 "stance": "NEUTRAL",

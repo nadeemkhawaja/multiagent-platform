@@ -1,12 +1,13 @@
 // ============================================================================
 // App.jsx — shell: collapsible nav, command palette, toasts, keyboard shortcuts
 // ============================================================================
-import { useState, useEffect, useRef, useCallback } from "react";
-import { T, applyMode, AGENT_COLOR } from "./theme/tokens";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
+import { T, applyTheme, AGENT_COLOR } from "./theme/tokens";
 import { Dot } from "./theme/ui";
 import { useSystemState, useAgentData } from "./state/api";
 import { ToastContainer, useToasts, useAgentToasts } from "./components/Toast";
 import CommandPalette from "./components/CommandPalette";
+import AskAI from "./components/AskAI";
 
 import Orchestrator   from "./tabs/Orchestrator";
 import AITimes        from "./tabs/AITimes";
@@ -68,6 +69,43 @@ const ORDERED_TABS = ["orchestrator","ai_times","mailman","wallstreet_wolf","cis
 
 const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
 
+// ── Tab error boundary ───────────────────────────────────────────────────────
+// A crash inside one tab must never blank the whole app: catch it, show the
+// error inline, and keep the sidebar alive so the user can navigate away.
+// Keyed by tab in App so switching tabs resets the boundary automatically.
+class TabErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[TabErrorBoundary] tab crashed:", error, info?.componentStack);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ padding: 40 }}>
+        <div style={{ background: T.card, border: `1px solid ${T.red}44`, borderRadius: 14, padding: "22px 26px", maxWidth: 640 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: T.red, marginBottom: 8 }}>⚠ This tab crashed while rendering</div>
+          <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginBottom: 12 }}>
+            The rest of the app is still running — switch to another tab, or reload this one.
+            This usually means the agent saved data in an unexpected shape; re-running the agent typically fixes it.
+          </div>
+          <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.ink3, background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 12px", marginBottom: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {String(this.state.error?.message || this.state.error)}
+          </div>
+          <button onClick={() => this.setState({ error: null })} style={{ padding: "7px 16px", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink2, cursor: "pointer", fontSize: 12.5, fontFamily: T.sans, fontWeight: 600 }}>
+            Reload tab
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
+
 // ── Keyboard shortcut help overlay ──────────────────────────────────────────
 function ShortcutHelp({ onClose }) {
   return (
@@ -102,7 +140,7 @@ function NavItem({ item, active, onClick, badge, collapsed }) {
       <button onClick={onClick} title={item.label} style={{
         width: 38, height: 38, borderRadius: 10, margin: "1px auto", display: "flex", alignItems: "center", justifyContent: "center",
         background: active ? col + "1f" : "transparent", border: `1px solid ${active ? col + "44" : "transparent"}`,
-        color: active ? col : T.ink3, fontSize: 15, fontWeight: 700, cursor: "pointer",
+        color: active ? col : T.sideInk2, fontSize: 15, fontWeight: 700, cursor: "pointer",
         transition: "all .14s", position: "relative",
       }}>
         {item.glyph}
@@ -114,15 +152,15 @@ function NavItem({ item, active, onClick, badge, collapsed }) {
     <button onClick={onClick} style={{
       display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
       cursor: "pointer", padding: "8px 10px", borderRadius: 10,
-      border: `1px solid ${active ? T.line : "transparent"}`,
-      background: active ? T.card : "transparent",
+      border: `1px solid ${active ? T.sideLine : "transparent"}`,
+      background: active ? T.sideActive : "transparent",
       boxShadow: active ? T.shadow : "none",
       font: "inherit", transition: "all .14s", marginBottom: 1,
     }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = T.mode === "dark" ? "#ffffff10" : "#ffffff80"; }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = T.sideBtn; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
       <span style={{ width: 26, height: 26, borderRadius: 7, background: col + (active ? "1f" : "12"), color: col, display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flex: "0 0 auto" }}>{item.glyph}</span>
-      <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? T.ink : T.ink2, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
+      <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? T.sideInk : T.sideInk2, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
       {badge}
     </button>
   );
@@ -140,7 +178,7 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
   const W = collapsed ? 58 : 232;
 
   const sectionLabel = (text) => collapsed ? null : (
-    <div style={{ fontSize: 10, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", marginTop: 12 }}>{text}</div>
+    <div style={{ fontSize: 10, fontWeight: 700, color: T.sideMuted, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", marginTop: 12 }}>{text}</div>
   );
 
   const renderNav = (it, keyPrefix = "") => {
@@ -153,7 +191,7 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
   };
 
   return (
-    <div style={{ width: W, flex: `0 0 ${W}px`, background: T.sidebar, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", padding: collapsed ? "14px 8px" : "14px 10px", height: "100vh", position: "sticky", top: 0, overflowY: "auto", overflowX: "hidden", transition: "width .22s ease, flex .22s ease" }}>
+    <div style={{ width: W, flex: `0 0 ${W}px`, background: T.sidebar, borderRight: `1px solid ${T.sideLine}`, display: "flex", flexDirection: "column", padding: collapsed ? "14px 8px" : "14px 10px", height: "100vh", position: "sticky", top: 0, overflowY: "auto", overflowX: "hidden", transition: "width .22s ease, flex .22s ease" }}>
 
       {/* Logo — clicking navigates to Orchestrator */}
       <div style={{ display: "flex", alignItems: "center", gap: collapsed ? 0 : 10, padding: collapsed ? "2px 0 12px" : "2px 4px 14px", justifyContent: collapsed ? "center" : "space-between" }}>
@@ -161,8 +199,8 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
           <button onClick={() => setTab("orchestrator")} title="Orchestrator" style={{ display: "flex", alignItems: "center", gap: 9, background: tab === "orchestrator" ? T.violet + "18" : "transparent", border: tab === "orchestrator" ? `1px solid ${T.violet}33` : "1px solid transparent", borderRadius: 8, padding: "4px 8px 4px 4px", cursor: "pointer", flex: 1, minWidth: 0 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 14, flex: "0 0 auto" }}>◇</div>
             <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -0.2, lineHeight: 1.1, color: T.ink }}>Orchestrator</div>
-              <div style={{ fontSize: 9.5, color: T.ink3, fontFamily: T.mono }}>multi-agent</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -0.2, lineHeight: 1.1, color: T.sideInk }}>Orchestrator</div>
+              <div style={{ fontSize: 9.5, color: T.sideMuted, fontFamily: T.mono }}>multi-agent</div>
             </div>
             <Dot c={anyAlarm ? T.red : online ? T.green : T.amber} s={6} />
           </button>
@@ -170,17 +208,17 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
         {collapsed && (
           <button onClick={() => setTab("orchestrator")} title="Orchestrator" style={{ width: 30, height: 30, borderRadius: 8, background: tab === "orchestrator" ? "linear-gradient(135deg,#7c5cf6,#9d7bff)" : "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer" }}>◇</button>
         )}
-        <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} style={{ width: 22, height: 22, borderRadius: 6, background: T.cardAlt, border: `1px solid ${T.line}`, cursor: "pointer", display: "grid", placeItems: "center", fontSize: 11, color: T.ink3, flexShrink: 0 }}>
+        <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} style={{ width: 22, height: 22, borderRadius: 6, background: T.sideBtn, border: `1px solid ${T.sideLine}`, cursor: "pointer", display: "grid", placeItems: "center", fontSize: 11, color: T.sideInk2, flexShrink: 0 }}>
           {collapsed ? "▶" : "◀"}
         </button>
       </div>
 
       {/* Cmd+K search */}
       {!collapsed && (
-        <button onClick={onCmdK} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 10px", marginBottom: 10, cursor: "pointer", fontFamily: T.sans }}>
-          <span style={{ fontSize: 13, color: T.ink4 }}>⌘</span>
-          <span style={{ fontSize: 12, color: T.ink4, flex: 1, textAlign: "left" }}>Search…</span>
-          <span style={{ fontSize: 10, fontFamily: T.mono, color: T.ink4, background: T.card, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px" }}>K</span>
+        <button onClick={onCmdK} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: T.sideBtn, border: `1px solid ${T.sideLine}`, borderRadius: 8, padding: "6px 10px", marginBottom: 10, cursor: "pointer", fontFamily: T.sans }}>
+          <span style={{ fontSize: 13, color: T.sideMuted }}>⌘</span>
+          <span style={{ fontSize: 12, color: T.sideMuted, flex: 1, textAlign: "left" }}>Search…</span>
+          <span style={{ fontSize: 10, fontFamily: T.mono, color: T.sideMuted, background: T.sideActive, border: `1px solid ${T.sideLine}`, borderRadius: 4, padding: "1px 5px" }}>K</span>
         </button>
       )}
 
@@ -194,12 +232,12 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
           <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{ flex: 1, minWidth: 0 }}>{renderNav(ALPHA_MASTER)}</div>
             <button onClick={() => setAlphaOpen((o) => !o)} title={alphaOpen ? "Collapse pack" : "Expand pack"} style={{
-              width: 24, height: 24, borderRadius: 6, border: `1px solid ${T.line}`, background: T.cardAlt,
-              color: T.ink3, cursor: "pointer", fontSize: 10, flex: "0 0 auto", display: "grid", placeItems: "center",
+              width: 24, height: 24, borderRadius: 6, border: `1px solid ${T.sideLine}`, background: T.sideBtn,
+              color: T.sideInk2, cursor: "pointer", fontSize: 10, flex: "0 0 auto", display: "grid", placeItems: "center",
             }}>{alphaOpen ? "▾" : "▸"}</button>
           </div>
           {alphaOpen && (
-            <div style={{ marginLeft: 14, paddingLeft: 6, borderLeft: `1px solid ${T.line}` }}>
+            <div style={{ marginLeft: 14, paddingLeft: 6, borderLeft: `1px solid ${T.sideLine}` }}>
               {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
             </div>
           )}
@@ -207,16 +245,16 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
       )}
       {!demo && collapsed && (
         <>
-          <div style={{ height: 1, background: T.line, margin: "10px 8px" }} />
+          <div style={{ height: 1, background: T.sideLine, margin: "10px 8px" }} />
           {renderNav(ALPHA_MASTER)}
           {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
         </>
       )}
 
       {/* Bottom — Settings pinned */}
-      <div style={{ marginTop: "auto", paddingTop: 10, borderTop: `1px solid ${T.line}` }}>
+      <div style={{ marginTop: "auto", paddingTop: 10, borderTop: `1px solid ${T.sideLine}` }}>
         <NavItem item={SETTINGS_ITEM} active={tab === "settings"} onClick={() => setTab("settings")} collapsed={collapsed} />
-        <div style={{ padding: collapsed ? "8px 0" : "8px 4px 2px", fontSize: 10, color: T.ink4, fontFamily: T.mono, lineHeight: 1.6, textAlign: collapsed ? "center" : "left" }}>
+        <div style={{ padding: collapsed ? "8px 0" : "8px 4px 2px", fontSize: 10, color: T.sideMuted, fontFamily: T.mono, lineHeight: 1.6, textAlign: collapsed ? "center" : "left" }}>
           {!collapsed && (res
             ? <>CPU {Math.round(res.cpu?.v || 0)}% · RAM {Math.round(res.ram?.v || 0)}%<br /></>
             : <>connecting…<br /></>)}
@@ -236,7 +274,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("om_collapsed") === "1");
   const [cmdOpen, setCmdOpen]     = useState(false);
   const [helpOpen, setHelpOpen]   = useState(false);
-  applyMode(mode);
+  applyTheme(theme, mode);
 
   const { state: sys, online, transport } = useSystemState();
   const { data: capitolData } = useAgentData("capitol_tracker");
@@ -249,7 +287,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem("om_tab", tab); }, [tab]);
   useEffect(() => { localStorage.setItem("om_theme", theme); }, [theme]);
   useEffect(() => { localStorage.setItem("om_collapsed", collapsed ? "1" : "0"); }, [collapsed]);
-  useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = mode; }, [mode]);
+  useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = T.mode; }, [mode, theme]);
 
   const navigate = useCallback((id) => setTab(id), []);
 
@@ -298,7 +336,12 @@ export default function App() {
         collapsed={collapsed} setCollapsed={setCollapsed}
         onCmdK={() => setCmdOpen(true)}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>{content}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <TabErrorBoundary key={tab}>{content}</TabErrorBoundary>
+      </div>
+
+      {/* Per-agent AI assistant — every agent tab gets an Ask-AI panel */}
+      {TABS[tab] && <AskAI key={"ai-" + tab} agentId={tab} agentName={agent?.n || tab} color={AGENT_COLOR[tab]} />}
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
