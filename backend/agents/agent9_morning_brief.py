@@ -31,6 +31,14 @@ def _read_agent(agent_id: str) -> dict:
     except Exception:
         return {}
 
+def _aitimes_videos(aitimes_snap: dict) -> list:
+    """AI-Times stores videos as {"news": [...], "personality": [...]}; older
+    snapshots (and our own saved payload) use a flat list. Accept both."""
+    videos = aitimes_snap.get("videos")
+    if isinstance(videos, dict):
+        return (videos.get("news") or []) + (videos.get("personality") or [])
+    return videos or []
+
 async def build_llm_narrative(weather: dict, wolf_snap: dict, capitol_snap: dict, aitimes_snap: dict) -> str:
     """Ask Qwen3 to write a short morning narrative."""
     wolf_top = ""
@@ -48,8 +56,8 @@ async def build_llm_narrative(weather: dict, wolf_snap: dict, capitol_snap: dict
         )
 
     ai_top = ""
-    if aitimes_snap.get("videos"):
-        vids = aitimes_snap["videos"][:3]
+    vids = _aitimes_videos(aitimes_snap)[:3]
+    if vids:
         ai_top = "Top AI news: " + "; ".join(v.get("title", "") for v in vids)
 
     # Yesterday's brief from memory → today's narrative leads with what's new
@@ -81,7 +89,7 @@ def build_html_email(weather: dict, wolf_snap: dict, capitol_snap: dict, aitimes
     """Build full HTML digest email."""
     wolf  = wolf_snap.get("wolf", {})
     tracker = capitol_snap.get("tracker", {})
-    videos  = (aitimes_snap.get("videos") or [])[:4]
+    videos  = _aitimes_videos(aitimes_snap)[:4]
 
     gainers = wolf.get("gainers", [])[:5]
     losers  = wolf.get("losers",  [])[:5]
@@ -99,7 +107,7 @@ def build_html_email(weather: dict, wolf_snap: dict, capitol_snap: dict, aitimes
         <div style='display:flex;gap:12px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #eee'>
           <img src='{v.get('thumbnail','')}' style='width:80px;height:52px;object-fit:cover;border-radius:6px;flex-shrink:0' />
           <div><a href='{v.get('url','')}' style='font-size:13px;font-weight:600;color:#1a1a2e;text-decoration:none'>{v.get('title','')}</a>
-          <div style='font-size:11px;color:#888;margin-top:2px'>{v.get('channel','')} · {v.get('published','')}</div></div>
+          <div style='font-size:11px;color:#888;margin-top:2px'>{v.get('channel','')} · {v.get('published', v.get('date',''))}</div></div>
         </div>"""
 
     trade_rows = ""
@@ -184,7 +192,7 @@ async def morning_brief_job():
                 "wolf_gainers":  [{"ticker": s.get("symbol", s.get("ticker", "")), "pct": s.get("change_pct", s.get("pct", 0)), "price": s.get("price", 0)} for s in (wolf_snap.get("market_data") or {}).get("top_gainers", [])[:5]],
                 "wolf_losers":   [{"ticker": s.get("symbol", s.get("ticker", "")), "pct": s.get("change_pct", s.get("pct", 0)), "price": s.get("price", 0)} for s in (wolf_snap.get("market_data") or {}).get("top_losers",  [])[:5]],
                 "capitol_trades": (capitol_snap.get("tracker") or {}).get("trades", [])[:6],
-                "ai_videos":     (aitimes_snap.get("videos") or [])[:4],
+                "ai_videos":     _aitimes_videos(aitimes_snap)[:4],
                 "generated_at":  now,
             }
         }

@@ -2,7 +2,7 @@
 // App.jsx — shell: collapsible nav, command palette, toasts, keyboard shortcuts
 // ============================================================================
 import { useState, useEffect, useRef, useCallback, Component } from "react";
-import { T, applyTheme, AGENT_COLOR } from "./theme/tokens";
+import { T, applyMode, AGENT_COLOR } from "./theme/tokens";
 import { Dot } from "./theme/ui";
 import { useSystemState, useAgentData } from "./state/api";
 import { ToastContainer, useToasts, useAgentToasts } from "./components/Toast";
@@ -274,12 +274,11 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
 // ── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab]       = useState(() => { const t = localStorage.getItem("om_tab"); return t === "home" ? "orchestrator" : (t || "orchestrator"); });
-  const [theme, setTheme]   = useState(() => localStorage.getItem("om_theme") || "aria");
   const [mode, setMode]     = useState(() => localStorage.getItem("om_mode") || "light");
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("om_collapsed") === "1");
   const [cmdOpen, setCmdOpen]     = useState(false);
   const [helpOpen, setHelpOpen]   = useState(false);
-  applyTheme(theme, mode);
+  applyMode(mode);
 
   const { state: sys, online, transport } = useSystemState();
   const { data: capitolData } = useAgentData("capitol_tracker");
@@ -290,9 +289,8 @@ export default function App() {
 
   // Persist prefs
   useEffect(() => { localStorage.setItem("om_tab", tab); }, [tab]);
-  useEffect(() => { localStorage.setItem("om_theme", theme); }, [theme]);
   useEffect(() => { localStorage.setItem("om_collapsed", collapsed ? "1" : "0"); }, [collapsed]);
-  useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = T.mode; }, [mode, theme]);
+  useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = T.mode; }, [mode]);
 
   const navigate = useCallback((id) => setTab(id), []);
 
@@ -323,9 +321,9 @@ export default function App() {
   const agent = sys?.agents?.find((a) => a.id === tab);
   let content;
   if (tab === "orchestrator") {
-    content = <Orchestrator sys={sys} online={online} theme={theme} onNavigate={navigate} />;
+    content = <Orchestrator sys={sys} online={online} onNavigate={navigate} />;
   } else if (tab === "settings") {
-    content = <Settings theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} />;
+    content = <Settings mode={mode} setMode={setMode} />;
   } else {
     const TabEl = TABS[tab];
     if (!TabEl) { content = <div style={{ padding: 40, color: T.ink3 }}>Tab not found: {tab}</div>; }

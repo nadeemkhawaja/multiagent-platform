@@ -390,7 +390,7 @@ function RunMetrics() {
   );
 }
 
-export default function Orchestrator({ sys, online, theme = "aria", onNavigate }) {
+export default function Orchestrator({ sys, online, onNavigate }) {
   const [ackd, setAckd] = useState(false);
   const s = sys || SKELETON;
   const running = s.agents.filter((a) => a.status === "running").length;
