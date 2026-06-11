@@ -101,3 +101,41 @@ def test_stop_unknown_agent_not_running():
     r = client.post("/api/agent/does_not_exist/stop")
     assert r.status_code == 200
     assert "not running" in r.json()["status"]
+
+
+# ── Per-agent AI assistant ────────────────────────────────────────────────────
+def test_assist_unknown_agent_and_empty_prompt():
+    r = client.post("/api/agent/not_an_agent/assist", json={"prompt": "hi"})
+    assert r.json() == {"error": "Agent not found"}
+    r = client.post("/api/agent/alpha_wolf/assist", json={"prompt": "   "})
+    assert r.json() == {"error": "prompt is required"}
+
+
+def test_assist_calls_llm_with_agent_context(monkeypatch):
+    import llm_client
+    captured = {}
+
+    async def fake_gen(prompt, system_prompt="", agent_id=None, **kw):
+        captured["prompt"] = prompt
+        captured["system"] = system_prompt
+        captured["agent_id"] = agent_id
+        return "Here is your summary."
+
+    monkeypatch.setattr(llm_client, "generate_completion", fake_gen)
+    r = client.post("/api/agent/alpha_wolf/assist", json={"prompt": "summarize the plan"})
+    assert r.json() == {"response": "Here is your summary."}
+    assert captured["agent_id"] == "alpha_wolf"          # uses the agent's model override
+    assert "Alpha Wolf" in captured["system"]
+    assert "summarize the plan" in captured["prompt"]
+    assert "AGENT DATA" in captured["prompt"]
+
+
+def test_assist_surfaces_llm_errors(monkeypatch):
+    import llm_client
+
+    async def boom(*a, **kw):
+        raise RuntimeError("model offline")
+
+    monkeypatch.setattr(llm_client, "generate_completion", boom)
+    r = client.post("/api/agent/mailman/assist", json={"prompt": "triage"})
+    assert "model offline" in r.json()["error"]

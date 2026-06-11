@@ -302,6 +302,46 @@ async def stop_agent(agent_name: str):
     return {"status": f"{agent_name} is not running"}
 
 
+# ─── Per-agent AI assistant ──────────────────────────────────────────
+class AssistRequest(BaseModel):
+    prompt: str
+    include_data: Optional[bool] = True
+
+
+@app.post("/api/agent/{agent_name}/assist")
+async def agent_assist(agent_name: str, body: AssistRequest):
+    """Ad-hoc AI help inside an agent tab: answers the user's request using the
+    agent's latest stored data as context, on the agent's configured model."""
+    if agent_name not in AGENT_META:
+        return {"error": "Agent not found"}
+    question = (body.prompt or "").strip()
+    if not question:
+        return {"error": "prompt is required"}
+
+    context = ""
+    if body.include_data:
+        from database import get_agent_data as load_agent_data
+        data = load_agent_data(agent_name) or {}
+        context = json.dumps(data, default=str)[:7000]
+
+    meta = AGENT_META[agent_name]
+    system = (f"You are the AI assistant embedded in the '{meta['n']}' agent ({meta['desc']}) "
+              f"of a multi-agent platform. Help the user with ad-hoc analysis and manual tasks "
+              f"using the agent's latest data below. Be concise, concrete, and plain-text.")
+    prompt = (f"AGENT DATA (latest stored output of {meta['n']}, JSON, may be truncated):\n"
+              f"{context or '(no data yet — the agent has not run)'}\n\n"
+              f"USER REQUEST:\n{question}")
+    try:
+        from llm_client import generate_completion as _gen
+        response = await _gen(prompt, system_prompt=system, agent_id=agent_name, use_cache=False)
+        # the LLM client returns failures as "Error: …" strings — surface them as errors
+        if isinstance(response, str) and response.startswith("Error:"):
+            return {"error": response}
+        return {"response": response}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 # ─── Schedules (editable from the UI) ────────────────────────────────
 @app.get("/api/schedules")
 async def get_schedules():

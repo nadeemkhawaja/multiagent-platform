@@ -4,7 +4,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance } from "../theme/ui";
-import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel, setProviderKey } from "../state/api";
+import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel, setProviderKey,
+         getMCP, addMCPServer, removeMCPServer, pingMCPServer, getMCPTools } from "../state/api";
 
 const inputStyle = () => ({
   width: "100%", marginTop: 6, border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px",
@@ -161,6 +162,145 @@ function ModelRow({ agent, name, llm, onSave }) {
   );
 }
 
+function MCPServerRow({ name, cfg, onRemove }) {
+  const [ping, setPing] = useState(null);
+  const [tools, setTools] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const doPing = async () => {
+    setBusy(true); setPing(null);
+    setPing(await pingMCPServer(name).catch((e) => ({ reachable: false, error: String(e) })));
+    setBusy(false);
+  };
+  const doTools = async () => {
+    if (tools) { setTools(null); return; }   // toggle off
+    setBusy(true);
+    const r = await getMCPTools(name).catch((e) => ({ error: String(e) }));
+    setTools(r.error ? { error: r.error } : { list: r.tools || [] });
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ padding: "11px 0", borderBottom: `1px solid ${T.line2}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ width: 26, height: 26, borderRadius: 7, background: T.violet + "1a", color: T.violet, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>⌁</span>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{name} {!cfg.enabled && <span style={{ fontSize: 10, color: T.ink4 }}>(disabled)</span>}</div>
+          <div style={{ fontSize: 11, color: T.ink3, fontFamily: T.mono }}>{cfg.command} {(cfg.args || []).join(" ")}</div>
+          {(cfg.env || []).length > 0 && (
+            <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 2 }}>env: {(cfg.env || []).join(", ")}</div>
+          )}
+        </div>
+        <Btn size="sm" onClick={doPing} disabled={busy}>{busy ? "…" : "Ping"}</Btn>
+        <Btn size="sm" onClick={doTools} disabled={busy}>{tools ? "Hide tools" : "Tools"}</Btn>
+        <Btn size="sm" onClick={() => onRemove(name)} disabled={busy}>Remove</Btn>
+      </div>
+      {ping && (
+        <div style={{ fontSize: 11.5, marginTop: 6, color: ping.reachable ? T.green : T.red }}>
+          {ping.reachable ? `● reachable · ${ping.tools} tool${ping.tools === 1 ? "" : "s"}` : `○ unreachable — ${ping.error || "no response"}`}
+        </div>
+      )}
+      {tools && (
+        <div style={{ marginTop: 8, padding: "10px 12px", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 9 }}>
+          {tools.error ? (
+            <div style={{ fontSize: 11.5, color: T.red }}>{tools.error}</div>
+          ) : tools.list.length === 0 ? (
+            <div style={{ fontSize: 11.5, color: T.ink4 }}>No tools exposed.</div>
+          ) : tools.list.map((t, i) => (
+            <div key={i} style={{ padding: "5px 0", borderBottom: i < tools.list.length - 1 ? `1px solid ${T.line2}` : "none" }}>
+              <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.violet }}>{t.name}</span>
+              {t.description && <span style={{ fontSize: 11, color: T.ink3 }}> — {String(t.description).slice(0, 140)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MCPCard() {
+  const [mcp, setMcp] = useState(null);
+  const [form, setForm] = useState({ name: "", command: "", args: "", env: "" });
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setMcp(await getMCP().catch(() => null));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const add = async () => {
+    setError(null);
+    if (!form.name.trim() || !form.command.trim()) { setError("Name and command are required."); return; }
+    const env = {};
+    for (const line of form.env.split("\n")) {
+      const t = line.trim();
+      if (!t) continue;
+      const i = t.indexOf("=");
+      if (i < 1) { setError(`Bad env line: "${t}" — use KEY=VALUE, one per line.`); return; }
+      env[t.slice(0, i).trim()] = t.slice(i + 1).trim();
+    }
+    setAdding(true);
+    const r = await addMCPServer({
+      name: form.name.trim(), command: form.command.trim(),
+      args: form.args.trim() ? form.args.trim().split(/\s+/) : [],
+      env, enabled: true,
+    }).catch((e) => ({ error: String(e) }));
+    setAdding(false);
+    if (r.error) { setError(r.error); return; }
+    setForm({ name: "", command: "", args: "", env: "" });
+    load();
+  };
+
+  const remove = async (name) => {
+    if (!window.confirm(`Remove MCP server "${name}"?`)) return;
+    await removeMCPServer(name);
+    load();
+  };
+
+  const servers = Object.entries(mcp?.servers || {});
+  return (
+    <Card pad={20}>
+      <SectionTitle sub="Connect Model Context Protocol servers — their tools become callable by the platform">MCP servers</SectionTitle>
+      {!mcp ? (
+        <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>
+      ) : (
+        <>
+          {!mcp.available && (
+            <div style={{ fontSize: 12, color: T.amber, background: T.amberBg, border: `1px solid ${T.amber}44`, borderRadius: 9, padding: "9px 12px", marginBottom: 10 }}>
+              The <span style={{ fontFamily: T.mono }}>mcp</span> Python package isn't installed on the backend —
+              servers can be registered but not called. Install with <span style={{ fontFamily: T.mono }}>pip install mcp</span>.
+            </div>
+          )}
+          {servers.length === 0
+            ? <div style={{ fontSize: 12.5, color: T.ink4, padding: "6px 0 12px" }}>No MCP servers registered yet.</div>
+            : servers.map(([name, cfg]) => <MCPServerRow key={name} name={name} cfg={cfg} onRemove={remove} />)}
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 2px" }}>Add server</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            <Field label="Name" hint="Identifier, e.g. filesystem, github">
+              <input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="filesystem" style={inputStyle()} />
+            </Field>
+            <Field label="Command" hint="Executable that starts the server (stdio)">
+              <input value={form.command} onChange={(e) => setF("command", e.target.value)} placeholder="npx" style={inputStyle()} />
+            </Field>
+            <Field label="Arguments" hint="Space-separated">
+              <input value={form.args} onChange={(e) => setF("args", e.target.value)} placeholder="-y @modelcontextprotocol/server-filesystem /tmp" style={inputStyle()} />
+            </Field>
+            <Field label="Environment" hint="KEY=VALUE, one per line — values are never shown back">
+              <textarea rows={2} value={form.env} onChange={(e) => setF("env", e.target.value)} placeholder={"GITHUB_TOKEN=ghp_…"} style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.55 }} />
+            </Field>
+          </div>
+          {error && <div style={{ fontSize: 12, color: T.red, marginBottom: 8 }}>{error}</div>}
+          <Btn size="sm" kind="primary" onClick={add} disabled={adding}>{adding ? "Adding…" : "Add MCP server"}</Btn>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function Settings({ theme, setTheme, mode, setMode }) {
   const [config, setConfig] = useState(null);
   const [schedules, setSchedules] = useState(null);
@@ -278,6 +418,9 @@ export default function Settings({ theme, setTheme, mode, setMode }) {
             </>
           ) : <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>}
         </Card>
+
+        {/* MCP servers */}
+        <MCPCard />
 
         {/* Schedules */}
         <Card pad={20}>
