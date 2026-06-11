@@ -300,3 +300,111 @@ def test_earnings_summary_handles_no_earnings():
     from agents.agent13_alpha_wolf import _earnings_summary
     out = _earnings_summary({"calendar": {"this_week": [], "iv_crush_opp": []}})
     assert "none this week" in out
+
+
+# ── Paper Broker: order decisions + fills for Alpha Wolf execution ───────────
+def _settings(**kw):
+    base = {"enabled": True, "capital": 100_000.0, "position_pct": 10.0, "max_positions": 8}
+    base.update(kw)
+    return base
+
+
+def test_decide_orders_opens_daily_ideas():
+    from paper_broker import decide_orders
+    plan = {"daily": {"ideas": [
+        {"ticker": "NVDA", "direction": "long", "thesis": "AI demand"},
+        {"ticker": "TSLA", "direction": "short", "thesis": "weak deliveries"},
+        {"ticker": "SPY", "direction": "neutral", "thesis": "wait"},
+    ]}}
+    orders = decide_orders(plan, {}, _settings())
+    assert [(o["action"], o["ticker"], o.get("direction")) for o in orders] == [
+        ("open", "NVDA", "long"), ("open", "TSLA", "short")]
+
+
+def test_decide_orders_skips_already_held_and_respects_max_positions():
+    from paper_broker import decide_orders
+    plan = {"daily": {"ideas": [
+        {"ticker": "NVDA", "direction": "long"},
+        {"ticker": "AMD", "direction": "long"},
+        {"ticker": "MSFT", "direction": "long"},
+    ]}}
+    positions = {"NVDA": {"direction": "long", "shares": 10, "entry_price": 100.0}}
+    orders = decide_orders(plan, positions, _settings(max_positions=2))
+    # NVDA already held long → skipped; only one slot left after NVDA
+    assert [(o["action"], o["ticker"]) for o in orders] == [("open", "AMD")]
+
+
+def test_decide_orders_closes_and_reopens_on_direction_flip():
+    from paper_broker import decide_orders
+    plan = {"daily": {"ideas": [{"ticker": "TSLA", "direction": "long"}]}}
+    positions = {"TSLA": {"direction": "short", "shares": 5, "entry_price": 200.0}}
+    orders = decide_orders(plan, positions, _settings())
+    assert orders[0]["action"] == "close" and orders[0]["ticker"] == "TSLA"
+    assert orders[1] == {"action": "open", "ticker": "TSLA", "direction": "long",
+                         "thesis": "", "reason": "daily plan idea"}
+
+
+def test_decide_orders_closes_avoided_holdings_without_reopening():
+    from paper_broker import decide_orders
+    plan = {"daily": {"ideas": [{"ticker": "COIN", "direction": "long"}]},
+            "avoid": ["Stay away from COIN into the SEC ruling"]}
+    positions = {"COIN": {"direction": "long", "shares": 5, "entry_price": 150.0}}
+    orders = decide_orders(plan, positions, _settings())
+    assert [(o["action"], o["ticker"]) for o in orders] == [("close", "COIN")]
+
+
+def test_avoid_hits_only_matches_held_tickers():
+    from paper_broker import avoid_hits
+    hits = avoid_hits(["Avoid NVDA and meme stocks", "No crypto until VIX settles"],
+                      {"NVDA", "AAPL"})
+    assert hits == {"NVDA"}
+
+
+def test_apply_orders_fills_open_and_close_with_pnl():
+    from paper_broker import apply_orders, new_portfolio
+    pf = new_portfolio(100_000.0)
+    trades = []
+    executed, skipped = apply_orders(
+        pf, [{"action": "open", "ticker": "NVDA", "direction": "long", "reason": "idea"}],
+        {"NVDA": 100.0}, _settings(), trades)
+    assert not skipped and executed[0]["action"] == "BUY"
+    assert pf["positions"]["NVDA"]["shares"] == 100.0       # 10% of 100k @ $100
+    assert pf["cash"] == 90_000.0
+
+    executed, skipped = apply_orders(
+        pf, [{"action": "close", "ticker": "NVDA", "reason": "avoid"}],
+        {"NVDA": 110.0}, _settings(), trades)
+    assert executed[0]["action"] == "SELL" and executed[0]["pnl"] == 1000.0
+    assert pf["cash"] == 101_000.0 and pf["realized_pnl"] == 1000.0
+    assert not pf["positions"]
+
+
+def test_apply_orders_short_pnl_and_missing_price_skip():
+    from paper_broker import apply_orders, new_portfolio
+    pf = new_portfolio(100_000.0)
+    trades = []
+    executed, skipped = apply_orders(
+        pf, [{"action": "open", "ticker": "TSLA", "direction": "short", "reason": "idea"},
+             {"action": "open", "ticker": "XYZ", "direction": "long", "reason": "idea"}],
+        {"TSLA": 200.0}, _settings(), trades)
+    assert executed[0]["action"] == "SHORT"
+    assert skipped[0]["ticker"] == "XYZ" and skipped[0]["why"] == "no price available"
+
+    # price drops → short profits on cover
+    executed, _ = apply_orders(
+        pf, [{"action": "close", "ticker": "TSLA", "reason": "flip"}],
+        {"TSLA": 180.0}, _settings(), trades)
+    assert executed[0]["action"] == "COVER" and executed[0]["pnl"] == 1000.0
+    assert pf["cash"] == 101_000.0
+
+
+def test_portfolio_summary_tracks_equity_and_return():
+    from paper_broker import new_portfolio, portfolio_summary
+    pf = new_portfolio(100_000.0)
+    pf["cash"] = 90_000.0
+    pf["positions"]["NVDA"] = {"direction": "long", "shares": 100.0,
+                               "entry_price": 100.0, "last_price": 105.0}
+    s = portfolio_summary(pf)
+    assert s["equity"] == 100_500.0
+    assert s["unrealized_pnl"] == 500.0
+    assert s["return_pct"] == 0.5
