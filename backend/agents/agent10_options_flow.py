@@ -7,6 +7,7 @@
 import asyncio, datetime, logging, math
 from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_completion
+from orchestrator import orchestrator
 from email_utils import send_html_email
 
 log = logging.getLogger("options_flow")
@@ -161,6 +162,7 @@ async def build_llm_commentary(top_signals: list) -> str:
 
 async def options_flow_job():
     log.info("Options Flow starting")
+    orchestrator.update_agent_status("options_flow", "running")
     try:
         watchlist = _get_watchlist()
         log.info(f"Scanning {len(watchlist)} tickers for options flow")
@@ -196,9 +198,11 @@ async def options_flow_job():
             }
         }
         save_agent_data("options_flow", payload)
+        orchestrator.update_agent_status("options_flow", "idle")
         log.info(f"Options Flow complete — {len(unusual)} unusual signals from {len(results)} tickers")
     except Exception as e:
         log.error(f"Options Flow error: {e}", exc_info=True)
+        orchestrator.update_agent_status("options_flow", "error", str(e))
         raise
 
 def email_preview() -> dict:

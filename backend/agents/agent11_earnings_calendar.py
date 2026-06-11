@@ -6,6 +6,7 @@
 import asyncio, datetime, logging, math
 from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_completion
+from orchestrator import orchestrator
 from email_utils import send_html_email
 
 log = logging.getLogger("earnings_cal")
@@ -164,6 +165,7 @@ def _urgency(dte):
 
 async def earnings_calendar_job():
     log.info("Earnings Calendar starting")
+    orchestrator.update_agent_status("earnings_cal", "running")
     try:
         watchlist = _get_watchlist()
         log.info(f"Checking earnings for {len(watchlist)} tickers")
@@ -194,9 +196,11 @@ async def earnings_calendar_job():
             }
         }
         save_agent_data("earnings_cal", payload)
+        orchestrator.update_agent_status("earnings_cal", "idle")
         log.info(f"Earnings Calendar complete — {len(results)} upcoming events")
     except Exception as e:
         log.error(f"Earnings Calendar error: {e}", exc_info=True)
+        orchestrator.update_agent_status("earnings_cal", "error", str(e))
         raise
 
 def email_preview() -> dict:
