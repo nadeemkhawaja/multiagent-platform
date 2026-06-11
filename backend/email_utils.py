@@ -1,6 +1,11 @@
 """
 Shared email utility using Gmail API (OAuth 2.0) or SMTP fallback.
 All agents use this to send real HTML emails.
+
+Because every agent sends through here, this is also the human-in-the-loop
+gate: with the "require_email_approval" setting on, emails are queued as
+pending approvals instead of sent, and go out only when approved from the
+dashboard/API.
 """
 import os
 import smtplib
@@ -9,18 +14,46 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
+import approvals
+
 load_dotenv()
 
 SMTP_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
 
 
+def _approval_required() -> bool:
+    """Email approval is opt-in (default off → agents send autonomously), and
+    demo mode hard-bypasses it so a graded run can never stall on a human."""
+    try:
+        from database import get_config
+        if get_config("demo_mode", False):
+            return False
+        return bool(get_config("require_email_approval", False))
+    except Exception:
+        return False
+
+
 def send_html_email(to_email: str, subject: str, html_body: str, sender_name: str = "Multi-Agent Platform") -> bool:
     """
-    Sends an HTML email via Gmail SMTP.
+    Sends an HTML email via Gmail SMTP — or, when email approval is enabled,
+    queues it for sign-off instead.
     Requires SMTP_APP_PASSWORD set in .env (a Gmail App Password).
     Falls back to logging if credentials are missing.
     """
+    if _approval_required():
+        approval_id = approvals.request(
+            sender_name, kind="send_email", title=f"Email: {subject}",
+            payload={"to_email": to_email, "subject": subject,
+                     "html_body": html_body, "sender_name": sender_name},
+        )
+        print(f"[EmailUtil] queued for approval (#{approval_id}): {subject}")
+        return True
+
+    return _send_now(to_email, subject, html_body, sender_name)
+
+
+def _send_now(to_email: str, subject: str, html_body: str, sender_name: str = "Multi-Agent Platform") -> bool:
     if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
         print(f"[EmailUtil] SMTP credentials not configured. Would send to {to_email}: {subject}")
         _log_email(to_email, subject, html_body)
@@ -61,5 +94,13 @@ def _log_email(to_email: str, subject: str, html_body: str):
         f.write(f"<!-- To: {to_email} -->\n")
         f.write(f"<!-- Subject: {subject} -->\n")
         f.write(html_body)
-    
+
     print(f"[EmailUtil] Email logged to {filename}")
+
+
+# Approving a queued email executes the real send (bypassing the gate).
+approvals.register_action(
+    "send_email",
+    lambda p: _send_now(p["to_email"], p["subject"], p["html_body"],
+                        p.get("sender_name", "Multi-Agent Platform")),
+)

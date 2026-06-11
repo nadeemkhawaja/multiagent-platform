@@ -7,7 +7,7 @@ digests, and stream live status to a polished React dashboard.
 
 - **Backend:** FastAPI + APScheduler + SQLAlchemy (SQLite), WebSocket live state, `psutil` telemetry
 - **Frontend:** React + Vite (single-page dashboard, light/dark, two layouts)
-- **LLM:** Qwen3 (`qwen3:8b` default) served locally by Ollama — never a paid API
+- **LLM:** Qwen3 (`qwen3.5:4b` default) served locally by Ollama — never a paid API
 - **Persistence:** `orchestrator.db` (SQLite) — agent data, run history, resource samples, config
 - **Email:** SMTP HTML digests per agent
 
@@ -282,6 +282,11 @@ SQLite (`orchestrator.db`) via SQLAlchemy (`backend/database.py`):
 | `config` | Runtime config overrides (schedules, recipient, key_people, watchlist, aegis_brand) |
 | `system_logs` | General log sink |
 | `memories` | Long-term agent memory: text + local embedding vector for semantic recall |
+| `approvals` | Human-in-the-loop queue: pending/approved/denied actions with payloads |
+
+`agent_runs` also carries per-run telemetry (`llm_calls`, `tokens_in`,
+`tokens_out`, `llm_ms`, `stages`) filled in by `tracing.py`; `init_db()`
+ALTERs these columns into pre-existing databases.
 
 ---
 
@@ -308,6 +313,56 @@ SQLite (`orchestrator.db`) via SQLAlchemy (`backend/database.py`):
 | GET | `/api/mcp/servers/{name}/tools` · `/ping` | List a server's tools / reachability probe |
 | POST/DELETE | `/api/mcp/servers[/{name}]` | Register / remove an MCP server |
 | POST | `/api/mcp/call` | Call a tool on a registered MCP server |
+| GET | `/api/agent/{name}/runs` | Run history with per-run tokens, LLM time, stage timings |
+| GET | `/api/metrics` | Per-agent aggregates: success rate, avg duration, token totals |
+| GET | `/api/llm/providers` | Provider status (ollama/openai/anthropic) + per-agent overrides |
+| POST | `/api/llm/models` | Route an agent to a model, e.g. `anthropic:claude-haiku-4-5` |
+| GET | `/api/tools` | Registered platform tools with JSON schemas |
+| POST | `/api/tools/call` | Invoke a registered tool by name |
+| GET | `/api/approvals` | Approval queue (filter by `?status=pending`) |
+| POST | `/api/approvals/{id}/approve` · `/deny` | Decide a pending approval (approve runs the action) |
+
+### LLM providers (`backend/llm_client.py`)
+
+Local Ollama (Qwen3) stays the default. Per-agent overrides route to frontier
+providers — Grok/xAI, OpenAI, or Anthropic — via Settings → AI models in the
+dashboard, or `POST /api/llm/models` (`{"agent_id": "morning_brief", "model":
+"grok:grok-4-fast"}`). Bare model names mean Ollama. API keys can be pasted
+directly in Settings → AI models (saved to the local SQLite config via
+`POST /api/llm/keys`, applied immediately — no restart) or set as env vars
+(`XAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), which act as a
+fallback. Missing API keys fail fast with a clear error; token usage per call
+is recorded onto the agent's open run trace.
+
+### Run tracing (`backend/tracing.py`)
+
+Every run accumulates LLM calls, tokens in/out, LLM wall time, and named stage
+timings (`with tracing.stage(agent_id, "fetch"): …`); the orchestrator
+persists them onto the run's `agent_runs` row. `/api/metrics` aggregates
+success rate, average duration, and token totals per agent.
+
+### Tool registry (`backend/tools/`)
+
+Capabilities are declared once with `@tool(name, description)` — the registry
+derives a JSON schema from type hints, so the same definition serves direct
+agent imports, `/api/tools`, and future LLM function-calling. Built-ins:
+`web.fetch_json`, `weather.current`, `market.quotes` (Wolf's yfinance fetch,
+shared), and `mcp.call` / `mcp.list_tools` bridging registered MCP servers.
+
+### Approvals (`backend/approvals.py`)
+
+Human-in-the-loop primitive: agents park an action (`approvals.request`)
+instead of executing it; approving from the API runs the handler registered
+for that kind. With the `require_email_approval` setting on, **every** agent
+email queues for sign-off — `email_utils.send_html_email` is the single
+chokepoint — and goes out when approved.
+
+**Autonomy guarantees (assignment-safe):** the gate is **off by default**, so
+all agents run fully autonomously end-to-end (fetch → LLM → persist → email)
+exactly as the assignment requires, and **demo mode hard-bypasses the gate**
+— a graded run can never stall waiting on a human even if the setting was
+left on. The approval queue is an optional safety capability, not part of any
+agent's normal flow.
 
 ### Agent memory (`backend/memory.py`)
 
@@ -325,10 +380,11 @@ Morning Brief (avoids repeating yesterday's narrative). Capped at
 Agents and the API can call tools on any [MCP](https://modelcontextprotocol.io)
 server (Gmail, GitHub, market data, 10k+ community servers) through one
 protocol instead of hand-rolled integrations. Servers are registered in the
-`config` table under `mcp_servers` and run as local stdio subprocesses — data
-never leaves the machine. Connections are opened per call so a wedged server
-can't poison shared state; the `mcp` package is optional and its absence just
-disables the feature.
+`config` table under `mcp_servers` — either local stdio subprocesses
+(`command` + `args`; data never leaves the machine) or remote streamable-HTTP
+servers (`url` + `headers`; e.g. Zapier MCP and other hosted servers).
+Connections are opened per call so a wedged server can't poison shared state;
+the `mcp` package is optional and its absence just disables the feature.
 
 ---
 
@@ -338,10 +394,13 @@ Environment variables (`.env`, see `.env.example`) — **values are never stored
 
 | Var | Used by | Notes |
 |-----|---------|-------|
-| `LLM_MODEL` | all | default `qwen3:8b` |
+| `LLM_MODEL` | all | default `qwen3.5:4b` |
 | `OLLAMA_BASE_URL` | all | default `http://localhost:11434` |
 | `EMBED_MODEL` | memory | local embedding model, default `nomic-embed-text` |
 | `MEMORY_MAX_PER_AGENT` | memory | memory rows kept per agent, default `500` |
+| `XAI_API_KEY` | llm | enables the Grok provider (`grok:` model specs) |
+| `OPENAI_API_KEY` | llm | enables the OpenAI provider (`openai:` model specs) |
+| `ANTHROPIC_API_KEY` | llm | enables the Anthropic provider (`anthropic:` model specs) |
 | `DAILY_DIGEST_EMAIL` | all | digest recipient |
 | `SMTP_*` / `SMTP_APP_PASSWORD` | email | SMTP credentials |
 | `YOUTUBE_API_KEY` | AI-Times | YouTube Data API |
@@ -439,7 +498,7 @@ Chronological highlights (newest first):
 ## 12. Running the Platform
 
 **Prerequisites:** Python 3.11+, Node 18+, and **Ollama** running locally with the
-model pulled (`ollama pull qwen3:8b`).
+model pulled (`ollama pull qwen3.5:4b`).
 
 ```bash
 # 1. Backend

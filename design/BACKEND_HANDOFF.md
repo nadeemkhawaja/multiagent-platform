@@ -16,7 +16,7 @@ locally-hosted LLM.
 
 | Requirement | Decision |
 |---|---|
-| Local LLM only — no hosted APIs | **Ollama** running `qwen3` (e.g. `qwen3:8b` or `qwen3:14b`) |
+| Local LLM only — no hosted APIs | **Ollama** running `qwen3` (e.g. `qwen3.5:4b` or `qwen3:14b`) |
 | All inference local | Every LLM call goes through `llm.generate()` → `http://localhost:11434` |
 | Persistent storage | **SQLite** (`platform.db`) via SQLAlchemy |
 | Backend language | **Python 3.12**, async (FastAPI + asyncio) |

@@ -101,3 +101,11 @@ export const getSchedules = () => jsonGet("/api/schedules");
 export const setSchedule = (agent, body) => jsonPost(`/api/schedules/${agent}`, body);
 export const getHealth = () => jsonGet("/api/health");
 export const emailPreview = (id) => jsonGet(`/api/agent/${id}/email-preview`);
+
+// ── LLM providers / per-agent models ────────────────────────────────────────
+export const getLLMProviders = () => jsonGet("/api/llm/providers");
+export const setAgentModel = (agent_id, model) => jsonPost("/api/llm/models", { agent_id, model });
+export const setProviderKey = (provider, api_key) => jsonPost("/api/llm/keys", { provider, api_key });
+
+// ── Run metrics ─────────────────────────────────────────────────────────────
+export const getMetrics = (window = 50) => jsonGet(`/api/metrics?window=${window}`);

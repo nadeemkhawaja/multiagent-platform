@@ -59,6 +59,12 @@ class AgentRun(Base):
     finished_at = Column(DateTime, nullable=True)
     status = Column(String)           # idle | error
     error = Column(Text, nullable=True)
+    # Per-run telemetry, aggregated by tracing.py while the run is open
+    llm_calls = Column(Integer, default=0)
+    tokens_in = Column(Integer, default=0)
+    tokens_out = Column(Integer, default=0)
+    llm_ms = Column(Integer, default=0)
+    stages = Column(Text, nullable=True)   # JSON {stage_name: ms}
 
 
 class AgentState(Base):
@@ -76,6 +82,21 @@ class Config(Base):
     value = Column(Text)
 
 
+class Approval(Base):
+    """Human-in-the-loop approval queue: agents park an action here instead of
+    executing it; the user approves/denies from the dashboard or API."""
+    __tablename__ = "approvals"
+    id = Column(Integer, primary_key=True)
+    agent_id = Column(String, index=True)
+    kind = Column(String, index=True)         # e.g. "send_email"
+    title = Column(Text)
+    payload = Column(Text, nullable=True)     # JSON for the action handler
+    status = Column(String, default="pending", index=True)  # pending | approved | denied
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    decided_at = Column(DateTime, nullable=True)
+
+
 class Memory(Base):
     """Long-term agent memory: text + optional embedding vector (JSON-encoded).
     Embeddings come from a local Ollama embed model; rows without one are still
@@ -90,8 +111,36 @@ class Memory(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+# Columns added after a table already exists on disk — create_all() never
+# ALTERs, so init_db() patches these in for pre-existing databases.
+_NEW_COLUMNS = {
+    "agent_runs": {
+        "llm_calls": "INTEGER DEFAULT 0",
+        "tokens_in": "INTEGER DEFAULT 0",
+        "tokens_out": "INTEGER DEFAULT 0",
+        "llm_ms": "INTEGER DEFAULT 0",
+        "stages": "TEXT",
+    },
+}
+
+
+def _ensure_columns(bind):
+    from sqlalchemy import inspect, text
+    insp = inspect(bind)
+    with bind.connect() as conn:
+        for table, cols in _NEW_COLUMNS.items():
+            if not insp.has_table(table):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table)}
+            for col, ddl in cols.items():
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+            conn.commit()
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _ensure_columns(engine)
 
 
 def get_db():
