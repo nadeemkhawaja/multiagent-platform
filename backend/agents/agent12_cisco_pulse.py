@@ -8,6 +8,7 @@ from xml.etree import ElementTree as ET
 import httpx
 from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_completion
+from orchestrator import orchestrator
 from email_utils import send_html_email
 
 log = logging.getLogger("cisco_pulse")
@@ -164,6 +165,7 @@ async def build_llm_commentary(items: list, events: list = None) -> str:
 
 async def cisco_pulse_job():
     log.info("Cisco Pulse starting")
+    orchestrator.update_agent_status("cisco_pulse", "running")
     try:
         async with httpx.AsyncClient(headers={"User-Agent": "Mozilla/5.0 CiscoPulse/1.0"}) as client:
             results = await asyncio.gather(*[_fetch_feed(f, client) for f in FEEDS], return_exceptions=True)
@@ -207,6 +209,7 @@ async def cisco_pulse_job():
             }
         }
         save_agent_data("cisco_pulse", payload)
+        orchestrator.update_agent_status("cisco_pulse", "idle")
 
         # Send weekly digest
         recipient = get_config("recipient", "")
@@ -217,6 +220,7 @@ async def cisco_pulse_job():
         log.info(f"Cisco Pulse complete — {len(unique)} items ({len(critical)} critical, {len(high)} high)")
     except Exception as e:
         log.error(f"Cisco Pulse error: {e}", exc_info=True)
+        orchestrator.update_agent_status("cisco_pulse", "error", str(e))
         raise
 
 SEV_COLORS = {

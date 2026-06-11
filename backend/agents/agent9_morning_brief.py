@@ -6,6 +6,7 @@
 import asyncio, json, datetime, logging
 from database import save_agent_data, get_agent_data, get_config
 from llm_client import generate_completion
+from orchestrator import orchestrator
 from email_utils import send_html_email
 from tools.weather import current_weather
 import memory
@@ -166,6 +167,7 @@ def build_html_email(weather: dict, wolf_snap: dict, capitol_snap: dict, aitimes
 
 async def morning_brief_job():
     log.info("Morning Brief starting")
+    orchestrator.update_agent_status("morning_brief", "running")
     try:
         weather       = await fetch_weather()
         wolf_snap     = _read_agent("wallstreet_wolf")
@@ -201,9 +203,11 @@ async def morning_brief_job():
             html = build_html_email(weather, wolf_snap, capitol_snap, aitimes_snap, narrative, now)
             send_html_email(recipient, f"☀ Morning Brief — {now}", html)
 
+        orchestrator.update_agent_status("morning_brief", "idle")
         log.info("Morning Brief complete")
     except Exception as e:
         log.error(f"Morning Brief error: {e}", exc_info=True)
+        orchestrator.update_agent_status("morning_brief", "error", str(e))
         raise
 
 def email_preview() -> dict:

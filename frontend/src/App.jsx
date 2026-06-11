@@ -184,9 +184,14 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
   const renderNav = (it, keyPrefix = "") => {
     const st = statusOf(it.id);
     const isCapitol = it.id === "capitol_tracker";
-    const badge = isCapitol && capitolCount > 0 && !collapsed
-      ? <span style={{ fontSize: 9.5, fontWeight: 700, background: "#dc262620", color: "#dc2626", padding: "1px 6px", borderRadius: 4, fontFamily: T.mono }}>{capitolCount}</span>
-      : (!collapsed && st) ? <Dot c={dotColor[st] || "#aeb4bf"} s={6} /> : null;
+    // Capitol's trade-count pill must not hide the live status dot — show both.
+    const badge = !collapsed && (st || (isCapitol && capitolCount > 0)) ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+        {isCapitol && capitolCount > 0 &&
+          <span style={{ fontSize: 9.5, fontWeight: 700, background: "#dc262620", color: "#dc2626", padding: "1px 6px", borderRadius: 4, fontFamily: T.mono }}>{capitolCount}</span>}
+        {st && <Dot c={dotColor[st] || "#aeb4bf"} s={6} />}
+      </span>
+    ) : null;
     return <NavItem key={keyPrefix + it.id} item={it} active={tab === it.id} onClick={() => setTab(it.id)} badge={badge} collapsed={collapsed} />;
   };
 

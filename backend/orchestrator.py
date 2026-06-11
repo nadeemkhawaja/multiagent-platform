@@ -325,6 +325,14 @@ class Orchestrator:
                 self.log_event(f"✕ {name} crashed: {error or 'error'} — recovering", "#e5484d")
         self._save_agent_state(agent_name)
 
+        # push the change to the dashboard immediately — without this, short
+        # runs can start and finish between two 2s sampler broadcasts and the
+        # status dot never visibly changes (e.g. during a stress test)
+        try:
+            asyncio.create_task(manager.broadcast({"type": "state", "data": self.get_state()}))
+        except RuntimeError:
+            pass  # no running loop (sync context, e.g. tests)
+
     def register_agent_job(self, agent_name: str, job_callable):
         self._agent_jobs[agent_name] = job_callable
 
