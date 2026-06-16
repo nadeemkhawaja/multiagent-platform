@@ -155,7 +155,7 @@ async def build_llm_commentary(items: list, events: list = None) -> str:
     lines = [f"[{i['severity'].upper()}] {i['title']} ({i['source']})" for i in (items or [])[:6]]
     ev_lines = [f"[EVENT] {e['title']} ({e['source']})" for e in (events or [])[:4]]
     block = chr(10).join(lines + ev_lines)
-    prompt = f"""You are a Cisco ACI/NDFC Solution Architect reviewing this week's Cisco security advisories, blog posts, and conference/product news. Summarize the most important items in 3-4 sentences. Focus on anything affecting ACI, NDFC, Nexus 9K, NX-OS, or AI/data-center infrastructure, and explicitly call out any major Cisco Live / conference announcements or product launches. Note any critical CVEs by number if present. /no_think
+    prompt = f"""You are a Cisco ACI/NDFC Solution Architect reviewing this week's Cisco security advisories, blog posts, and conference/product news. Summarize the most important items as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, crisp and specific. Focus on anything affecting ACI, NDFC, Nexus 9K, NX-OS, or AI/data-center infrastructure; call out major Cisco Live / conference announcements or product launches and critical CVEs by number. No paragraphs, no intro/outro text. /no_think
 
 {block}"""
     try:

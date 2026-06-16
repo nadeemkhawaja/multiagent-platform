@@ -97,6 +97,8 @@ export const aegisDismiss = (id) => jsonPost("/api/aegis/dismiss", { id });
 export const getWolfPortfolio = (refresh = false) => jsonGet(`/api/alpha-wolf/portfolio${refresh ? "?refresh=true" : ""}`);
 export const setWolfExecution = (body) => jsonPost("/api/alpha-wolf/execution", body);
 export const resetWolfPortfolio = () => jsonPost("/api/alpha-wolf/portfolio/reset");
+export const getWolfNow = () => jsonGet("/api/alpha-wolf/now");
+export const runWolfPulse = (email = true) => jsonPost(`/api/alpha-wolf/pulse?email=${email}`);
 
 // ── Settings / schedules / health / email preview ───────────────────────────
 export const getConfig = () => jsonGet("/api/config");

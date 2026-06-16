@@ -228,10 +228,10 @@ async def llm_read(sectors, futures, headlines, vix=None):
     head_txt = "\n".join(f"  - {h['t']}" for h in headlines[:5]) or "  (no headlines)"
     vix_txt = (f"  VIX {vix['level']} ({vix['regime']} volatility, "
                f"{'+' if vix['change'] >= 0 else ''}{vix['change']} on the session)") if vix else "  (no VIX data)"
-    prompt = f"""You are a pre-market strategist. Write a concise 3-4 sentence directional read
-of today's market tone. Reference specific /ES or /NQ pivot levels, 1-2 sectors, and the VIX
-regime if it's notable (e.g. elevated volatility argues for caution/smaller size).
-Be plain-English and non-hyperbolic.
+    prompt = f"""You are a pre-market strategist. Give a directional read of today's market tone
+as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, crisp and
+specific. Reference /ES or /NQ pivot levels, 1-2 sectors, and the VIX regime if notable.
+Plain-English, non-hyperbolic. No paragraphs, no intro/outro text.
 
 Sector bias (-100 bearish .. +100 bullish):
 {sec_txt}
@@ -294,7 +294,7 @@ def build_compass_html(payload):
         <div style='color:#5b6472;font-size:13px;margin-top:2px'>{tone_desc}</div>
         <div style='font-family:monospace;color:#8a909c;margin-top:4px'>composite {composite:+d}</div>
       </div>
-      <p style='line-height:1.55'>{payload.get('read', '')}</p>
+      <p style='line-height:1.55;white-space:pre-line'>{payload.get('read', '')}</p>
       <table style='width:100%;border-collapse:collapse;margin-top:12px'>
         <thead><tr style='text-align:left;color:#8a909c;font-size:11px'>
           <th style='padding:6px 12px'>SECTOR</th><th style='padding:6px 12px'>BIAS</th></tr></thead>

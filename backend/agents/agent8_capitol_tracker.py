@@ -399,8 +399,9 @@ async def build_llm_commentary(trades: list) -> str:
         for t in top
     )
     prompt = f"""You are a political finance analyst. Review these congressional stock trades and provide
-a 2-3 sentence commentary on notable patterns, potential conflicts of interest, or anything
-investors should be aware of. Be factual and concise.
+commentary as 3-4 bullet points on notable patterns, potential conflicts of interest, or anything
+investors should be aware of. Each bullet starts with '• ' on its own line (newline-separated),
+max 12 words, factual and crisp. No paragraphs, no intro/outro text.
 
 Recent trades:
 {summary}

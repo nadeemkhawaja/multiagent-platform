@@ -145,7 +145,7 @@ export default function Compass({ status, agentError }) {
               <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.2 }}>Lufi's read</span>
               <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill>
             </div>
-            <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55 }}>
+            <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, whiteSpace: "pre-line" }}>
               {read || "Run analysis to fetch live sector ETF moves, compute pivot-based key levels for /ES, /NQ and the 10 majors, and have Qwen3 write today's directional read."}
             </div>
           </div>

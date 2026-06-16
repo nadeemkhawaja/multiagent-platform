@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
-import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio } from "../state/api";
+import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio, getWolfNow } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
 
 const PURPLE = "#7c3aed"; const PURPLE_BG = "#f5f3ff";
@@ -61,18 +61,139 @@ function IdeaCard({ idea, weekly }) {
   const thirdVal = txt(weekly ? idea.catalyst : idea.trigger);
   const thesis = txt(idea.thesis);
   const risk = txt(idea.risk);
+  const when = txt(idea.when);
+  const levels = weekly ? [] : [
+    ["Entry", txt(idea.entry)], ["Stop", txt(idea.stop)], ["Target", txt(idea.target)],
+    ["Size", idea.size_usd != null ? `~${fmt$(idea.size_usd)} · ${idea.size_shares} sh` : ""],
+  ].filter(([, v]) => v);
   return (
     <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: "12px 14px", background: T.card }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 15, color: T.ink }}>{txt(idea.ticker) || "—"}</span>
         <span style={{ fontSize: 9.5, fontWeight: 800, color: dc, background: dc + "16", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{txt(idea.direction) || "n/a"}</span>
+        {!weekly && when && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: PURPLE, background: PURPLE + "14", padding: "2px 8px", borderRadius: 4, fontFamily: T.mono }}>⏰ {when}</span>
+        )}
       </div>
       {thesis && <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.45, marginTop: 6 }}>{thesis}</div>}
+      {levels.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8, padding: "7px 10px", background: T.cardAlt, borderRadius: 8 }}>
+          {levels.map(([label, val]) => (
+            <div key={label} style={{ fontSize: 11, fontFamily: T.mono }}>
+              <span style={{ color: T.ink4, fontWeight: 700, textTransform: "uppercase", fontSize: 9.5 }}>{label}</span>{" "}
+              <span style={{ color: T.ink, fontWeight: 800 }}>{val}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 6, lineHeight: 1.5 }}>
         {thirdVal && <div><b style={{ color: T.ink2 }}>{thirdLabel}:</b> {thirdVal}</div>}
         {risk && <div><b style={{ color: T.ink2 }}>Risk:</b> {risk}</div>}
       </div>
     </div>
+  );
+}
+
+function SessionTimeline({ timeline, currentIdx }) {
+  if (!timeline?.length) return null;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 6 }}>⏰ Today's schedule (ET)</div>
+      <div style={{ border: `1px solid ${PURPLE}22`, borderRadius: 10, overflow: "hidden" }}>
+        {timeline.map((slot, i) => {
+          const now = i === currentIdx;
+          return (
+            <div key={i} style={{ display: "flex", gap: 12, padding: "9px 14px", alignItems: "baseline",
+              background: now ? PURPLE + "1e" : i % 2 === 0 ? PURPLE_BG : T.card,
+              boxShadow: now ? `inset 3px 0 0 ${PURPLE}` : "none",
+              borderBottom: i < timeline.length - 1 ? `1px solid ${PURPLE}14` : "none" }}>
+              <div style={{ minWidth: 132, fontFamily: T.mono, fontSize: 11, fontWeight: 800, color: "#4c1d95", whiteSpace: "nowrap" }}>
+                {now && <span style={{ color: "#fff", background: PURPLE, padding: "1px 6px", borderRadius: 4, marginRight: 6, fontSize: 9.5 }}>NOW</span>}
+                {txt(slot.time)}
+              </div>
+              <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.5, flex: 1 }}>
+                {txt(slot.action)}
+                {(slot.tickers || []).map((t, j) => (
+                  <span key={j} style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 10.5, color: PURPLE, background: PURPLE + "14", padding: "1px 7px", borderRadius: 4, marginLeft: 6 }}>{txt(t)}</span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── "Right now" — Alpha Wolf as the live decision maker ──────────────────────
+const STATE_STYLE = {
+  ACT:           { c: "#16a34a", label: "ACT NOW" },
+  TARGET_HIT:    { c: "#16a34a", label: "TARGET HIT" },
+  STOPPED:       { c: "#dc2626", label: "STOPPED OUT" },
+  IN_WINDOW:     { c: "#7c3aed", label: "IN WINDOW" },
+  WAIT:          { c: "#64748b", label: "WAIT" },
+  WINDOW_PASSED: { c: "#94a3b8", label: "WINDOW PASSED" },
+  NEXT_SESSION:  { c: "#64748b", label: "NEXT SESSION" },
+  MONITOR:       { c: "#f59e0b", label: "MONITOR" },
+};
+
+function fmtCountdown(min) {
+  if (min == null) return "";
+  return min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`;
+}
+
+function RightNowCard({ now }) {
+  if (!now) return null;
+  const clock = now.clock || {};
+  const open = clock.is_open;
+  const ideas = now.ideas || [];
+  const next = clock.next_event || {};
+  return (
+    <Card pad={20} style={{ borderColor: PURPLE + "55", background: T.card }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: open ? T.green : T.ink3, padding: "4px 12px", borderRadius: 999 }}>
+          {open ? "● MARKET OPEN" : "○ MARKET CLOSED"}
+        </span>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: PURPLE, fontFamily: T.mono }}>{clock.session_label}</span>
+        <span style={{ fontSize: 12, color: T.ink3, fontFamily: T.mono }}>{clock.et} ET · {clock.weekday}</span>
+        <div style={{ flex: 1 }} />
+        {next.label && (
+          <span style={{ fontSize: 11, color: T.ink3 }}>
+            next: <b style={{ color: T.ink2 }}>{next.label}</b> in <b style={{ color: PURPLE, fontFamily: T.mono }}>{fmtCountdown(next.in_min)}</b>
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 14.5, fontWeight: 800, color: "#4c1d95", lineHeight: 1.45, marginBottom: ideas.length ? 12 : 0 }}>
+        🐺 {txt(now.directive)}
+      </div>
+      {ideas.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 8 }}>
+          {ideas.map((i, k) => {
+            const st = STATE_STYLE[i.state] || STATE_STYLE.MONITOR;
+            return (
+              <div key={k} style={{ border: `1px solid ${st.c}33`, borderRadius: 10, padding: "9px 12px", background: st.c + "08" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 13.5, color: T.ink }}>{i.ticker}</span>
+                  <span style={{ fontSize: 9, fontWeight: 800, color: dirColor(i.direction), textTransform: "uppercase" }}>{i.direction}</span>
+                  {i.live != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.ink2 }}>{fmt$(i.live)}</span>}
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fff", background: st.c, padding: "2px 8px", borderRadius: 4 }}>{st.label}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 5, lineHeight: 1.45 }}>{txt(i.note)}</div>
+                {i.size_usd != null && (
+                  <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 3, fontFamily: T.mono }}>size ~{fmt$(i.size_usd)} · {i.size_shares} sh</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {now.pulse?.checked_at && (
+        <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 10 }}>
+          Pulse: checked {now.pulse.checked_at} ET{now.pulse.alerts?.length ? ` · ${now.pulse.alerts.length} alert${now.pulse.alerts.length !== 1 ? "s" : ""} sent` : " · no alerts"} · auto-checks every 30 min in market hours
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -179,7 +300,7 @@ function PortfolioCard({ portfolio, onChanged }) {
   );
 }
 
-function PlanBlock({ title, plan, weekly }) {
+function PlanBlock({ title, plan, weekly, currentIdx }) {
   const ideas = plan?.ideas || [];
   return (
     <Card pad={20}>
@@ -188,6 +309,7 @@ function PlanBlock({ title, plan, weekly }) {
         <BiasPill bias={plan?.bias} />
       </div>
       {plan?.summary && <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginBottom: 12 }}>{txt(plan.summary)}</div>}
+      {!weekly && <SessionTimeline timeline={plan?.timeline} currentIdx={currentIdx} />}
       {weekly && plan?.themes?.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
           {plan.themes.map((t, i) => <span key={i} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: PURPLE + "14", color: PURPLE, fontWeight: 600 }}>{txt(t)}</span>)}
@@ -208,6 +330,7 @@ export default function AlphaWolf({ status, agentError }) {
   const { data, refresh } = useAgentData("alpha_wolf");
   const [refreshing, setRefreshing] = useState(false);
   const [portfolio, setPortfolio] = useState(null);
+  const [nowData, setNowData] = useState(null);
   const plan = data?.plan || null;
   const busy = refreshing || status === "running";
 
@@ -219,6 +342,16 @@ export default function AlphaWolf({ status, agentError }) {
     const id = setInterval(refreshPortfolio, 15000);
     return () => clearInterval(id);
   }, [refreshPortfolio]);
+
+  // Live "what to do right now" — market clock + ideas scored vs live quotes
+  const refreshNow = useCallback(async () => {
+    try { setNowData(await getWolfNow()); } catch { /* backend offline */ }
+  }, []);
+  useEffect(() => {
+    refreshNow();
+    const id = setInterval(refreshNow, 60000);
+    return () => clearInterval(id);
+  }, [refreshNow]);
 
   const run = async () => {
     setRefreshing(true);
@@ -244,6 +377,9 @@ export default function AlphaWolf({ status, agentError }) {
       />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
         <ErrorBanner error={agentError} />
+
+        {/* Live decision maker: market clock + what to do right now */}
+        <RightNowCard now={nowData} />
 
         {/* Pack status: which sub-agents have fed the plan */}
         <Card pad={16} style={{ background: T.cardAlt }}>
@@ -329,7 +465,7 @@ export default function AlphaWolf({ status, agentError }) {
             </Card>
           )}
 
-          <PlanBlock title="Daily Plan" plan={plan.daily} weekly={false} />
+          <PlanBlock title="Daily Plan" plan={plan.daily} weekly={false} currentIdx={nowData?.current_slot?.index} />
           <PlanBlock title="Weekly Plan" plan={plan.weekly} weekly={true} />
 
           {/* Catalysts + avoid + risk */}

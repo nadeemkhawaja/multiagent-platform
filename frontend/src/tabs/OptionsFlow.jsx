@@ -145,7 +145,7 @@ export default function OptionsFlow({ status, agentError }) {
                 <LufiAvatar size={38} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>Flow Analysis <span style={{ fontSize: 11, color: T.ink4 }}>by Lufi · Qwen3</span></div>
-                  <div style={{ fontSize: 13.5, color: T.ink2, lineHeight: 1.55 }}>{commentary}</div>
+                  <div style={{ fontSize: 13.5, color: T.ink2, lineHeight: 1.55, whiteSpace: "pre-line" }}>{commentary}</div>
                 </div>
               </div>
             </Card>

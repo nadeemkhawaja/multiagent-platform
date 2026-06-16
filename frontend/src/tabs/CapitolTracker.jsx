@@ -274,7 +274,7 @@ export default function CapitolTracker({ status, agentError }) {
                     Analyst Commentary <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink4 }}>by Lufi</span>
                     <Pill mono c={VIOLET} bg={VIOLET + "1a"}>Qwen3</Pill>
                   </div>
-                  <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, maxWidth: 920 }}>{commentary}</div>
+                  <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, maxWidth: 920, whiteSpace: "pre-line" }}>{commentary}</div>
                 </div>
               </div>
             </Card>

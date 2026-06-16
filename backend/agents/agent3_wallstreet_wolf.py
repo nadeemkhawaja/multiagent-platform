@@ -12,12 +12,12 @@ import tracing
 
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 
-# Watchlist of 20 user-curated stocks — mega-cap tech, semiconductors/AI infra,
+# Watchlist of 22 user-curated stocks — mega-cap tech, semiconductors/AI infra,
 # and crypto-adjacent names. User can override via Settings → watchlist (needs 20+).
 DEFAULT_WATCHLIST = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NFLX",       # mega-cap tech
-    "NVDA", "AMD", "INTC", "AVGO", "QCOM", "MU", "SMCI", "CSCO",   # chips & AI infra
-    "DELL", "BABA", "PLTR", "GBTC", "COIN",                        # hardware, China tech, crypto
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NFLX", "ORCL",  # mega-cap tech
+    "NVDA", "AMD", "INTC", "AVGO", "QCOM", "MU", "SMCI", "CSCO",      # chips & AI infra
+    "DELL", "BABA", "PLTR", "GBTC", "COIN", "MSTR",                   # hardware, China tech, crypto
 ]
 
 # Broad-market index futures — the headline risk gauges traders watch first.
@@ -155,7 +155,7 @@ async def wallstreet_wolf_job():
         commentary = ""
         try:
             prompt = (
-                f"Write a concise 3-sentence daily market commentary. "
+                f"Write today's market commentary as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, crisp and specific. No paragraphs, no intro/outro text. "
                 f"Index futures: {', '.join(futures_strs) or 'N/A'}. "
                 f"Top gainers today: {', '.join(gainer_strs)}. "
                 f"Top losers: {', '.join(loser_strs)}. "

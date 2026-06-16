@@ -70,14 +70,14 @@ async def build_llm_narrative(weather: dict, wolf_snap: dict, capitol_snap: dict
     except Exception as e:
         log.warning(f"memory recall failed: {e}")
 
-    prompt = f"""You are a personal morning brief assistant. Write a concise, friendly 3–4 sentence morning narrative for a Cisco Solutions Architect in Murphy, TX who also actively trades stocks and options.
+    prompt = f"""You are a personal morning brief assistant. Write a morning brief as 3-5 bullet points for a Cisco Solutions Architect in Murphy, TX who also actively trades stocks and options. Each bullet starts with '• ' on its own line, max 12 words, friendly and specific.
 
 Weather today: {weather.get('summary', 'unknown')}
 Market snapshot: {wolf_top or 'no market data yet'}
 Congressional trading: {capitol_top or 'no trade data yet'}
 AI news: {ai_top or 'no news yet'}
 {prior}
-Write a short, confident paragraph summarizing these highlights. Be specific. No bullet points. /no_think"""
+Summarize the highlights as short bullet points only — no paragraph, no intro/outro text. /no_think"""
 
     try:
         return await generate_completion(prompt, agent_id="morning_brief")
@@ -133,7 +133,7 @@ def build_html_email(weather: dict, wolf_snap: dict, capitol_snap: dict, aitimes
   <!-- Narrative -->
   <div style='padding:24px 32px;border-bottom:1px solid #e5e7eb'>
     <div style='font-size:12px;font-weight:700;color:#8a909c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px'>Your brief</div>
-    <div style='font-size:14.5px;line-height:1.65;color:#2d3748'>{narrative}</div>
+    <div style='font-size:14.5px;line-height:1.65;color:#2d3748;white-space:pre-line'>{narrative}</div>
   </div>
 
   <!-- Market movers -->

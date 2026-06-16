@@ -138,7 +138,7 @@ async def devdaily_job(language: str = "", count: int = 5, topic: str = ""):
             repo_names = [f"{r['name']} ({r.get('language', 'N/A')})" for r in github_repos]
             article_titles = [a["title"] for a in devto_articles]
             prompt = (
-                f"Write a concise 3-sentence summary of today's best developer learning opportunities. "
+                f"Summarize today's best developer learning opportunities as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, crisp and specific. No paragraphs, no intro/outro text. "
                 f"Top GitHub repos: {', '.join(repo_names)}. "
                 f"Top Dev.to articles: {', '.join(article_titles)}. "
                 f"Focus on key trends and actionable takeaways."
