@@ -64,7 +64,7 @@ export default function StrategyScout({ status, agentError }) {
           <EmailPreviewButton agentId="strategy_scout" label="Preview digest" />
           <AgentControls agentId="strategy_scout" onRun={run} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />
 
         {empty ? (

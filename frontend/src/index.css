@@ -9,8 +9,54 @@ body { font-family: 'Hanken Grotesk', sans-serif; }
 ::-webkit-scrollbar-thumb { background: #d6d9de; border-radius: 8px; border: 3px solid #f6f7f9; }
 ::-webkit-scrollbar-thumb:hover { background: #c2c6cd; }
 
+button { font-family: inherit; }
+input, textarea { font-family: inherit; }
+
+/* ── Motion vocabulary ──────────────────────────────────────────────────────
+   Tasteful micro-interactions + entrances. All gated by prefers-reduced-motion
+   at the bottom so the dashboard never induces motion sickness or distracts. */
 @keyframes omSpin { to { transform: rotate(360deg); } }
 @keyframes omPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); } 50% { box-shadow: 0 0 0 4px rgba(229,72,77,.12); } }
 
-button { font-family: inherit; }
-input, textarea { font-family: inherit; }
+/* entrances */
+@keyframes omFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes omFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes omScaleIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+
+/* loading shimmer for skeletons */
+@keyframes omShimmer { 0% { background-position: -340px 0; } 100% { background-position: 340px 0; } }
+
+/* live indicator — soft breathing pulse */
+@keyframes omLive { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* aurora blobs — slow organic drift, each on its own timing for an unrepeating feel */
+@keyframes omDriftA { 0%{transform:translate(0,0) scale(1);} 50%{transform:translate(6vw,4vh) scale(1.12);} 100%{transform:translate(0,0) scale(1);} }
+@keyframes omDriftB { 0%{transform:translate(0,0) scale(1.05);} 50%{transform:translate(-7vw,5vh) scale(.92);} 100%{transform:translate(0,0) scale(1.05);} }
+@keyframes omDriftC { 0%{transform:translate(0,0) scale(1);} 50%{transform:translate(5vw,-6vh) scale(1.15);} 100%{transform:translate(0,0) scale(1);} }
+
+/* reusable entrance utilities (pair with inline animation-delay for stagger) */
+.om-rise { animation: omFadeUp .55s cubic-bezier(.22,.7,.2,1) both; }
+.om-fade { animation: omFadeIn .42s ease both; }
+.om-pop  { animation: omScaleIn .4s cubic-bezier(.22,.7,.2,1) both; }
+
+/* drop-in stagger: animate a container's direct children in sequence. Add
+   className="om-stagger" to a tab's content column to make its sections rise in. */
+.om-stagger > * { animation: omFadeUp .5s cubic-bezier(.22,.7,.2,1) both; }
+.om-stagger > *:nth-child(1){animation-delay:.03s} .om-stagger > *:nth-child(2){animation-delay:.08s}
+.om-stagger > *:nth-child(3){animation-delay:.13s} .om-stagger > *:nth-child(4){animation-delay:.18s}
+.om-stagger > *:nth-child(5){animation-delay:.23s} .om-stagger > *:nth-child(6){animation-delay:.28s}
+.om-stagger > *:nth-child(7){animation-delay:.33s} .om-stagger > *:nth-child(8){animation-delay:.38s}
+.om-stagger > *:nth-child(n+9){animation-delay:.42s}
+
+/* hover lift — applied to interactive cards */
+.om-lift { transition: transform .18s cubic-bezier(.22,.7,.2,1), box-shadow .18s ease, border-color .18s ease; }
+.om-lift:hover { transform: translateY(-3px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

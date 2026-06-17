@@ -8,6 +8,7 @@ import { useSystemState, useAgentData } from "./state/api";
 import { ToastContainer, useToasts, useAgentToasts } from "./components/Toast";
 import CommandPalette from "./components/CommandPalette";
 import AskAI from "./components/AskAI";
+import Aurora from "./components/Aurora";
 
 import Orchestrator   from "./tabs/Orchestrator";
 import AITimes        from "./tabs/AITimes";
@@ -331,7 +332,9 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, fontFamily: T.sans, color: T.ink }}>
+    <>
+      <Aurora />
+      <div style={{ display: "flex", minHeight: "100vh", background: "transparent", fontFamily: T.sans, color: T.ink, position: "relative", zIndex: 1 }}>
       <Sidebar
         tab={tab} setTab={setTab}
         sys={sys} online={online}
@@ -340,7 +343,7 @@ export default function App() {
         onCmdK={() => setCmdOpen(true)}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <TabErrorBoundary key={tab}>{content}</TabErrorBoundary>
+        <TabErrorBoundary key={tab}><div className="om-fade">{content}</div></TabErrorBoundary>
       </div>
 
       {/* Per-agent AI assistant — every agent tab gets an Ask-AI panel */}
@@ -349,6 +352,7 @@ export default function App() {
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
-    </div>
+      </div>
+    </>
   );
 }

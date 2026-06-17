@@ -2,18 +2,67 @@
 // ui.jsx — shared primitives (ported from the Claude design bundle).
 // All components read the mutable token object `T` at render time.
 // ============================================================================
+import { useState, useEffect, useRef } from "react";
 import { T, STAT } from "./tokens";
 
 export const Dot = ({ c, s = 7 }) => (
   <i style={{ width: s, height: s, borderRadius: s, background: c, display: "inline-block", flex: "0 0 auto" }} />
 );
 
-export function Card({ children, style, pad = 20, ...rest }) {
+// Soft "breathing" status dot — used for live/running indicators.
+export const LiveDot = ({ c, s = 7 }) => (
+  <i style={{ width: s, height: s, borderRadius: s, background: c, color: c, display: "inline-block",
+    flex: "0 0 auto", boxShadow: `0 0 0 0 ${c}`, animation: "omLive 1.6s ease-in-out infinite" }} />
+);
+
+// `interactive` adds a hover-lift + accent glow (for clickable cards).
+export function Card({ children, style, pad = 20, interactive, className = "", ...rest }) {
   return (
-    <div {...rest} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: pad, ...style }}>
+    <div {...rest} className={(interactive ? "om-lift " : "") + className}
+      style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: pad,
+        boxShadow: T.shadow, ...style }}>
       {children}
     </div>
   );
+}
+
+// ── Motion helpers ───────────────────────────────────────────────────────────
+// Smoothly tween a displayed number toward its latest target so live values
+// feel alive instead of snapping. Honors prefers-reduced-motion (snaps).
+export function useCountUp(target, { duration = 600, decimals = 0 } = {}) {
+  const [val, setVal] = useState(target || 0);
+  const fromRef = useRef(target || 0);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const from = fromRef.current;
+    const to = Number(target) || 0;
+    if (reduce || from === to) { fromRef.current = to; setVal(to); return; }
+    const t0 = performance.now();
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);              // easeOutCubic
+      const cur = from + (to - from) * eased;
+      setVal(cur);
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+      else fromRef.current = to;
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+  const f = Number(val).toFixed(decimals);
+  return decimals ? f : Math.round(val).toString();
+}
+
+export function CountUp({ value, decimals = 0, duration = 600, ...rest }) {
+  const shown = useCountUp(value, { duration, decimals });
+  return <span {...rest}>{shown}</span>;
+}
+
+// Staggered entrance wrapper. `delay` in ms; `kind` picks the keyframe.
+export function Reveal({ children, delay = 0, kind = "rise", style }) {
+  const cls = kind === "pop" ? "om-pop" : kind === "fade" ? "om-fade" : "om-rise";
+  return <div className={cls} style={{ animationDelay: `${delay}ms`, ...style }}>{children}</div>;
 }
 
 export function Pill({ children, c = T.ink2, bg, bd, mono, style }) {
@@ -49,13 +98,17 @@ export function Btn({ children, onClick, kind = "default", size = "md", style, d
 
 export function Ring({ val, size = 64, stroke = 7, color = T.violet, track, children }) {
   const r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  // Draw-in on mount: start empty, then animate to the real value via the
+  // stroke-dashoffset transition below (one frame after mount).
+  const [shown, setShown] = useState(0);
+  useEffect(() => { const id = requestAnimationFrame(() => setShown(val)); return () => cancelAnimationFrame(id); }, [val]);
   return (
     <div style={{ position: "relative", width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track || T.line2} strokeWidth={stroke} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-          strokeDasharray={c} strokeDashoffset={c * (1 - val / 100)} strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset .6s ease, stroke .3s ease" }} />
+          strokeDasharray={c} strokeDashoffset={c * (1 - shown / 100)} strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset .7s cubic-bezier(.22,.7,.2,1), stroke .3s ease" }} />
       </svg>
       {children && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>{children}</div>}
     </div>
@@ -88,10 +141,11 @@ export function SectionTitle({ children, right, sub }) {
 }
 
 export function TabHeader({ icon, color, title, sub, actions }) {
+  // Frosted-glass sticky header: content scrolls under it over the aurora.
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 28px", borderBottom: `1px solid ${T.line}`, background: T.card, position: "sticky", top: 0, zIndex: 5 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 28px", borderBottom: `1px solid ${T.line}`, background: T.card + "c2", backdropFilter: "blur(14px) saturate(1.4)", WebkitBackdropFilter: "blur(14px) saturate(1.4)", position: "sticky", top: 0, zIndex: 5 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-        {icon && <div style={{ width: 38, height: 38, borderRadius: 10, background: color + "1a", color, display: "grid", placeItems: "center", fontSize: 18, fontWeight: 700 }}>{icon}</div>}
+        {icon && <div style={{ width: 38, height: 38, borderRadius: 10, background: color + "1a", color, display: "grid", placeItems: "center", fontSize: 18, fontWeight: 700, boxShadow: `0 4px 14px ${color}26` }}>{icon}</div>}
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3 }}>{title}</div>
           {sub && <div style={{ fontSize: 12.5, color: T.ink3, marginTop: 1 }}>{sub}</div>}
