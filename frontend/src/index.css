@@ -36,8 +36,17 @@ input, textarea { font-family: inherit; }
 
 /* reusable entrance utilities (pair with inline animation-delay for stagger) */
 .om-rise { animation: omFadeUp .55s cubic-bezier(.22,.7,.2,1) both; }
-.om-fade { animation: omFadeIn .5s ease both; }
+.om-fade { animation: omFadeIn .42s ease both; }
 .om-pop  { animation: omScaleIn .4s cubic-bezier(.22,.7,.2,1) both; }
+
+/* drop-in stagger: animate a container's direct children in sequence. Add
+   className="om-stagger" to a tab's content column to make its sections rise in. */
+.om-stagger > * { animation: omFadeUp .5s cubic-bezier(.22,.7,.2,1) both; }
+.om-stagger > *:nth-child(1){animation-delay:.03s} .om-stagger > *:nth-child(2){animation-delay:.08s}
+.om-stagger > *:nth-child(3){animation-delay:.13s} .om-stagger > *:nth-child(4){animation-delay:.18s}
+.om-stagger > *:nth-child(5){animation-delay:.23s} .om-stagger > *:nth-child(6){animation-delay:.28s}
+.om-stagger > *:nth-child(7){animation-delay:.33s} .om-stagger > *:nth-child(8){animation-delay:.38s}
+.om-stagger > *:nth-child(n+9){animation-delay:.42s}
 
 /* hover lift — applied to interactive cards */
 .om-lift { transition: transform .18s cubic-bezier(.22,.7,.2,1), box-shadow .18s ease, border-color .18s ease; }

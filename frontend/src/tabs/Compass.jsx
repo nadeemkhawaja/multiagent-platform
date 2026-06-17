@@ -114,7 +114,7 @@ export default function Compass({ status, agentError }) {
           <EmailPreviewButton agentId="compass" label="Preview brief" />
           <AgentControls agentId="compass" onRun={run} busy={busy} refresh={refresh} runLabel="Run analysis" runningLabel="Analyzing…" />
         </>} />
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />
         {empty ? (
           <EmptyState icon="◎" title="No analysis yet"

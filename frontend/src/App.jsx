@@ -343,7 +343,7 @@ export default function App() {
         onCmdK={() => setCmdOpen(true)}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <TabErrorBoundary key={tab}>{content}</TabErrorBoundary>
+        <TabErrorBoundary key={tab}><div className="om-fade">{content}</div></TabErrorBoundary>
       </div>
 
       {/* Per-agent AI assistant — every agent tab gets an Ask-AI panel */}

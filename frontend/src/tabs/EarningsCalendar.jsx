@@ -146,7 +146,7 @@ export default function EarningsCalendar({ status, agentError }) {
           <AgentControls agentId="earnings_cal" onRun={run} busy={busy} refresh={refresh} runLabel="Refresh" runningLabel="Fetching…" />
         </>}
       />
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
         <ErrorBanner error={agentError} />
         {!cal ? (
           <EmptyState icon="📅" title="No earnings data yet" hint="Click 'Refresh' to fetch upcoming earnings for your watchlist." />

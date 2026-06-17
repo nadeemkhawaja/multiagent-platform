@@ -106,7 +106,7 @@ export default function CiscoPulse({ status, agentError }) {
           <AgentControls agentId="cisco_pulse" onRun={run} busy={busy} refresh={refresh} runLabel="Refresh" runningLabel="Fetching…" />
         </>}
       />
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
         <ErrorBanner error={agentError} />
         {!pulse ? (
           <EmptyState icon="◈" title="No Cisco Pulse data yet" hint="Click 'Refresh' to fetch PSIRT advisories, ACI/NDFC updates, and DevNet blog." />
