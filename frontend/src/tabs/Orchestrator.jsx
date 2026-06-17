@@ -4,9 +4,98 @@
 // ============================================================================
 import { useState, useEffect, useRef } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
-import { Card, Pill, Dot, Ring, SectionTitle, TabHeader, Btn } from "../theme/ui";
+import { Card, Pill, Dot, Ring, SectionTitle, TabHeader, Btn, CountUp, Reveal, LiveDot } from "../theme/ui";
 import { CpuIcon, RamIcon, DiskIcon, GpuIcon, NetIcon } from "../theme/icons";
 import { API_BASE, setDemoMode, spikeResource, crashAgent, getMetrics } from "../state/api";
+
+// ── Live clock + US market session (computed client-side, always live) ───────
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
+  return now;
+}
+function marketStatus(now) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  const wd = get("weekday");
+  const mins = parseInt(get("hour")) * 60 + parseInt(get("minute"));
+  const weekday = !["Sat", "Sun"].includes(wd);
+  let session = "Closed", open = false;
+  if (weekday) {
+    if (mins >= 240 && mins < 570) session = "Pre-market";
+    else if (mins >= 570 && mins < 960) { session = "Open"; open = true; }
+    else if (mins >= 960 && mins < 1200) session = "After-hours";
+  }
+  return { open, session, et: `${get("hour")}:${get("minute")} ET` };
+}
+function greeting(now) {
+  const h = now.getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+function HeroKpi({ label, value, decimals = 0, suffix = "", color, accent, live }) {
+  return (
+    <div style={{ flex: "1 1 130px", minWidth: 120, padding: "12px 16px", borderRadius: 14, background: T.card + "99", border: `1px solid ${T.line}`, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6 }}>
+        {live && <LiveDot c={color || T.green} s={6} />}{label}
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: color || T.ink, marginTop: 4, lineHeight: 1 }}>
+        {typeof value === "number" ? <CountUp value={value} decimals={decimals} /> : value}{suffix}
+      </div>
+      {accent && <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 3 }}>{accent}</div>}
+    </div>
+  );
+}
+
+function CommandCenterHero({ s, online }) {
+  const now = useClock();
+  const mkt = marketStatus(now);
+  const running = s.agents.filter((a) => a.status === "running").length;
+  const total = s.agents.length || 0;
+  const healthy = online && !s.alarm;
+  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const dateStr = now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+  return (
+    <Reveal kind="pop">
+      <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: "22px 26px",
+        background: `linear-gradient(135deg, ${T.violet}1f, ${T.blue}14 55%, ${T.teal}12)`,
+        border: `1px solid ${T.violet}33`, boxShadow: T.shadow }}>
+        <div style={{ position: "absolute", top: -40, right: -20, width: 220, height: 220, borderRadius: "50%", background: `radial-gradient(circle, ${T.violet}33, transparent 70%)`, filter: "blur(20px)", pointerEvents: "none" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap", position: "relative" }}>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: T.violet, letterSpacing: 0.3 }}>{greeting(now)} · Mission Control</div>
+            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.5, marginTop: 3 }}>Multi-Agent Platform</div>
+            <div style={{ fontSize: 12.5, color: T.ink3, marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {healthy ? <LiveDot c={T.green} s={7} /> : <Dot c={s.alarm ? T.red : T.amber} s={7} />}
+                {healthy ? "All systems nominal" : s.alarm ? "Alarm active" : "Backend offline"}
+              </span>
+              <span style={{ color: T.ink4 }}>·</span>
+              <span>{(s.llm && s.llm.model) || "Qwen3"} · local inference</span>
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 30, fontWeight: 800, fontFamily: T.mono, letterSpacing: -1, lineHeight: 1 }}>{timeStr}</div>
+            <div style={{ fontSize: 12, color: T.ink3, marginTop: 4 }}>{dateStr}</div>
+            <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 11px", borderRadius: 999,
+              background: mkt.open ? T.green + "1c" : T.line2, border: `1px solid ${mkt.open ? T.green + "55" : T.line}` }}>
+              {mkt.open ? <LiveDot c={T.green} s={6} /> : <Dot c={T.ink4} s={6} />}
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: mkt.open ? T.green : T.ink3 }}>US market · {mkt.session}</span>
+              <span style={{ fontSize: 10.5, fontFamily: T.mono, color: T.ink4 }}>{mkt.et}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 12, marginTop: 18, flexWrap: "wrap", position: "relative" }}>
+          <HeroKpi label="Agents running" value={running} color={running > 0 ? T.green : T.ink3} accent={`${total} managed`} live={running > 0} />
+          <HeroKpi label="CPU load" value={Math.round(s.res?.cpu?.v || 0)} suffix="%" color={(s.res?.cpu?.v || 0) >= 85 ? T.red : T.blue} live />
+          <HeroKpi label="Memory" value={Math.round(s.res?.ram?.v || 0)} suffix="%" color={(s.res?.ram?.v || 0) >= 88 ? T.red : T.violet} live />
+          <HeroKpi label="Threads" value={s.threads || 0} color={T.teal} accent="active" />
+          <HeroKpi label="Uptime" value={fmtUptime(s.uptimeS || 0)} color={T.ink} accent="since boot" />
+        </div>
+      </div>
+    </Reveal>
+  );
+}
 
 // ── All agents the Home overview knows about ─────────────────────────────────
 const ALL_AGENTS = [
@@ -33,10 +122,10 @@ function AgentOverviewCard({ agent, sysAgent, onNavigate }) {
   const status = sysAgent?.status || "idle";
   const sc = status === "running" ? T.green : status === "crashed" ? T.red : status === "queued" ? T.amber : T.ink4;
   return (
-    <div onClick={() => onNavigate(agent.id)}
-      style={{ background: T.card, border: `1px solid ${status === "crashed" ? T.red + "55" : T.line}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", transition: "all .15s", display: "flex", gap: 10, alignItems: "center" }}
-      onMouseEnter={(e) => e.currentTarget.style.borderColor = col + "66"}
-      onMouseLeave={(e) => e.currentTarget.style.borderColor = status === "crashed" ? T.red + "55" : T.line}>
+    <div onClick={() => onNavigate(agent.id)} className="om-lift"
+      style={{ background: T.card, border: `1px solid ${status === "crashed" ? T.red + "55" : T.line}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", display: "flex", gap: 10, alignItems: "center", boxShadow: T.shadow }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = col + "66"; e.currentTarget.style.boxShadow = `0 8px 22px ${col}26`; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = status === "crashed" ? T.red + "55" : T.line; e.currentTarget.style.boxShadow = T.shadow; }}>
       <div style={{ width: 34, height: 34, borderRadius: 9, background: col + "18", color: col, display: "grid", placeItems: "center", fontSize: 15, flex: "0 0 auto" }}>{agent.glyph}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{agent.label}</div>
@@ -132,7 +221,7 @@ function ResCard({ m, r }) {
         <Ring val={ringPct} size={34} stroke={4} color={col} track={T.line2} />
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 12 }}>
-        <span style={{ fontSize: 25, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: hot ? T.red : T.ink }}>{fmtVal(v, m.unit)}</span>
+        <CountUp value={v} decimals={m.unit === "%" ? 0 : 1} duration={500} style={{ fontSize: 25, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: hot ? T.red : T.ink }} />
         <span style={{ fontSize: 13, fontWeight: 600, color: T.ink4 }}>{m.unit}</span>
         <span style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 700, color: col, background: col + "16", padding: "3px 8px", borderRadius: 6 }}>{hot ? "CRITICAL" : "NOMINAL"}</span>
       </div>
@@ -415,17 +504,22 @@ export default function Orchestrator({ sys, online, onNavigate }) {
 
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
 
+        {/* ── Command-center hero: live clock, market status, KPIs ─────────── */}
+        <CommandCenterHero s={s} online={online} />
+
         {/* ── Resource metric cards (live system metrics · updates every 5s) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-          {METRICS.map((m) => <ResCard key={m.k} m={m} r={s.res[m.k] || { v: 0, hist: [] }} />)}
+          {METRICS.map((m, i) => <Reveal key={m.k} delay={60 + i * 50}><ResCard m={m} r={s.res[m.k] || { v: 0, hist: [] }} /></Reveal>)}
         </div>
 
         {/* ── Agent overview grid (clickable) ──────────────────────────────── */}
         <div>
           <SectionTitle sub="click any card to open that agent's tab">{shownAgents.length} {demo ? "graded agents · demo mode" : "managed agents · auto-restart enabled"}</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10, marginTop: 8 }}>
-            {shownAgents.map((a) => (
-              <AgentOverviewCard key={a.id} agent={a} sysAgent={s.agents.find((x) => x.id === a.id)} onNavigate={nav} />
+            {shownAgents.map((a, i) => (
+              <Reveal key={a.id} delay={120 + i * 35}>
+                <AgentOverviewCard agent={a} sysAgent={s.agents.find((x) => x.id === a.id)} onNavigate={nav} />
+              </Reveal>
             ))}
           </div>
         </div>
