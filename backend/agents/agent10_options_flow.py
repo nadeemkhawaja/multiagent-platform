@@ -152,7 +152,7 @@ async def build_llm_commentary(top_signals: list) -> str:
     lines = []
     for s in top_signals[:5]:
         lines.append(f"{s['ticker']}: IV {s['avg_iv']}% (rank ~{s['iv_pct']}%ile), P/C {s['pc_ratio']:.2f}, {s['call_vol']+s['put_vol']:,} contracts")
-    prompt = f"""You are an options trading analyst. Summarize the following unusual options activity for a TOS trader in 3–4 sentences. Note implied volatility levels, put/call ratios, and what the activity might suggest. Be specific and actionable. /no_think
+    prompt = f"""You are an options trading analyst. Summarize the following unusual options activity for a TOS trader as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, specific and actionable. Note IV levels, put/call ratios, and what the activity suggests. No paragraphs, no intro/outro text. /no_think
 
 {chr(10).join(lines)}"""
     try:

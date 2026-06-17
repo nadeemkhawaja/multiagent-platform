@@ -148,7 +148,7 @@ async def build_llm_commentary(earnings: list) -> str:
     if not lines:
         lines = [f"{e['ticker']} earnings in {e['dte']}d" for e in earnings[:5]]
 
-    prompt = f"""You are an options trading analyst for a TOS trader. Summarize the upcoming earnings calendar in 3–4 sentences. Highlight IV crush opportunities, large expected moves, and any notable names. Be specific and practical. /no_think
+    prompt = f"""You are an options trading analyst for a TOS trader. Summarize the upcoming earnings calendar as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, specific and practical. Highlight IV crush opportunities, large expected moves, and notable names. No paragraphs, no intro/outro text. /no_think
 
 {chr(10).join(lines)}"""
     try:

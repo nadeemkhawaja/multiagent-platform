@@ -2,7 +2,7 @@
 // ui.jsx — shared primitives (ported from the Claude design bundle).
 // All components read the mutable token object `T` at render time.
 // ============================================================================
-import { T, STAT, THEMES } from "./tokens";
+import { T, STAT } from "./tokens";
 
 export const Dot = ({ c, s = 7 }) => (
   <i style={{ width: s, height: s, borderRadius: s, background: c, display: "inline-block", flex: "0 0 auto" }} />
@@ -138,15 +138,11 @@ export function Segmented({ options, value, onChange, full }) {
   );
 }
 
-export function Appearance({ theme, setTheme, mode, setMode }) {
+export function Appearance({ mode, setMode }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 7, paddingLeft: 2 }}>Appearance</div>
-      <div style={{ marginBottom: 6 }}>
-        <Segmented full value={theme} onChange={setTheme} options={Object.entries(THEMES).map(([v, t]) => ({ v, label: t.label }))} />
-      </div>
       <Segmented full value={mode} onChange={setMode} options={[{ v: "light", label: "Light", icon: "☀" }, { v: "dark", label: "Dark", icon: "☾" }]} />
-      {THEMES[theme]?.alwaysDark && <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 6, paddingLeft: 2 }}>Terminal is an always-dark theme — the light/dark switch applies to the other themes.</div>}
     </div>
   );
 }

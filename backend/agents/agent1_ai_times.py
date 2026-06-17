@@ -15,6 +15,9 @@ DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL")
 # Cap the (slow) local-LLM curation. If Qwen3 doesn't return in time we fall back
 # to YouTube's own view-count ranking so a run always finishes promptly.
 CURATE_TIMEOUT = float(os.getenv("AI_TIMES_CURATE_TIMEOUT", "60"))
+# Video recency window. 7 days keeps the candidate pool rich enough for good
+# curation; set AI_TIMES_WINDOW_HOURS=48 to match the assignment's 24-48 h spec.
+FETCH_WINDOW_HOURS = int(os.getenv("AI_TIMES_WINDOW_HOURS", "168"))
 
 # Verified AI labs / big-tech channels — pulled in alongside the keyword search so
 # major announcements from the companies actually driving AI news always make the
@@ -116,7 +119,7 @@ def _fetch_candidates_sync(query: str, n: int = 12, durations=("medium",)):
         return []
     try:
         youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-        published_after = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
+        published_after = (datetime.utcnow() - timedelta(hours=FETCH_WINDOW_HOURS)).isoformat() + "Z"
         vids, seen = [], set()
         for duration in durations:
             search = youtube.search().list(
@@ -171,13 +174,13 @@ def _resolve_channel_ids_sync(handles: list[str]) -> dict[str, str]:
 
 
 def _fetch_trusted_channel_videos_sync(channel_map: dict[str, str], names: dict[str, str],
-                                       days: int = 7, per_channel: int = 2) -> list:
+                                       hours: int = FETCH_WINDOW_HOURS, per_channel: int = 2) -> list:
     """Recent uploads from a curated allow-list of verified AI-lab / big-tech /
     top-creator channels — marked `trusted` so curation can prioritize them."""
     if not YOUTUBE_API_KEY or not channel_map:
         return []
     youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-    published_after = (datetime.utcnow() - timedelta(days=days)).isoformat() + "Z"
+    published_after = (datetime.utcnow() - timedelta(hours=hours)).isoformat() + "Z"
     vids = []
     for handle, channel_id in channel_map.items():
         try:
@@ -201,7 +204,7 @@ def _fetch_trusted_channel_videos_sync(channel_map: dict[str, str], names: dict[
 
 async def fetch_candidates(query: str, n: int = 12, durations=("medium",), trusted_channels=None):
     """Fetch a candidate pool: keyword-search results plus recent uploads from a
-    curated allow-list of trusted channels, English-only, US, last 7 days."""
+    curated allow-list of trusted channels, English-only, US, recent window."""
     keyword_vids, trusted_vids = await asyncio.gather(
         asyncio.to_thread(_fetch_candidates_sync, query, n, durations),
         _fetch_trusted_pool(trusted_channels or []),
@@ -343,7 +346,7 @@ async def ai_times_job():
         # News pool = keyword search (medium-length clips) + recent uploads from
         # verified AI-lab/big-tech channels. Personality pool = keyword search
         # (medium + long-form) + recent uploads from top AI commentators —
-        # all English-only (last 7 days, US region).
+        # all English-only (recency window per FETCH_WINDOW_HOURS, US region).
         orchestrator.set_progress("ai_times", "Fetching latest AI videos from YouTube…")
         news_cand, people_cand = await asyncio.gather(
             fetch_candidates("AI news", 8, durations=("medium",), trusted_channels=TRUSTED_NEWS_CHANNELS),

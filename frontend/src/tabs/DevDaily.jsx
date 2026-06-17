@@ -60,7 +60,7 @@ export default function DevDaily({ status, agentError }) {
               <LufiAvatar size={38} />
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Daily learning summary <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink4 }}>by Lufi</span> <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
-                <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6 }}>{d.llm_summary}</div>
+                <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, whiteSpace: "pre-line" }}>{d.llm_summary}</div>
               </div>
             </div>
           </Card>

@@ -106,7 +106,7 @@ export default function MorningBrief({ status, agentError }) {
               <LufiAvatar size={40} />
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>Your Morning Brief <span style={{ fontSize: 11.5, fontWeight: 500, color: T.ink4 }}>by Lufi · Qwen3</span></div>
-                <div style={{ fontSize: 14.5, color: T.ink, lineHeight: 1.65 }}>{brief.narrative}</div>
+                <div style={{ fontSize: 14.5, color: T.ink, lineHeight: 1.65, whiteSpace: "pre-line" }}>{brief.narrative}</div>
               </div>
             </div>
           </Card>

@@ -169,7 +169,7 @@ export default function Wolf({ status, agentError }) {
             <LufiAvatar size={38} />
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Market commentary <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink4 }}>by Lufi</span> <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
-              <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, maxWidth: 920 }}>
+              <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, maxWidth: 920, whiteSpace: "pre-line" }}>
                 {commentary || `Breadth is ${advancers >= watch.length / 2 ? "constructive" : "soft"} (${advancers}/${watch.length} advancing). Run a refresh to fetch fresh Yahoo Finance prices and a Qwen3 commentary for today's tape.`}
               </div>
             </div>

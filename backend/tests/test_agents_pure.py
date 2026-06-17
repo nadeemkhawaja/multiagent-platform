@@ -436,8 +436,11 @@ def test_sanitize_plan_coerces_object_fields_to_text():
     assert plan["daily"]["bias"] == "BULLISH"
     assert plan["daily"]["summary"] == "Buy dips."
     idea = plan["daily"]["ideas"][0]
+    # daily ideas carry live-trading fields (entry/stop/target/when), absent → ""
     assert idea == {"ticker": "NVDA", "direction": "long", "thesis": "AI demand",
-                    "risk": "below 110", "trigger": "120"}
+                    "risk": "below 110", "trigger": "120",
+                    "entry": "", "stop": "", "target": "", "when": ""}
+    assert plan["daily"]["timeline"] == []              # no timeline given → []
     assert plan["weekly"]["bias"] == "NEUTRAL"          # invalid bias → NEUTRAL
     assert plan["weekly"]["themes"] == ["AI capex"]
     assert plan["weekly"]["ideas"] == []                # non-list ideas dropped
@@ -467,3 +470,63 @@ def test_sanitize_plan_drops_ideas_without_ticker():
         {"ticker": "AMD", "direction": "long"},
     ]}})
     assert [i["ticker"] for i in plan["daily"]["ideas"]] == ["AMD"]
+
+
+# ── Alpha Wolf: live decision engine (market clock + idea scoring) ───────────
+def _et(y, mo, d, h, mi):
+    import datetime
+    from agents.agent13_alpha_wolf import ET
+    return datetime.datetime(y, mo, d, h, mi, tzinfo=ET)
+
+
+def test_market_clock_sessions():
+    from agents.agent13_alpha_wolf import market_clock
+    # Friday 2026-06-12 across the trading day
+    assert market_clock(_et(2026, 6, 12, 8, 0))["session"] == "pre"
+    assert market_clock(_et(2026, 6, 12, 9, 45))["session"] == "open"
+    midday = market_clock(_et(2026, 6, 12, 12, 0))
+    assert midday["session"] == "midday" and midday["is_open"] is True
+    assert market_clock(_et(2026, 6, 12, 15, 30))["session"] == "power"
+    closed = market_clock(_et(2026, 6, 12, 21, 0))
+    assert closed["session"] == "closed" and closed["is_open"] is False
+
+
+def test_market_clock_weekend_is_closed():
+    from agents.agent13_alpha_wolf import market_clock
+    sat = market_clock(_et(2026, 6, 13, 11, 0))      # Saturday
+    assert sat["trading_day"] is False and sat["is_open"] is False
+    assert "Pre-market" in sat["next_event"]["label"]
+
+
+def test_first_price_parses_and_rejects_hallucinations():
+    from agents.agent13_alpha_wolf import _first_price
+    assert _first_price("$146.20 zone (9:35-9:40 ET)", 140) == 146.20
+    assert _first_price("146.20", None) == 146.20
+    # a level wildly off the live quote is a hallucination → dropped
+    assert _first_price("$898.00", 142) is None
+    # bare times must not be parsed as prices
+    assert _first_price("around 9:30 ET", None) is None
+
+
+def test_window_minutes_parsing():
+    from agents.agent13_alpha_wolf import _window_minutes
+    assert _window_minutes("9:30-10:30 ET open") == (570, 630)
+    assert _window_minutes("power hour") == (900, 960)
+    a, b = _window_minutes("3:45 PM ET")
+    assert a < 945 < b                                # window straddles 3:45pm
+
+
+def test_idea_now_states():
+    from agents.agent13_alpha_wolf import _idea_now, market_clock
+    clock = market_clock(_et(2026, 6, 12, 10, 0))     # in the open window
+    idea = {"ticker": "AMD", "direction": "long", "entry": "$146.20",
+            "stop": "$143.80", "target": "$152.50", "when": "9:30-10:30 ET"}
+    assert _idea_now(idea, 143.0, clock, 2500)["state"] == "STOPPED"
+    assert _idea_now(idea, 153.0, clock, 2500)["state"] == "TARGET_HIT"
+    assert _idea_now(idea, 146.25, clock, 2500)["state"] == "ACT"   # at entry
+    # before the window opens → WAIT
+    pre = market_clock(_et(2026, 6, 12, 9, 0))
+    assert _idea_now(idea, 146.25, pre, 2500)["state"] == "WAIT"
+    # sizing: $2500 budget / $146.25 → 17 shares
+    sized = _idea_now(idea, 146.25, clock, 2500)
+    assert sized["size_shares"] == 17

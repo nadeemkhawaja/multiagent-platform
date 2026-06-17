@@ -301,7 +301,7 @@ function MCPCard() {
   );
 }
 
-export default function Settings({ theme, setTheme, mode, setMode }) {
+export default function Settings({ mode, setMode }) {
   const [config, setConfig] = useState(null);
   const [schedules, setSchedules] = useState(null);
   const [health, setHealth] = useState(null);
@@ -339,10 +339,10 @@ export default function Settings({ theme, setTheme, mode, setMode }) {
         actions={<Btn size="sm" kind="primary" onClick={saveSettings}>Save settings</Btn>} />
       <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         {/* Appearance */}
-        {theme && setTheme && mode && setMode && (
+        {mode && setMode && (
           <Card pad={20}>
-            <SectionTitle sub="Theme and color mode">Appearance</SectionTitle>
-            <Appearance theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} />
+            <SectionTitle sub="Color mode">Appearance</SectionTitle>
+            <Appearance mode={mode} setMode={setMode} />
           </Card>
         )}
 

@@ -109,6 +109,9 @@ async def lifespan(app: FastAPI):
         _apply_schedule(aid, cfg)
 
     scheduler.start()
+    # Alpha Wolf pulse: in-session live check-in every 30 min (self-gates to
+    # market hours) — alerts on slot openings, entry-zone and stop/target hits.
+    scheduler.add_job(agent13_alpha_wolf.pulse_job, "interval", minutes=30, id="alpha_wolf_pulse")
     # Demo mode (persisted): pause non-core agents so only the four graded
     # agents are scheduled during a recording — no extras firing mid-demo.
     if orchestrator.demo_mode:
@@ -435,6 +438,19 @@ async def alpha_wolf_portfolio_reset():
     out = paper_broker.reset_portfolio()
     orchestrator.log_event("Alpha Wolf paper portfolio reset to starting capital", "#7c3aed")
     return out
+
+
+@app.get("/api/alpha-wolf/now")
+async def alpha_wolf_now():
+    """Live decision snapshot: market clock, active timeline slot, and each
+    daily idea scored against live quotes (WAIT / ACT / STOPPED / TARGET_HIT)."""
+    return await agent13_alpha_wolf.decision_now()
+
+
+@app.post("/api/alpha-wolf/pulse")
+async def alpha_wolf_pulse(email: bool = True):
+    """Run the in-session pulse check now (bypasses the market-hours gate)."""
+    return await agent13_alpha_wolf.pulse_job(force=True, send_email=email)
 
 
 # ─── Run history & metrics ───────────────────────────────────────────

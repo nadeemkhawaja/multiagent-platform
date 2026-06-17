@@ -139,7 +139,7 @@ export default function CiscoPulse({ status, agentError }) {
                 <LufiAvatar size={38} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>SA Summary <span style={{ fontSize: 11, color: T.ink4 }}>by Lufi · Qwen3 · {pulse.week_of}</span></div>
-                  <div style={{ fontSize: 13.5, color: "#134e4a", lineHeight: 1.55 }}>{commentary}</div>
+                  <div style={{ fontSize: 13.5, color: "#134e4a", lineHeight: 1.55, whiteSpace: "pre-line" }}>{commentary}</div>
                 </div>
               </div>
             </Card>

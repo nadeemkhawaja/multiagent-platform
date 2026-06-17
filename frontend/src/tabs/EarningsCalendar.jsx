@@ -159,7 +159,7 @@ export default function EarningsCalendar({ status, agentError }) {
                 <LufiAvatar size={36} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Earnings Analyst <span style={{ fontSize: 11, color: T.ink4 }}>by Lufi · Qwen3</span></div>
-                  <div style={{ fontSize: 13.5, color: "#166534", lineHeight: 1.55 }}>{commentary}</div>
+                  <div style={{ fontSize: 13.5, color: "#166534", lineHeight: 1.55, whiteSpace: "pre-line" }}>{commentary}</div>
                 </div>
               </div>
             </Card>

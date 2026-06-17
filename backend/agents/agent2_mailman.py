@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
@@ -31,8 +32,15 @@ def _authenticate_gmail_sync():
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                # Refresh token expired/revoked (e.g. 7-day expiry when the
+                # OAuth consent screen is in Testing mode) — discard and re-auth.
+                print("[Mailman] Gmail refresh token expired or revoked — re-running OAuth consent flow")
+                os.remove('token.json')
+                creds = None
+        if not creds:
             if not os.path.exists('credentials.json'):
                 print("[Mailman] Missing credentials.json for Gmail OAuth")
                 return None

@@ -7,7 +7,6 @@ A fully operational Multi-Agent Auto-Scheduling Platform running entirely on a l
 The frontend is a faithful implementation of the **Claude Design** "Aria" direction (a clean light-SaaS dashboard):
 
 - **Sidebar nav** with live per-agent status dots, an Appearance panel, and a system/LLM readout.
-- **Theme selector** — *Aria* (calm resource cards + agent grid) ↔ *Atlas* (compact metric strip + dense agent table). Both persist.
 - **Dark mode** toggle re-skinning the entire app via a single mutable token system. Persists.
 - **Orchestrator tab** — live CPU/RAM/Disk/GPU rings + sparklines (polls `/api/state` every 2 s), the **LLM semaphore** panel (single permit, holder + live queue), an event log, and **Demo controls**: *Spike CPU/RAM/GPU > 90 %* fires the alarm banner with a suggested corrective action, and *Crash random agent* flips an agent to crashed → the orchestrator auto-restarts it ~4 s later.
 - **Agent tabs** — AI-Times, Mailman, Wallstreet Wolf, Compass, Aegis, GitHub Trending — each wired to its live `/api/agent/{id}/data` endpoint with manual run/scan controls, falling back to realistic sample data until the agent first runs.
@@ -24,6 +23,13 @@ Design source bundle (prototype HTML + backend spec) is preserved under [`design
 | Compass | `compass` | Sector bias (sector ETFs) + pivot key levels for /ES, /NQ & 10 majors · LLM read |
 | Aegis | `aegis` | Reputation guardian — Reddit + Hacker News mentions · LLM risk/sentiment + human-approved replies |
 | GitHub Trending | `devdaily` | GitHub trending + Dev.to · LLM learning digest |
+| Strategy Scout | `strategy_scout` | Top trading strategies traders are running · LLM curation |
+| Capitol Tracker | `capitol_tracker` | Congressional STOCK Act trades for configurable politicians · LLM commentary |
+| Morning Brief | `morning_brief` | Personalized daily digest fusing the other agents' outputs |
+| Options Flow | `options_flow` | Unusual options activity · IV percentile + put/call signals · LLM read |
+| Earnings Calendar | `earnings_cal` | Upcoming earnings with expected move + IV-crush setups |
+| Cisco Pulse | `cisco_pulse` | Cisco PSIRT advisories, ACI/NDFC intel & news via RSS · LLM summary |
+| 🐺 Alpha Wolf | `alpha_wolf` | **Master agent & live decision maker** — fuses six trading sub-agents + **live quotes** into one LLM game-plan: a time-of-day session schedule (pre-market → open → midday → power hour → close), daily ideas with live-anchored entry/stop/target levels and dollar position sizing, then executes them on a simulated paper portfolio. A **"Right now" engine** scores every idea against a live market clock + quotes (WAIT / ACT NOW / STOPPED / TARGET HIT), and a **30-min pulse** emails you when a window opens or a level is hit. |
 
 > **Compass** replaces the earlier *Market Direction* agent; **Aegis** is new (human-in-the-loop, never auto-posts). Set the brand to monitor via `AEGIS_BRAND` in `.env` (default `Anthropic`).
 
@@ -41,6 +47,10 @@ GET  /api/demo/mode                 # demo-mode state + core (graded) agents
 POST /api/demo/mode    {enabled}    # demo mode: show/schedule only the 4 graded agents
 POST /api/aegis/approve {id, reply} # approve a suggested reply
 POST /api/aegis/dismiss {id}
+GET  /api/alpha-wolf/portfolio      # paper portfolio (equity, positions, trades)
+GET  /api/alpha-wolf/now            # LIVE decision: market clock + ideas scored vs live quotes
+POST /api/alpha-wolf/pulse          # run the in-session pulse check now (alerts on changes)
+POST /api/alpha-wolf/execution      # toggle/size paper-trade execution
 ```
 
 ## Agent-4 Use-Case Proposal: GitHub Trending
