@@ -46,7 +46,7 @@ function PlanCard({ plan }) {
   const action = plan.action || "Stay Put";
   const col = PLAN_COLOR[action] || "#64748b";
   return (
-    <Card pad={18} style={{ borderLeft: `5px solid ${col}`, background: col + "0d" }}>
+    <Card pad={14} style={{ borderLeft: `5px solid ${col}`, background: col + "0d" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
         <div style={{ width: 52, height: 52, borderRadius: 13, background: col + "1c", color: col, display: "grid", placeItems: "center", fontSize: 22, flex: "0 0 auto" }}>{PLAN_ARROW[action]}</div>
         <div style={{ flex: 1, minWidth: 200 }}>
@@ -88,7 +88,7 @@ export default function StrategyScout({ status, agentError }) {
           <EmailPreviewButton agentId="strategy_scout" label="Preview digest" />
           <AgentControls agentId="strategy_scout" onRun={run} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
 
         {empty ? (
@@ -119,7 +119,7 @@ export default function StrategyScout({ status, agentError }) {
             )}
 
             {discussions.length > 0 && (
-              <Card pad={20}>
+              <Card pad={15}>
                 <SectionTitle sub="Source posts feeding the analysis" right={<Pill mono c={T.ink3}>{discussions.length}</Pill>}>Trending discussions</SectionTitle>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {discussions.map((p, i) => (

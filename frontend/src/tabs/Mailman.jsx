@@ -50,7 +50,7 @@ function adaptCats(breakdown) {
 function CatBar({ cats }) {
   const total = cats.reduce((s, c) => s + c.n, 0) || 1;
   return (
-    <Card pad={20}>
+    <Card pad={15}>
       <SectionTitle sub={`${total} emails classified by Qwen3 in the last scan`} right={<Pill mono c={T.ink3}>{total} total</Pill>}>Category breakdown</SectionTitle>
       <div style={{ display: "flex", height: 12, borderRadius: 7, overflow: "hidden", marginBottom: 16 }}>
         {cats.map((c) => <div key={c.k} style={{ width: (c.n / total * 100) + "%", background: c.c }} title={`${c.k}: ${c.n}`} />)}
@@ -135,7 +135,7 @@ export default function Mailman({ status, agentError }) {
           <EmailPreviewButton agentId="mailman" label="Preview summary" />
           <AgentControls agentId="mailman" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {(llmCount > 0 || keyCount > 0) && (
           <div style={{ background: T.amberBg, border: `1px solid ${T.amber}55`, borderRadius: 12, padding: "11px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -149,7 +149,7 @@ export default function Mailman({ status, agentError }) {
           </div>
         )}
 
-        <Card pad={18}>
+        <Card pad={14}>
           <SectionTitle sub="Override key-people list and email behaviour for the next scan">Scan configuration</SectionTitle>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
@@ -170,7 +170,7 @@ export default function Mailman({ status, agentError }) {
           <>
             <CatBar cats={cats} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, alignItems: "start" }}>
-              <Card pad={20}>
+              <Card pad={15}>
                 <SectionTitle sub="Mail from your key people only — routine inbox stays out of sight" right={<Pill mono c={T.ink3}>{shown.length} of {mails.length}</Pill>}>Needs attention</SectionTitle>
                 {shown.length === 0 ? (
                   <div style={{ padding: "30px 6px", textAlign: "center", color: T.ink3, fontSize: 12.5, lineHeight: 1.6 }}>
@@ -179,7 +179,7 @@ export default function Mailman({ status, agentError }) {
                   </div>
                 ) : shown.map((m) => <MailRow key={m.id} m={m} onStar={onStar} />)}
               </Card>
-              <Card pad={20}>
+              <Card pad={15}>
                 <SectionTitle sub={keyPeople ? "Override for the next scan" : "From Settings · surfaced under Needs attention"}>Key people</SectionTitle>
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                   {keyPeopleList.map((p) => (

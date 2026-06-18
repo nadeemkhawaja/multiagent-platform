@@ -262,7 +262,7 @@ function MCPCard() {
 
   const servers = Object.entries(mcp?.servers || {});
   return (
-    <Card pad={20}>
+    <Card pad={15}>
       <SectionTitle sub="Connect Model Context Protocol servers — their tools become callable by the platform">MCP servers</SectionTitle>
       {!mcp ? (
         <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>
@@ -337,17 +337,17 @@ export default function Settings({ mode, setMode }) {
     <div>
       <TabHeader icon="⚙" color={T.violet} title="Settings" sub="Schedules · agent config · system health"
         actions={<Btn size="sm" kind="primary" onClick={saveSettings}>Save settings</Btn>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         {/* Appearance */}
         {mode && setMode && (
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="Color mode">Appearance</SectionTitle>
             <Appearance mode={mode} setMode={setMode} />
           </Card>
         )}
 
         {/* Health */}
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Live dependency status">System health</SectionTitle>
           {health ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
@@ -363,7 +363,7 @@ export default function Settings({ mode, setMode }) {
         </Card>
 
         {/* Agent config */}
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Applied on the next agent run" right={savedAt && <Pill c={T.green} bg={T.greenBg}><Dot c={T.green} />Saved {savedAt}</Pill>}>Agent configuration</SectionTitle>
           {config && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
@@ -390,7 +390,7 @@ export default function Settings({ mode, setMode }) {
         </Card>
 
         {/* AI models */}
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Local Qwen by default — route any agent to a frontier model (applies on its next run)">AI models</SectionTitle>
           {llm ? (
             <>
@@ -423,7 +423,7 @@ export default function Settings({ mode, setMode }) {
         <MCPCard />
 
         {/* Schedules */}
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Change how often each agent runs (persisted)">Schedules</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1.4fr auto", gap: 12, padding: "0 0 8px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
             <span>Agent</span><span>Type</span><span>Cadence</span><span></span>

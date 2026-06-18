@@ -51,10 +51,10 @@ function tradeBg(type = "") {
 
 function StatCard({ label, value, sub, color = T.ink }) {
   return (
-    <Card pad={18} style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 28, fontWeight: 800, fontFamily: T.mono, color, letterSpacing: -1 }}>{value}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{label}</div>
-      {sub && <div style={{ fontSize: 11, color: T.ink4, marginTop: 2 }}>{sub}</div>}
+    <Card pad={12} style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 23, fontWeight: 800, fontFamily: T.mono, color, letterSpacing: -1 }}>{value}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 1 }}>{label}</div>
+      {sub && <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 1 }}>{sub}</div>}
     </Card>
   );
 }
@@ -77,7 +77,7 @@ function TradeRow({ t, idx, onPoliticianClick }) {
       display: "grid",
       gridTemplateColumns: "28px 160px 68px 1fr 140px 110px 110px 110px",
       gap: 10, alignItems: "center",
-      padding: "11px 20px",
+      padding: "7px 20px",
       borderBottom: `1px solid ${T.line2}`,
       background: idx % 2 === 0 ? "transparent" : T.cardAlt + "55",
       transition: "background .12s",
@@ -134,7 +134,7 @@ function TradeRow({ t, idx, onPoliticianClick }) {
 function TableHeader() {
   const s = { fontSize: 10, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4 };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "28px 160px 68px 1fr 140px 110px 110px 110px", gap: 10, padding: "10px 20px", borderBottom: `1px solid ${T.line}`, background: T.cardAlt }}>
+    <div style={{ display: "grid", gridTemplateColumns: "28px 160px 68px 1fr 140px 110px 110px 110px", gap: 10, padding: "8px 20px", borderBottom: `1px solid ${T.line}`, background: T.cardAlt }}>
       <span style={s}>#</span><span style={s}>Politician</span><span style={s}>Chamber</span>
       <span style={s}>Asset</span><span style={s}>Type</span>
       <span style={{ ...s, textAlign: "right" }}>Amount</span>
@@ -248,7 +248,7 @@ export default function CapitolTracker({ status, agentError }) {
         </>}
       />
 
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
 
         {trades.length === 0 ? (
@@ -266,7 +266,7 @@ export default function CapitolTracker({ status, agentError }) {
 
           {/* Commentary */}
           {commentary && (
-            <Card pad={20} style={{ background: T.cardAlt }}>
+            <Card pad={15} style={{ background: T.cardAlt }}>
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={38} />
                 <div>
@@ -322,7 +322,7 @@ export default function CapitolTracker({ status, agentError }) {
 
           {/* Performance rankings */}
           {perfRankings.length > 0 && (
-            <Card pad={20}>
+            <Card pad={15}>
               <SectionTitle sub={`2025 calendar year · S&P 500 baseline +${sp500}%`}>Congressional Trading Performance · 2025</SectionTitle>
               <div style={{ marginTop: 8 }}>
                 {perfRankings.map((item) => (
@@ -339,7 +339,7 @@ export default function CapitolTracker({ status, agentError }) {
           {/* Trade table with filters */}
           <Card pad={0} style={{ overflow: "hidden" }}>
             {/* Filter bar */}
-            <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.line2}`, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <div style={{ padding: "11px 20px", borderBottom: `1px solid ${T.line2}`, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>Disclosure Feed</div>
                 <div style={{ fontSize: 11, color: T.ink4 }}>

@@ -149,7 +149,7 @@ function RightNowCard({ now }) {
   const ideas = now.ideas || [];
   const next = clock.next_event || {};
   return (
-    <Card pad={20} style={{ borderColor: PURPLE + "55", background: T.card }}>
+    <Card pad={15} style={{ borderColor: PURPLE + "55", background: T.card }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: open ? T.green : T.ink3, padding: "4px 12px", borderRadius: 999 }}>
           {open ? "● MARKET OPEN" : "○ MARKET CLOSED"}
@@ -233,7 +233,7 @@ function PortfolioCard({ portfolio, onChanged }) {
   };
 
   return (
-    <Card pad={20} style={{ borderColor: PURPLE + "33" }}>
+    <Card pad={15} style={{ borderColor: PURPLE + "33" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <SectionTitle sub="simulated fills at live prices · virtual capital">⚡ Paper Trading Portfolio</SectionTitle>
         <div style={{ flex: 1 }} />
@@ -303,7 +303,7 @@ function PortfolioCard({ portfolio, onChanged }) {
 function PlanBlock({ title, plan, weekly, currentIdx }) {
   const ideas = plan?.ideas || [];
   return (
-    <Card pad={20}>
+    <Card pad={15}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
         <SectionTitle sub={weekly ? "swing / position horizon" : "today's actionable read"}>{title}</SectionTitle>
         <BiasPill bias={plan?.bias} />
@@ -375,7 +375,7 @@ export default function AlphaWolf({ status, agentError }) {
           <AgentControls agentId="alpha_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Run plan" runningLabel="Synthesizing…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 13 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
 
         {/* Live decision maker: market clock + what to do right now */}
@@ -434,7 +434,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Headline action — the single most important move right now */}
           {plan.headline && (
-            <Card pad={20} style={{ background: PURPLE_BG, borderColor: PURPLE + "44" }}>
+            <Card pad={15} style={{ background: PURPLE_BG, borderColor: PURPLE + "44" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <StancePill stance={plan.stance} />
                 <div style={{ fontSize: 16, fontWeight: 800, color: "#4c1d95", flex: 1, minWidth: 0, lineHeight: 1.4 }}>{txt(plan.headline)}</div>
@@ -444,7 +444,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Regime read */}
           {plan.regime && (
-            <Card pad={20} style={{ background: PURPLE_BG, borderColor: PURPLE + "33" }}>
+            <Card pad={15} style={{ background: PURPLE_BG, borderColor: PURPLE + "33" }}>
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={38} />
                 <div>
@@ -457,7 +457,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Confluence — where multiple agents agree */}
           {(plan.confluence || []).length > 0 && (
-            <Card pad={20} style={{ borderColor: PURPLE + "33" }}>
+            <Card pad={15} style={{ borderColor: PURPLE + "33" }}>
               <SectionTitle sub="where multiple agents line up — highest conviction">🎯 Confluence</SectionTitle>
               <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
                 {plan.confluence.map((c, i) => <li key={i}>{txt(c)}</li>)}
@@ -470,7 +470,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Catalysts + avoid + risk */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-            <Card pad={20}>
+            <Card pad={15}>
               <SectionTitle sub="upcoming events to watch">Catalysts</SectionTitle>
               {(plan.catalysts || []).length > 0 ? (
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
@@ -478,7 +478,7 @@ export default function AlphaWolf({ status, agentError }) {
                 </ul>
               ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>None flagged.</div>}
             </Card>
-            <Card pad={20} style={{ borderColor: T.red + "33" }}>
+            <Card pad={15} style={{ borderColor: T.red + "33" }}>
               <SectionTitle sub="what to stay away from">⛔ Avoid</SectionTitle>
               {(plan.avoid || []).length > 0 ? (
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
@@ -486,7 +486,7 @@ export default function AlphaWolf({ status, agentError }) {
                 </ul>
               ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>Nothing flagged.</div>}
             </Card>
-            <Card pad={20}>
+            <Card pad={15}>
               <SectionTitle sub="how to size and protect">Risk management</SectionTitle>
               <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginTop: 8 }}>{txt(plan.risk_notes) || "—"}</div>
             </Card>
@@ -494,7 +494,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Pack intel snapshot */}
           {Object.keys(inputs).length > 0 && (
-            <Card pad={20}>
+            <Card pad={15}>
               <SectionTitle sub="the raw signals Alpha Wolf reasoned over">Pack intel</SectionTitle>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                 {Object.entries(inputs).map(([k, v]) => (

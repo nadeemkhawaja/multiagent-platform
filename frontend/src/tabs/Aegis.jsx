@@ -79,7 +79,7 @@ export default function Aegis({ status, agentError }) {
           <EmailPreviewButton agentId="aegis" label="Preview digest" />
           <AgentControls agentId="aegis" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan forums" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {highCount > 0 && (
           <div style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "13px 18px", display: "flex", alignItems: "center", gap: 13 }}>
@@ -117,7 +117,7 @@ export default function Aegis({ status, agentError }) {
             hint="Click Scan forums to monitor Reddit + Hacker News for Islamophobic content and draft moderation replies with the LLM." />
         ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr", gap: 16, alignItems: "start" }}>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="Sorted by severity · LLM-flagged">Flagged posts</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {mentions.map((x) => {
@@ -145,7 +145,7 @@ export default function Aegis({ status, agentError }) {
           </Card>
 
           {m && (
-            <Card pad={22} style={{ position: "sticky", top: 84 }}>
+            <Card pad={16} style={{ position: "sticky", top: 84 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
                 <span style={{ fontSize: 15 }}>{srcGlyph[m.src] || "•"}</span>
                 <span style={{ fontSize: 13.5, fontWeight: 700 }}>{m.src} · {m.sub}</span>

@@ -14,7 +14,7 @@ function WeatherCard({ detail }) {
   if (!detail) return null;
   const { temp_f, feels_f, desc, humidity, wind_mph } = detail;
   return (
-    <Card pad={18} style={{ background: "#eff6ff", borderColor: "#2563eb33" }}>
+    <Card pad={14} style={{ background: "#eff6ff", borderColor: "#2563eb33" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 36 }}>🌤</div>
         <div>
@@ -86,7 +86,7 @@ export default function MorningBrief({ status, agentError }) {
           <AgentControls agentId="morning_brief" onRun={run} busy={busy} refresh={refresh} runLabel="Generate now" runningLabel="Generating…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 13 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {!brief ? (
           <EmptyState icon="☀" title="No brief yet" hint="Click 'Generate now' or wait for the 06:00 daily run." />
@@ -101,7 +101,7 @@ export default function MorningBrief({ status, agentError }) {
           <WeatherCard detail={brief.weather_detail} />
 
           {/* Narrative */}
-          <Card pad={22}>
+          <Card pad={16}>
             <div style={{ display: "flex", gap: 14 }}>
               <LufiAvatar size={40} />
               <div>
@@ -114,11 +114,11 @@ export default function MorningBrief({ status, agentError }) {
           {/* Market movers */}
           {(brief.wolf_gainers?.length > 0 || brief.wolf_losers?.length > 0) && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <Card pad={18}>
+              <Card pad={14}>
                 <SectionTitle sub="Pre-market leaders">Top gainers</SectionTitle>
                 {(brief.wolf_gainers || []).map((s) => <MoverRow key={s.ticker} s={s} side="gain" />)}
               </Card>
-              <Card pad={18}>
+              <Card pad={14}>
                 <SectionTitle sub="Biggest declines">Top losers</SectionTitle>
                 {(brief.wolf_losers || []).map((s) => <MoverRow key={s.ticker} s={s} side="loss" />)}
               </Card>
@@ -127,7 +127,7 @@ export default function MorningBrief({ status, agentError }) {
 
           {/* Capitol trades */}
           {brief.capitol_trades?.length > 0 && (
-            <Card pad={18}>
+            <Card pad={14}>
               <SectionTitle sub="Recent STOCK Act disclosures">Congressional trades</SectionTitle>
               {(brief.capitol_trades || []).map((t, i) => <TradeRow key={i} t={t} />)}
             </Card>
@@ -135,7 +135,7 @@ export default function MorningBrief({ status, agentError }) {
 
           {/* AI Videos */}
           {brief.ai_videos?.length > 0 && (
-            <Card pad={18}>
+            <Card pad={14}>
               <SectionTitle sub="From AI-Times">AI news highlights</SectionTitle>
               {(brief.ai_videos || []).map((v, i) => <VideoRow key={i} v={v} />)}
             </Card>

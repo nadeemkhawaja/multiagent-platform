@@ -138,99 +138,115 @@ function AgentOverviewCard({ agent, sysAgent, onNavigate }) {
   );
 }
 
-// ── Agent orchestration mesh ─────────────────────────────────────────────────
-// Animated SVG of the master Orchestrator node dispatching work out to every
-// agent: command pulses travel center→node along each link, links light up when
-// an agent is running, and a dashed ring slowly rotates around the master.
-const MESH_NODES = ["ai_times", "mailman", "wallstreet_wolf", "compass",
-                    "devdaily", "strategy_scout", "capitol_tracker", "options_flow"];
+// ── Agent orchestration map (two master layers) ──────────────────────────────
+// A static hierarchy diagram: the Orchestrator (top master) drives the general
+// agents + Alpha Wolf, and Alpha Wolf (second-tier master) drives the finance
+// pack. A link only animates while THAT agent is actually running — nothing
+// pulses at idle, so motion always means real work.
+const MESH_GENERAL = ["ai_times", "mailman", "devdaily", "cisco_pulse", "morning_brief"];
+const MESH_FINANCE = ["wallstreet_wolf", "compass", "strategy_scout", "capitol_tracker", "options_flow", "earnings_cal"];
+// Short labels so each node fits its slot without wrapping.
+const MESH_LABEL = {
+  ai_times: "AI-Times", mailman: "Mailman", devdaily: "GitHub", cisco_pulse: "Cisco", morning_brief: "Brief",
+  wallstreet_wolf: "Wolf", compass: "Compass", strategy_scout: "Scout", capitol_tracker: "Capitol",
+  options_flow: "Options", earnings_cal: "Earnings", alpha_wolf: "Alpha Wolf",
+};
 
 function AgentMesh({ agents = [] }) {
   const reduce = typeof window !== "undefined" && window.matchMedia
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const meta = Object.fromEntries(ALL_AGENTS.map((a) => [a.id, a]));
   const statusOf = (id) => (agents.find((a) => a.id === id)?.status) || "idle";
-  const cx = 310, cy = 150, rx = 250, ry = 104;
-  const nodes = MESH_NODES.map((id, i) => {
-    const ang = (i / MESH_NODES.length) * Math.PI * 2 - Math.PI / 2;
-    return {
-      id, i, label: meta[id]?.label || id, glyph: meta[id]?.glyph || "•",
-      col: AGENT_COLOR[id] || T.violet, status: statusOf(id),
-      x: Math.round(cx + rx * Math.cos(ang)), y: Math.round(cy + ry * Math.sin(ang)),
-    };
+  const node = (id, x, y) => ({
+    id, x, y, label: MESH_LABEL[id] || meta[id]?.label || id,
+    glyph: meta[id]?.glyph || "•", col: AGENT_COLOR[id] || T.violet,
+    running: statusOf(id) === "running",
   });
-  const running = nodes.filter((n) => n.status === "running").length;
+
+  const orch = { x: 390, y: 38 };
+  const alpha = node("alpha_wolf", 588, 152);
+  const generals = MESH_GENERAL.map((id, i) => node(id, 62 + i * 78, 152));
+  const finance = MESH_FINANCE.map((id, i) => node(id, 438 + i * 60, 268));
+  const runningCount = [...generals, ...finance, alpha].filter((n) => n.running).length;
+
+  // One link: a faint static line, upgraded to a bright line + a travelling
+  // pulse only while the child agent is running.
+  const Link = ({ from, to, col, live }) => (
+    <g>
+      <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={col}
+        strokeWidth={live ? 2.2 : 1.1} strokeOpacity={live ? 0.8 : 0.2} strokeLinecap="round" />
+      {live && !reduce && (
+        <circle r="3.6" fill={col}>
+          <animateMotion dur="1.5s" repeatCount="indefinite" path={`M${from.x},${from.y} L${to.x},${to.y}`} />
+          <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.15;0.8;1" dur="1.5s" repeatCount="indefinite" />
+        </circle>
+      )}
+    </g>
+  );
+
+  // One node: static ring; a soft expanding ripple appears only while running.
+  const Node = ({ n, r = 18, master }) => (
+    <g>
+      {n.running && !reduce && (
+        <circle cx={n.x} cy={n.y} r={r} fill="none" stroke={n.col} strokeWidth="2">
+          <animate attributeName="r" values={`${r};${r + 9}`} dur="1.6s" repeatCount="indefinite" />
+          <animate attributeName="stroke-opacity" values="0.55;0" dur="1.6s" repeatCount="indefinite" />
+        </circle>
+      )}
+      <circle cx={n.x} cy={n.y} r={r} fill={n.running ? n.col + "1f" : T.card}
+        stroke={n.col} strokeWidth={n.running ? 2.4 : 1.4} strokeOpacity={n.running ? 1 : 0.55} />
+      <text x={n.x} y={n.y + (master ? 5 : 4)} textAnchor="middle" fontSize={master ? 16 : 14} fill={n.col}>{n.glyph}</text>
+      <text x={n.x} y={n.y + r + 13} textAnchor="middle" fontSize="9.5" fontWeight={master ? 800 : 600}
+        fill={n.running ? n.col : T.ink3} fontFamily={T.sans}>{n.label}</text>
+    </g>
+  );
 
   return (
     <Card pad={16} style={{ overflow: "hidden" }}>
-      <SectionTitle sub="Master orchestrator dispatching work to every managed agent — live"
-        right={<Pill mono c={running ? T.green : T.ink3} bg={running ? T.greenBg : T.line2}>{running} dispatching</Pill>}>
+      <SectionTitle sub="Orchestrator drives the agents · Alpha Wolf masters the finance pack · a link animates only while that agent runs"
+        right={<Pill mono c={runningCount ? T.green : T.ink3} bg={runningCount ? T.greenBg : T.line2}>{runningCount} running</Pill>}>
         Agent orchestration
       </SectionTitle>
-      <svg viewBox="0 0 620 300" width="100%" style={{ display: "block", maxHeight: 300 }} role="img"
-        aria-label="Orchestrator dispatching to agents">
+      <svg viewBox="0 0 780 312" width="100%" style={{ display: "block", maxHeight: 320 }} role="img"
+        aria-label="Orchestrator and Alpha Wolf agent hierarchy">
         <defs>
-          <radialGradient id="om-master" cx="50%" cy="42%" r="62%">
+          <radialGradient id="om-master" cx="50%" cy="40%" r="62%">
             <stop offset="0%" stopColor="#b39bff" />
             <stop offset="100%" stopColor={T.violet} />
           </radialGradient>
+          <radialGradient id="om-alpha" cx="50%" cy="40%" r="62%">
+            <stop offset="0%" stopColor="#a87bff" />
+            <stop offset="100%" stopColor={AGENT_COLOR.alpha_wolf} />
+          </radialGradient>
         </defs>
 
-        {/* links */}
-        {nodes.map((n) => {
-          const live = n.status === "running";
-          return (
-            <line key={"l" + n.id} x1={cx} y1={cy} x2={n.x} y2={n.y}
-              stroke={n.col} strokeWidth={live ? 2.2 : 1.2}
-              strokeOpacity={live ? 0.7 : 0.28} strokeLinecap="round">
-              {live && !reduce && (
-                <animate attributeName="stroke-opacity" values="0.35;0.85;0.35" dur="1.6s" repeatCount="indefinite" />
-              )}
-            </line>
-          );
-        })}
+        {/* Tier-1 links: Orchestrator → general agents + Alpha Wolf */}
+        {generals.map((n) => <Link key={"lg" + n.id} from={orch} to={n} col={n.col} live={n.running} />)}
+        <Link from={orch} to={alpha} col={AGENT_COLOR.alpha_wolf} live={alpha.running} />
 
-        {/* command pulses travelling outward from the master */}
-        {!reduce && nodes.map((n) => (
-          <circle key={"p" + n.id} r="4" fill={n.col}>
-            <animateMotion dur="2.4s" begin={`${n.i * 0.28}s`} repeatCount="indefinite"
-              path={`M${cx},${cy} L${n.x},${n.y}`} />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.82;1"
-              dur="2.4s" begin={`${n.i * 0.28}s`} repeatCount="indefinite" />
-          </circle>
-        ))}
+        {/* Tier-2 links: Alpha Wolf → finance pack */}
+        {finance.map((n) => <Link key={"lf" + n.id} from={alpha} to={n} col={n.col} live={n.running} />)}
 
-        {/* agent nodes */}
-        {nodes.map((n) => {
-          const live = n.status === "running";
-          return (
-            <g key={"n" + n.id}>
-              <circle cx={n.x} cy={n.y} r="21" fill={T.card}
-                stroke={n.col} strokeWidth={live ? 2.4 : 1.4} strokeOpacity={live ? 1 : 0.6} />
-              {live && !reduce && (
-                <circle cx={n.x} cy={n.y} r="21" fill="none" stroke={n.col} strokeWidth="2">
-                  <animate attributeName="r" values="21;30" dur="1.8s" repeatCount="indefinite" />
-                  <animate attributeName="stroke-opacity" values="0.5;0" dur="1.8s" repeatCount="indefinite" />
-                </circle>
-              )}
-              <text x={n.x} y={n.y + 5} textAnchor="middle" fontSize="15" fill={n.col}>{n.glyph}</text>
-              <text x={n.x} y={n.y + 36} textAnchor="middle" fontSize="9.5" fontWeight="600"
-                fill={T.ink3} fontFamily={T.sans}>{n.label}</text>
-            </g>
-          );
-        })}
+        {/* nodes */}
+        {generals.map((n) => <Node key={"ng" + n.id} n={n} />)}
+        {finance.map((n) => <Node key={"nf" + n.id} n={n} r={17} />)}
 
-        {/* master orchestrator node */}
-        {!reduce && (
-          <circle cx={cx} cy={cy} r="40" fill="none" stroke={T.violet} strokeOpacity="0.35"
-            strokeWidth="1.5" strokeDasharray="3 7">
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`} dur="16s" repeatCount="indefinite" />
+        {/* Alpha Wolf — second-tier master */}
+        {alpha.running && !reduce && (
+          <circle cx={alpha.x} cy={alpha.y} r="24" fill="none" stroke={AGENT_COLOR.alpha_wolf} strokeWidth="2">
+            <animate attributeName="r" values="24;34" dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="stroke-opacity" values="0.5;0" dur="1.6s" repeatCount="indefinite" />
           </circle>
         )}
-        <circle cx={cx} cy={cy} r="30" fill="url(#om-master)" />
-        <text x={cx} y={cy + 7} textAnchor="middle" fontSize="22" fontWeight="700" fill="#fff">◇</text>
-        <text x={cx} y={cy + 50} textAnchor="middle" fontSize="10.5" fontWeight="700"
+        <circle cx={alpha.x} cy={alpha.y} r="24" fill="url(#om-alpha)" />
+        <text x={alpha.x} y={alpha.y + 6} textAnchor="middle" fontSize="18" fill="#fff">🐺</text>
+        <text x={alpha.x} y={alpha.y + 40} textAnchor="middle" fontSize="10" fontWeight="800"
+          fill={AGENT_COLOR.alpha_wolf} fontFamily={T.sans}>Alpha Wolf</text>
+
+        {/* Orchestrator — top master */}
+        <circle cx={orch.x} cy={orch.y} r="28" fill="url(#om-master)" />
+        <text x={orch.x} y={orch.y + 7} textAnchor="middle" fontSize="20" fontWeight="700" fill="#fff">◇</text>
+        <text x={orch.x} y={orch.y - 34} textAnchor="middle" fontSize="10.5" fontWeight="800"
           fill={T.ink2} fontFamily={T.sans}>Orchestrator</text>
       </svg>
     </Card>
@@ -354,7 +370,7 @@ function Semaphore({ s }) {
   const holder = s.agents.find((a) => a.id === llm.holder);
   const pct = Math.min(100, (llm.heldS / 6) * 100);
   return (
-    <Card pad={20} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <Card pad={15} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <SectionTitle sub="1 permit · serialized inference, no deadlocks">LLM Semaphore</SectionTitle>
       {holder ? (
         <div style={{ background: T.violetBg, border: `1px solid ${T.line}`, borderRadius: 11, padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
@@ -543,7 +559,7 @@ function RunMetrics() {
   const td = { padding: "7px 10px", fontSize: 12.5, fontFamily: T.mono, borderTop: `1px solid ${T.line2}` };
 
   return (
-    <Card pad={20}>
+    <Card pad={15}>
       <SectionTitle sub={`per-agent telemetry over each agent's last ${metrics?.window ?? 50} runs`}>Run metrics</SectionTitle>
       {rows.length === 0 ? (
         <div style={{ fontSize: 12.5, color: T.ink3 }}>No completed runs yet — metrics appear after agents run.</div>
@@ -601,7 +617,7 @@ export default function Orchestrator({ sys, online, onNavigate }) {
           <Pill mono c={T.ink3}>{running} running</Pill>
         </>} />
 
-      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
 
         {/* ── Command-center hero: live clock, market status, KPIs ─────────── */}
         <CommandCenterHero s={s} online={online} />

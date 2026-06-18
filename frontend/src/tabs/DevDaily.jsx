@@ -37,9 +37,9 @@ export default function DevDaily({ status, agentError }) {
           <Pill mono c={T.ink3}>digest 09:00 daily</Pill>
           <AgentControls agentId="devdaily" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Fetching…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
-        <Card pad={18}>
+        <Card pad={14}>
           <SectionTitle sub="Tune the next fetch">Configuration</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 1fr", gap: 14 }}>
             {[["Language filter", lang, setLang, "python, javascript…", "text"],
@@ -55,7 +55,7 @@ export default function DevDaily({ status, agentError }) {
         </Card>
 
         {d.llm_summary && (
-          <Card pad={20} style={{ background: T.cardAlt }}>
+          <Card pad={15} style={{ background: T.cardAlt }}>
             <div style={{ display: "flex", gap: 14 }}>
               <LufiAvatar size={38} />
               <div>
@@ -73,7 +73,7 @@ export default function DevDaily({ status, agentError }) {
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="Trending repositories" right={<Pill mono c={T.ink3}>{repos.length}</Pill>}>GitHub</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {repos.map((r, i) => (
@@ -90,7 +90,7 @@ export default function DevDaily({ status, agentError }) {
               ))}
             </div>
           </Card>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="Community articles" right={<Pill mono c={T.ink3}>{articles.length}</Pill>}>Dev.to</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {articles.map((a, i) => (

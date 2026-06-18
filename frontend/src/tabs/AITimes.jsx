@@ -88,10 +88,10 @@ export default function AITimes({ status, agentError, progress, result }) {
           <Pill mono c={T.ink3}>digest 08:00 daily</Pill>
           <AgentControls agentId="ai_times" onRun={refreshNow} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Refreshing…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <ErrorBanner error={agentError} />
         <ProgressBanner running={status === "running"} progress={progress} result={result} />
-        <Card pad={18} style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+        <Card pad={14} style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: T.redBg, color: T.red, display: "grid", placeItems: "center", fontSize: 19 }}>✉</div>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 13.5, fontWeight: 700 }}>Daily HTML digest is scheduled</div>

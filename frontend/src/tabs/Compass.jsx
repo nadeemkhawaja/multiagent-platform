@@ -114,7 +114,7 @@ export default function Compass({ status, agentError }) {
           <EmailPreviewButton agentId="compass" label="Preview brief" />
           <AgentControls agentId="compass" onRun={run} busy={busy} refresh={refresh} runLabel="Run analysis" runningLabel="Analyzing…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {empty ? (
           <EmptyState icon="◎" title="No analysis yet"
@@ -152,11 +152,11 @@ export default function Compass({ status, agentError }) {
         </Card>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 16, alignItems: "start" }}>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="Directional lean by sector (−100 to +100)">Sector bias</SectionTitle>
             {sectors.map((s) => <SectorRow key={s.k} s={s} />)}
           </Card>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="LLM-scored headlines driving today's read" right={<Pill mono c={T.ink3}>live feed</Pill>}>News sentiment</SectionTitle>
             {news.map((n, i) => (
               <div key={i} style={{ padding: "8px 0", borderBottom: i < news.length - 1 ? `1px solid ${T.line2}` : "none" }}>
@@ -178,7 +178,7 @@ export default function Compass({ status, agentError }) {
           </div>
         </div>
 
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Pivot · R1 · S1 for the 10 majors">Key levels — Stocks</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(4, 1fr) 90px", padding: "8px 6px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
             <span>Symbol</span><span style={{ textAlign: "right" }}>Last</span><span style={{ textAlign: "right" }}>Pivot</span><span style={{ textAlign: "right" }}>R1</span><span style={{ textAlign: "right" }}>S1</span><span style={{ textAlign: "right" }}>Bias</span>
