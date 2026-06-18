@@ -20,7 +20,8 @@
 - **All assignment gaps audited and closed.** Watchlist now 22 tickers (20+). AI-Times recency window is env-configurable (`AI_TIMES_WINDOW_HOURS`, default 168 = 7 days for richer curation; set 48 to match the literal 24–48 h wording).
 - **Alpha Wolf (agent13)** is the headline creativity feature: a master agent + **live, time-of-day trading decision maker**. Done and verified live during real market hours.
 - **GUI overhaul** merged (PR #7): ambient aurora background, motion system, frosted-glass headers, Orchestrator command-center hero, staggered entrances across all 14 tabs.
-- **Tests:** `162 passed` in the backend suite.
+- **Tests:** `165 passed` in the backend suite.
+- **Mailman tightened to the rubric line:** star/label/alert on **key people only** (no longer tags every mail the LLM calls "Urgent"), and the digest now emails **once per calendar day** instead of every hourly scan. See §4 "Mailman triage fixes".
 - **Outstanding (user-only):** record the ≤10-min demo video; optionally enter API keys (`YOUTUBE_API_KEY`, Gmail app password) in `.env` for live email.
 
 ## 3. Key Decisions
@@ -51,6 +52,12 @@
 - `frontend/src/tabs/Orchestrator.jsx` — `CommandCenterHero` with `useClock()` (1 s tick), `marketStatus(now)` via `Intl.DateTimeFormat` timeZone `America/New_York`, greeting, animated KPI tiles (`HeroKpi` + `CountUp`); resource cards & agent grid wrapped in `Reveal` stagger; agent cards use `om-lift` + hover glow; big resource numbers use `CountUp`.
 - `frontend/src/App.jsx` — imports `Aurora`; renders `<Aurora/>` then the layout in a fragment; tab content wrapped `<div className="om-fade">` (keyed remount → cross-fade on every tab switch).
 - Rollout: every agent tab + Settings content container got `className="om-stagger"` (applied via a verified one-line perl transform across 14 files; Orchestrator excluded because it has explicit `Reveal`s).
+
+### Mailman triage fixes (`backend/agents/agent2_mailman.py`) — aligns to the rubric line
+The rubric says Mailman *"classifies emails with LLM; labels, stars, alerts on **key people**; sends **daily** summary."* Two behaviours drifted from that and were corrected:
+- **Star/label/alert on key people only.** The gate was `is_key OR category == 'Urgent'`, so any mail the LLM merely *called* Urgent (even from strangers) got starred + labeled in the real inbox. Extracted `is_alert(email)` = `is_key` and used it in `apply_labels_and_stars`, the summary's `key_alerts`, and the done-log count. Classification still runs on **all** mail (category breakdown + All-Emails list in the digest are unchanged); only the in-inbox tagging is now key-person-only.
+- **Daily summary is actually daily.** Job is on a 60-min interval, and scheduled runs default `send_email=True`, so the "daily summary" was emailing **every hour**. Added `summary_due(last_sent, today)` (pure, tested) + DB-backed `_summary_due_today()`/`_mark_summary_sent()` (AgentData key `last_summary_date`, UTC). The send is now gated: monitor/classify/label every hour, email the digest **once per calendar day**. `mailman_job` gained `force_email`; the UI trigger passes `force_email=cfg.send_email` so an explicit "send now" still works for demos (`backend/main.py`).
+- Tests: +3 in `test_agents_pure.py` (`test_mailman_is_alert_only_key_people`, `test_mailman_summary_key_alerts_only_key_people`, `test_mailman_summary_due_once_per_calendar_day`). Suite now **165 passed**.
 
 ### Other finalized
 - `agent3_wallstreet_wolf.py` `DEFAULT_WATCHLIST` = 22 tickers (added ORCL, MSTR).

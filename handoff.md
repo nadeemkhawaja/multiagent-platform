@@ -25,7 +25,7 @@ backend/
   email_utils.py           Gmail SMTP HTML email
   database.py              SQLite (SQLAlchemy): AgentData, config, ResourceSample, AgentRun
   agents/agent1_ai_times.py .. agent13_alpha_wolf.py   (13 agents)
-  tests/                   pytest; 162 passing
+  tests/                   pytest; 165 passing
 frontend/src/
   App.jsx                  shell: sidebar nav, ⌘K palette, toasts, shortcuts, <Aurora/>, tab cross-fade
   index.css                motion keyframes + .om-stagger utility + prefers-reduced-motion guard
@@ -36,6 +36,11 @@ frontend/src/
   state/api.js             fetch helpers + useSystemState/useAgentData (WS)
 architecture.png / .mmd    diagram for the rubric
 ```
+
+## Mailman (agent2) — rubric behaviour
+Rubric: *"classifies with LLM; labels, stars, alerts on **key people**; sends **daily** summary."*
+- **Alerting is key-person-only.** `is_alert(email)` = `email['is_key']`; used by `apply_labels_and_stars` (star + `Mailman/<cat>` label in Gmail) and the digest's Key Alerts. Classification runs on *all* mail, but only key-person mail is tagged in the real inbox — do **not** re-add an `or category=='Urgent'` clause (that was the "tagging other mails" bug).
+- **Digest is once per calendar day.** Job runs hourly (monitor/classify/label), but the summary email is gated by `summary_due()` + `_summary_due_today()`/`_mark_summary_sent()` (AgentData `last_summary_date`, UTC). `mailman_job(..., force_email=True)` bypasses the guard; the UI trigger forces only when the user explicitly ticks "send email".
 
 ## The headline feature — Alpha Wolf (agent13)
 The platform's **primary trading decision maker**. It fuses six sub-agents (Wallstreet Wolf, Compass, Strategy Scout, Capitol Tracker, Options Flow, Earnings Calendar) + **live yfinance quotes** into ONE local-LLM game-plan, then paper-trades it.
