@@ -135,7 +135,7 @@ export default function Mailman({ status, agentError }) {
           <EmailPreviewButton agentId="mailman" label="Preview summary" />
           <AgentControls agentId="mailman" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
         <ErrorBanner error={agentError} />
         {(llmCount > 0 || keyCount > 0) && (
           <div style={{ background: T.amberBg, border: `1px solid ${T.amber}55`, borderRadius: 12, padding: "11px 16px", display: "flex", alignItems: "center", gap: 12 }}>

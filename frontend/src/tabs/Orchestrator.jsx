@@ -35,11 +35,11 @@ function greeting(now) {
 
 function HeroKpi({ label, value, decimals = 0, suffix = "", color, accent, live }) {
   return (
-    <div style={{ flex: "1 1 130px", minWidth: 120, padding: "12px 16px", borderRadius: 14, background: T.card + "99", border: `1px solid ${T.line}`, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+    <div style={{ flex: "1 1 130px", minWidth: 120, padding: "9px 14px", borderRadius: 14, background: T.card + "99", border: `1px solid ${T.line}`, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.6 }}>
         {live && <LiveDot c={color || T.green} s={6} />}{label}
       </div>
-      <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: color || T.ink, marginTop: 4, lineHeight: 1 }}>
+      <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -1, fontFamily: T.mono, color: color || T.ink, marginTop: 2, lineHeight: 1 }}>
         {typeof value === "number" ? <CountUp value={value} decimals={decimals} /> : value}{suffix}
       </div>
       {accent && <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 3 }}>{accent}</div>}
@@ -57,7 +57,7 @@ function CommandCenterHero({ s, online }) {
   const dateStr = now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
   return (
     <Reveal kind="pop">
-      <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: "22px 26px",
+      <div style={{ position: "relative", overflow: "hidden", borderRadius: 16, padding: "15px 22px",
         background: `linear-gradient(135deg, ${T.violet}1f, ${T.blue}14 55%, ${T.teal}12)`,
         border: `1px solid ${T.violet}33`, boxShadow: T.shadow }}>
         <div style={{ position: "absolute", top: -40, right: -20, width: 220, height: 220, borderRadius: "50%", background: `radial-gradient(circle, ${T.violet}33, transparent 70%)`, filter: "blur(20px)", pointerEvents: "none" }} />
@@ -85,7 +85,7 @@ function CommandCenterHero({ s, online }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 12, marginTop: 18, flexWrap: "wrap", position: "relative" }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", position: "relative" }}>
           <HeroKpi label="Agents running" value={running} color={running > 0 ? T.green : T.ink3} accent={`${total} managed`} live={running > 0} />
           <HeroKpi label="CPU load" value={Math.round(s.res?.cpu?.v || 0)} suffix="%" color={(s.res?.cpu?.v || 0) >= 85 ? T.red : T.blue} live />
           <HeroKpi label="Memory" value={Math.round(s.res?.ram?.v || 0)} suffix="%" color={(s.res?.ram?.v || 0) >= 88 ? T.red : T.violet} live />
@@ -163,10 +163,10 @@ function AgentMesh({ agents = [] }) {
     running: statusOf(id) === "running",
   });
 
-  const orch = { x: 390, y: 38 };
-  const alpha = node("alpha_wolf", 588, 152);
-  const generals = MESH_GENERAL.map((id, i) => node(id, 62 + i * 78, 152));
-  const finance = MESH_FINANCE.map((id, i) => node(id, 438 + i * 60, 268));
+  const orch = { x: 390, y: 56 };
+  const alpha = node("alpha_wolf", 588, 158);
+  const generals = MESH_GENERAL.map((id, i) => node(id, 62 + i * 78, 158));
+  const finance = MESH_FINANCE.map((id, i) => node(id, 438 + i * 60, 270));
   const runningCount = [...generals, ...finance, alpha].filter((n) => n.running).length;
 
   // One link: a faint static line, upgraded to a bright line + a travelling
@@ -207,7 +207,7 @@ function AgentMesh({ agents = [] }) {
         right={<Pill mono c={runningCount ? T.green : T.ink3} bg={runningCount ? T.greenBg : T.line2}>{runningCount} running</Pill>}>
         Agent orchestration
       </SectionTitle>
-      <svg viewBox="0 0 780 312" width="100%" style={{ display: "block", maxHeight: 320 }} role="img"
+      <svg viewBox="0 0 780 312" width="100%" style={{ display: "block", maxHeight: 312 }} role="img"
         aria-label="Orchestrator and Alpha Wolf agent hierarchy">
         <defs>
           <radialGradient id="om-master" cx="50%" cy="40%" r="62%">
@@ -246,7 +246,7 @@ function AgentMesh({ agents = [] }) {
         {/* Orchestrator — top master */}
         <circle cx={orch.x} cy={orch.y} r="28" fill="url(#om-master)" />
         <text x={orch.x} y={orch.y + 7} textAnchor="middle" fontSize="20" fontWeight="700" fill="#fff">◇</text>
-        <text x={orch.x} y={orch.y - 34} textAnchor="middle" fontSize="10.5" fontWeight="800"
+        <text x={orch.x} y={orch.y - 36} textAnchor="middle" fontSize="11" fontWeight="800"
           fill={T.ink2} fontFamily={T.sans}>Orchestrator</text>
       </svg>
     </Card>
@@ -617,7 +617,7 @@ export default function Orchestrator({ sys, online, onNavigate }) {
           <Pill mono c={T.ink3}>{running} running</Pill>
         </>} />
 
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
 
         {/* ── Command-center hero: live clock, market status, KPIs ─────────── */}
         <CommandCenterHero s={s} online={online} />

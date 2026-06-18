@@ -16,7 +16,7 @@ export const LiveDot = ({ c, s = 7 }) => (
 );
 
 // `interactive` adds a hover-lift + accent glow (for clickable cards).
-export function Card({ children, style, pad = 14, interactive, className = "", ...rest }) {
+export function Card({ children, style, pad = 12, interactive, className = "", ...rest }) {
   return (
     <div {...rest} className={(interactive ? "om-lift " : "") + className}
       style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: pad,
@@ -130,7 +130,7 @@ export function Spark({ data, w = 96, h = 30, color = T.violet, fill = true, str
 
 export function SectionTitle({ children, right, sub }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 8 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 6 }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: -0.2 }}>{children}</div>
         {sub && <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{sub}</div>}

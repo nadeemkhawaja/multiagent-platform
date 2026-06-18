@@ -29,7 +29,7 @@ function SectorRow({ s }) {
         <div style={{ flex: 1 }}><BiasMeter score={s.bias} /></div>
         <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: col, width: 48, textAlign: "right" }}>{s.bias > 0 ? "+" : ""}{s.bias}</span>
       </div>
-      {s.why && <div style={{ fontSize: 11, color: T.ink3, marginTop: 3, marginLeft: 120 }}>{s.why}</div>}
+      {s.why && <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>{s.why}</div>}
     </div>
   );
 }
@@ -114,7 +114,7 @@ export default function Compass({ status, agentError }) {
           <EmailPreviewButton agentId="compass" label="Preview brief" />
           <AgentControls agentId="compass" onRun={run} busy={busy} refresh={refresh} runLabel="Run analysis" runningLabel="Analyzing…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
         <ErrorBanner error={agentError} />
         {empty ? (
           <EmptyState icon="◎" title="No analysis yet"
@@ -151,24 +151,29 @@ export default function Compass({ status, agentError }) {
           </div>
         </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: news.length ? "1.5fr 1fr" : "1fr", gap: 16, alignItems: "start" }}>
           <Card pad={15}>
             <SectionTitle sub="Directional lean by sector (−100 to +100)">Sector bias</SectionTitle>
-            {sectors.map((s) => <SectorRow key={s.k} s={s} />)}
+            {/* Two columns so the 11 sectors don't stack into one tall strip. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 22 }}>
+              {sectors.map((s) => <SectorRow key={s.k} s={s} />)}
+            </div>
           </Card>
-          <Card pad={15}>
-            <SectionTitle sub="LLM-scored headlines driving today's read" right={<Pill mono c={T.ink3}>live feed</Pill>}>News sentiment</SectionTitle>
-            {news.map((n, i) => (
-              <div key={i} style={{ padding: "8px 0", borderBottom: i < news.length - 1 ? `1px solid ${T.line2}` : "none" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: T.ink2, fontFamily: T.mono }}>{n.src}</span>
-                  <span style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono }}>{n.min}</span>
-                  <span style={{ marginLeft: "auto" }}>{sentChip(n.s)}</span>
+          {news.length > 0 && (
+            <Card pad={15}>
+              <SectionTitle sub="LLM-scored headlines driving today's read" right={<Pill mono c={T.ink3}>live feed</Pill>}>News sentiment</SectionTitle>
+              {news.map((n, i) => (
+                <div key={i} style={{ padding: "8px 0", borderBottom: i < news.length - 1 ? `1px solid ${T.line2}` : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: T.ink2, fontFamily: T.mono }}>{n.src}</span>
+                    <span style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono }}>{n.min}</span>
+                    <span style={{ marginLeft: "auto" }}>{sentChip(n.s)}</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.4 }}>{n.t}</div>
                 </div>
-                <div style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.4 }}>{n.t}</div>
-              </div>
-            ))}
-          </Card>
+              ))}
+            </Card>
+          )}
         </div>
 
         <div>
