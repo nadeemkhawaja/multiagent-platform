@@ -165,7 +165,7 @@ export default function Home({ sys, online, onNavigate }) {
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
 
         {/* System gauges */}
-        <Card pad={18}>
+        <Card pad={14}>
           <SectionTitle sub="Live system metrics">Resources</SectionTitle>
           <div style={{ display: "flex", gap: 28, justifyContent: "space-around", flexWrap: "wrap" }}>
             <MiniGauge label="CPU"  val={cpu}  warn={85} />
@@ -191,28 +191,28 @@ export default function Home({ sys, online, onNavigate }) {
 
         {/* Data snippets row */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Latest movers" right={<button onClick={() => onNavigate("wallstreet_wolf")} style={{ fontSize: 11, color: T.violet, background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open Wolf →</button>}>
               Wallstreet Wolf
             </SectionTitle>
             <WolfSnippet onClick={() => onNavigate("wallstreet_wolf")} />
           </Card>
 
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Recent disclosures" right={<button onClick={() => onNavigate("capitol_tracker")} style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", border: "1px solid #dc262633", borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open Tracker →</button>}>
               Capitol Tracker
             </SectionTitle>
             <CapitolSnippet onClick={() => onNavigate("capitol_tracker")} />
           </Card>
 
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Today's digest" right={<button onClick={() => onNavigate("morning_brief")} style={{ fontSize: 11, color: "#b45309", background: "#fffbeb", border: "1px solid #d9770633", borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open Brief →</button>}>
               Morning Brief
             </SectionTitle>
             <BriefSnippet />
           </Card>
 
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Unusual options activity" right={<button onClick={() => onNavigate("options_flow")} style={{ fontSize: 11, color: T.violet, background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontFamily: T.sans }}>Open Flow →</button>}>
               Options Flow
             </SectionTitle>
@@ -222,7 +222,7 @@ export default function Home({ sys, online, onNavigate }) {
 
         {/* Recent events */}
         {events.length > 0 && (
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Recent platform events">Activity</SectionTitle>
             <div>
               {events.map((e, i) => (

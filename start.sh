@@ -2,15 +2,19 @@
 # =============================================================================
 # start.sh — Launch the Multi-Agent Platform (backend + frontend)
 #
-# Usage:  ./start.sh              Opens two Terminal tabs (macOS default)
-#         ./start.sh --no-tabs    Runs both in background, logs to ./logs/
+# Usage:  ./start.sh              Runs both in this terminal (no extra windows)
+#         ./start.sh --tabs       Opens two separate macOS Terminal tabs
 # =============================================================================
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-NO_TABS=false
-[[ "${1:-}" == "--no-tabs" ]] && NO_TABS=true
+# Default: run backend + frontend in the background of THIS terminal so no
+# extra Terminal windows/tabs pop up. Pass --tabs to restore the old behaviour
+# of spawning a dedicated Terminal tab per process. (--no-tabs kept as an alias
+# of the default for backward compatibility.)
+NO_TABS=true
+[[ "${1:-}" == "--tabs" ]] && NO_TABS=false
 
 # ── 1. Ollama check ───────────────────────────────────────────────────────────
 OLLAMA_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"

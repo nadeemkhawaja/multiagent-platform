@@ -39,10 +39,34 @@ function StrategyCard({ s, rank }) {
   );
 }
 
+const PLAN_COLOR = { "Enter Long": T.green, "Stay Put": "#64748b", "Enter Short": T.red };
+const PLAN_ARROW = { "Enter Long": "▲", "Stay Put": "●", "Enter Short": "▼" };
+
+function PlanCard({ plan }) {
+  const action = plan.action || "Stay Put";
+  const col = PLAN_COLOR[action] || "#64748b";
+  return (
+    <Card pad={14} style={{ borderLeft: `5px solid ${col}`, background: col + "0d" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ width: 52, height: 52, borderRadius: 13, background: col + "1c", color: col, display: "grid", placeItems: "center", fontSize: 22, flex: "0 0 auto" }}>{PLAN_ARROW[action]}</div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.5 }}>Today's play · all strategies combined</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 2 }}>
+            <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5, color: col }}>{action}</span>
+            {plan.confidence && <Pill mono c={col} bg={col + "16"}>{plan.confidence} confidence</Pill>}
+          </div>
+          {plan.rationale && <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.5, marginTop: 5 }}>{plan.rationale}</div>}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function StrategyScout({ status, agentError }) {
   const { data, refresh } = useAgentData("strategy_scout");
   const d = data?.scout || {};
   const strategies = d.strategies || [];
+  const plan = d.plan || null;
   const discussions = d.discussions || [];
   const sources = d.sources || {};
   const [running, setRunning] = useState(false);
@@ -64,7 +88,7 @@ export default function StrategyScout({ status, agentError }) {
           <EmailPreviewButton agentId="strategy_scout" label="Preview digest" />
           <AgentControls agentId="strategy_scout" onRun={run} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
 
         {empty ? (
@@ -83,6 +107,8 @@ export default function StrategyScout({ status, agentError }) {
               </div>
             </Card>
 
+            {plan && <PlanCard plan={plan} />}
+
             {strategies.length > 0 && (
               <div>
                 <SectionTitle sub="Ranked by how much they're being discussed right now">Top strategies</SectionTitle>
@@ -93,7 +119,7 @@ export default function StrategyScout({ status, agentError }) {
             )}
 
             {discussions.length > 0 && (
-              <Card pad={20}>
+              <Card pad={15}>
                 <SectionTitle sub="Source posts feeding the analysis" right={<Pill mono c={T.ink3}>{discussions.length}</Pill>}>Trending discussions</SectionTitle>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {discussions.map((p, i) => (

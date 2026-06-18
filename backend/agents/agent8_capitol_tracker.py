@@ -15,6 +15,7 @@ Scheduled: daily 07:00.
 """
 
 import os
+import ast
 import json
 import asyncio
 from collections import Counter
@@ -26,7 +27,7 @@ import httpx
 from database import SessionLocal, AgentData, get_config
 from llm_client import generate_json
 from orchestrator import orchestrator
-from email_utils import send_html_email
+from email_utils import send_html_email, bullets_to_html
 
 AGENT_ID = "capitol_tracker"
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
@@ -390,6 +391,33 @@ def _filter_senate(raw: list, names: list[str], since: date) -> list:
     return out
 
 
+def _coerce_bullets(val) -> str:
+    """Normalize whatever the LLM returns into clean '• ...'-per-line bullets.
+
+    The model sometimes hands back a JSON *array* for the commentary instead of a
+    string, which then gets stringified to "['a', 'b']" and rendered literally —
+    brackets, quotes and all. This collapses lists, stringified lists, and plain
+    multi-line text into one consistent bulleted format for both app and email."""
+    # Already a list/tuple of bullets.
+    if isinstance(val, (list, tuple)):
+        items = [str(x).strip().lstrip("•-* ").strip() for x in val]
+        return "\n".join(f"• {x}" for x in items if x)
+    s = str(val or "").strip()
+    if not s:
+        return ""
+    # Stringified list, e.g. "['a', 'b']".
+    if s[0] in "[(" and s[-1] in ")]":
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple)):
+                return _coerce_bullets(parsed)
+        except (ValueError, SyntaxError):
+            pass
+    # Plain multi-line text — re-emit each non-empty line as a bullet.
+    lines = [ln.strip().lstrip("•-* ").strip() for ln in s.replace("•", "\n").splitlines()]
+    return "\n".join(f"• {ln}" for ln in lines if ln)
+
+
 async def build_llm_commentary(trades: list) -> str:
     if not trades:
         return "No trades found for the tracked politicians in the selected time window."
@@ -398,15 +426,15 @@ async def build_llm_commentary(trades: list) -> str:
         f"- {t['politician']} ({t['chamber']}): {t['type']} {t['ticker'] or t['asset']} {t['amount']} on {t['transaction_date']}"
         for t in top
     )
-    prompt = f"""You are a political finance analyst. Review these congressional stock trades and provide
-commentary as 3-4 bullet points on notable patterns, potential conflicts of interest, or anything
-investors should be aware of. Each bullet starts with '• ' on its own line (newline-separated),
-max 12 words, factual and crisp. No paragraphs, no intro/outro text.
+    prompt = f"""You are a political finance analyst. Review these congressional stock trades and write
+exactly 3-4 short bullet points on notable patterns, possible conflicts of interest, or anything
+investors should note. Each bullet max 12 words, factual and crisp — no paragraphs, no intro/outro.
 
 Recent trades:
 {summary}
 
-Return ONLY a JSON object with one key "commentary" (string)."""
+Return ONLY a JSON object: {{"commentary": ["<bullet 1>", "<bullet 2>", "<bullet 3>"]}}
+where commentary is an ARRAY of short bullet strings."""
     try:
         data = await generate_json(
             prompt,
@@ -414,7 +442,11 @@ Return ONLY a JSON object with one key "commentary" (string)."""
             agent_id=AGENT_ID,
             use_cache=True,
         )
-        return str(data.get("commentary", "")).strip() if isinstance(data, dict) else ""
+        if isinstance(data, dict):
+            return _coerce_bullets(data.get("commentary", ""))
+        if isinstance(data, list):
+            return _coerce_bullets(data)
+        return ""
     except Exception as e:
         print(f"[Capitol] LLM error: {e}")
         return ""
@@ -486,7 +518,7 @@ def build_digest_html(payload: dict) -> str:
       <p style='color:#6b7280;font-size:12px'>Tracking: {', '.join(politicians)} · Last {months} months · {fetched[:19]} UTC</p>
       <p><b>{stats.get('total',0)}</b> trades found — <b style='color:#16a34a'>{stats.get('purchases',0)} purchases</b> · <b style='color:#dc2626'>{stats.get('sales',0)} sales</b> · net {stats.get('net_activity',0):+d} · {stats.get('politicians_found',0)} politicians</p>
       {f'<p style="color:#6b7280;font-size:12px">Most-traded tickers: ' + ', '.join(f"{tt['ticker']} ({tt['count']})" for tt in stats.get('top_tickers', [])) + '</p>' if stats.get('top_tickers') else ''}
-      {f'<p style="background:#fef3c7;padding:12px;border-radius:8px;font-style:italic">{commentary}</p>' if commentary else ''}
+      {f'<div style="background:#fef3c7;padding:12px 14px;border-radius:8px;margin:8px 0">{bullets_to_html(commentary, color="#713f12")}</div>' if commentary else ''}
       <table style='width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden'>
         <thead><tr style='background:#f3f4f6'>
           <th style='padding:10px 12px;text-align:left'>Politician</th>

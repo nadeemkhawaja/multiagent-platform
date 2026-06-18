@@ -41,7 +41,7 @@ function adaptFutures(list) {
 function FutureCard({ f }) {
   const up = f.ch >= 0, col = up ? T.green : T.red;
   return (
-    <Card pad={18} style={{ position: "relative", overflow: "hidden" }}>
+    <Card pad={14} style={{ position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3, background: col }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
@@ -52,9 +52,9 @@ function FutureCard({ f }) {
           <div style={{ fontSize: 11.5, color: T.ink4, marginTop: 1 }}>{f.name}</div>
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 10 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, fontFamily: T.mono, letterSpacing: -1 }}>{f.p.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-        <span style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, color: col }}>{up ? "▲" : "▼"} {up ? "+" : ""}{f.ch.toFixed(2)}%</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 7 }}>
+        <span style={{ fontSize: 22, fontWeight: 800, fontFamily: T.mono, letterSpacing: -1 }}>{f.p.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+        <span style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 700, color: col }}>{up ? "▲" : "▼"} {up ? "+" : ""}{f.ch.toFixed(2)}%</span>
       </div>
     </Card>
   );
@@ -96,7 +96,7 @@ function MoverRow({ s, rank }) {
 }
 function MoverBlock({ title, list, accent, badge }) {
   return (
-    <Card pad={18}>
+    <Card pad={14}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <span style={{ width: 8, height: 8, borderRadius: 8, background: accent }} />
         <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
@@ -157,14 +157,14 @@ export default function Wolf({ status, agentError }) {
           <EmailPreviewButton agentId="wallstreet_wolf" label="Preview brief" />
           <AgentControls agentId="wallstreet_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Running…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {watch.length === 0 ? (
           <EmptyState icon="$" title="No market data yet"
             hint="Click Refresh to pull live Yahoo Finance prices for the watchlist, FX and metals." />
         ) : (
         <>
-        <Card pad={20} style={{ background: T.cardAlt, borderColor: T.line }}>
+        <Card pad={15} style={{ background: T.cardAlt, borderColor: T.line }}>
           <div style={{ display: "flex", gap: 14 }}>
             <LufiAvatar size={38} />
             <div>
@@ -190,7 +190,7 @@ export default function Wolf({ status, agentError }) {
           <MoverBlock title="Top 5 Losers" list={losers} accent={T.red} badge="Block 2" />
         </div>
 
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Full watchlist · live prices" right={<Pill mono c={T.ink3}>updating · 2s</Pill>}>Watchlist <span style={{ fontSize: 11, fontFamily: T.mono, color: T.ink4 }}>Block 3</span></SectionTitle>
           {/* Column headers */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 28px" }}>
@@ -211,7 +211,7 @@ export default function Wolf({ status, agentError }) {
                 ? { hi: Math.max(...w.h).toFixed(2), lo: Math.min(...w.h).toFixed(2) }
                 : null;
               return (
-                <div key={w.t} style={{ display: "grid", gridTemplateColumns: "52px 1fr 72px auto 70px", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.line2}` }}>
+                <div key={w.t} style={{ display: "grid", gridTemplateColumns: "52px 1fr 72px auto 70px", gap: 10, alignItems: "center", padding: "5px 0", borderBottom: `1px solid ${T.line2}` }}>
                   <span style={{ fontSize: 12.5, fontWeight: 800 }}>{w.t}</span>
                   <span style={{ fontSize: 10.5, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.n}</span>
                   {/* CSS change bar */}
@@ -236,7 +236,7 @@ export default function Wolf({ status, agentError }) {
         </Card>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Major pairs">Currencies</SectionTitle>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
               {fx.map((f) => (
@@ -250,7 +250,7 @@ export default function Wolf({ status, agentError }) {
               ))}
             </div>
           </Card>
-          <Card pad={18}>
+          <Card pad={14}>
             <SectionTitle sub="Spot">Precious metals</SectionTitle>
             {metals.map((m) => (
               <div key={m.p} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.line2}` }}>

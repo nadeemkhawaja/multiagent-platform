@@ -5,7 +5,7 @@ from datetime import datetime
 from database import SessionLocal, AgentData, get_config
 from llm_client import generate_completion
 from orchestrator import orchestrator
-from email_utils import send_html_email
+from email_utils import send_html_email, bullets_to_html
 from tools import market as market_tools
 import memory
 import tracing
@@ -63,7 +63,7 @@ def build_market_html(top_gainers, top_losers, metals, currencies, commentary, f
           .stock-row {{ display: flex; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 6px; margin-bottom: 6px; }}
           .up {{ color: #15803d; font-weight: 600; }}
           .down {{ color: #dc2626; font-weight: 600; }}
-          .commentary {{ background: #eff6ff; border-left: 3px solid #2563eb; padding: 16px; border-radius: 8px; margin: 16px 0; font-style: italic; }}
+          .commentary {{ background: #eff6ff; border-left: 3px solid #2563eb; padding: 14px 16px; border-radius: 8px; margin: 16px 0; }}
         </style>
       </head>
       <body>
@@ -71,7 +71,7 @@ def build_market_html(top_gainers, top_losers, metals, currencies, commentary, f
           <h1>📈 Wallstreet Wolf Daily Brief</h1>
           <p style="color:#64748b;">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
 
-          <div class="commentary">{commentary}</div>
+          <div class="commentary">{bullets_to_html(commentary) or '<span style="color:#94a3b8">No commentary.</span>'}</div>
 
           <h2>📊 Index Futures</h2>
           {''.join([_fmt_future(s) for s in futures]) or '<p style="color:#94a3b8;">No futures data.</p>'}
@@ -155,16 +155,26 @@ async def wallstreet_wolf_job():
         commentary = ""
         try:
             prompt = (
-                f"Write today's market commentary as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, crisp and specific. No paragraphs, no intro/outro text. "
-                f"Index futures: {', '.join(futures_strs) or 'N/A'}. "
-                f"Top gainers today: {', '.join(gainer_strs)}. "
-                f"Top losers: {', '.join(loser_strs)}. "
-                f"Gold: ${metals[0]['price'] if metals else 'N/A'}, Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
+                "Write today's market commentary as 3-4 bullet points. Rules:\n"
+                "• One fact per bullet, max 12 words, plain English.\n"
+                "• Use ONLY the numbers given below. Do NOT invent reasons, news, "
+                "earnings, or macro events (no 'on muted energy data', no 'mixed "
+                "manufacturing reports' — you don't have that data).\n"
+                "• State the move and direction only, e.g. '/ES down 0.05%, NQ flat' "
+                "or 'NVDA led gainers, up 3.1%'.\n"
+                "• Each bullet on its own line starting with '• '. No intro or outro.\n\n"
+                f"Index futures: {', '.join(futures_strs) or 'N/A'}.\n"
+                f"Top gainers: {', '.join(gainer_strs)}.\n"
+                f"Top losers: {', '.join(loser_strs)}.\n"
+                f"Gold: ${metals[0]['price'] if metals else 'N/A'}, "
+                f"Silver: ${metals[1]['price'] if len(metals) > 1 else 'N/A'}."
                 f"{prior_context}"
             )
             commentary = await generate_completion(
                 prompt,
-                system_prompt="You are a Wall Street financial analyst writing a brief daily market note in English (US markets)."
+                system_prompt=("You are a Wall Street analyst writing a terse, factual daily "
+                               "market note for US markets. Report only what the numbers show; "
+                               "never fabricate causes or news you were not given.")
             )
         except Exception as e:
             print(f"[WallstreetWolf] LLM commentary failed: {e}")

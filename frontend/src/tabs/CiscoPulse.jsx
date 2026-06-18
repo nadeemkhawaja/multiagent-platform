@@ -106,7 +106,7 @@ export default function CiscoPulse({ status, agentError }) {
           <AgentControls agentId="cisco_pulse" onRun={run} busy={busy} refresh={refresh} runLabel="Refresh" runningLabel="Fetching…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {!pulse ? (
           <EmptyState icon="◈" title="No Cisco Pulse data yet" hint="Click 'Refresh' to fetch PSIRT advisories, ACI/NDFC updates, and DevNet blog." />
@@ -134,7 +134,7 @@ export default function CiscoPulse({ status, agentError }) {
 
           {/* Commentary */}
           {commentary && (
-            <Card pad={20} style={{ background: TEAL_BG, borderColor: TEAL + "33" }}>
+            <Card pad={15} style={{ background: TEAL_BG, borderColor: TEAL + "33" }}>
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={38} />
                 <div>
@@ -147,7 +147,7 @@ export default function CiscoPulse({ status, agentError }) {
 
           {/* Conferences & News */}
           {events.length > 0 && (
-            <Card pad={20} style={{ borderColor: "#7c3aed33" }}>
+            <Card pad={15} style={{ borderColor: "#7c3aed33" }}>
               <SectionTitle sub="Cisco Live, product launches & announcements">📰 Conferences & News</SectionTitle>
               {events.slice(0, 8).map((item, i) => <AdvisoryCard key={i} item={item} />)}
             </Card>
@@ -163,7 +163,7 @@ export default function CiscoPulse({ status, agentError }) {
           </div>
 
           {/* Advisory feed */}
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub={`${filtered.length} items · sorted by relevance`}>
               {section === "all" ? "All advisories" : section.charAt(0).toUpperCase() + section.slice(1)}
             </SectionTitle>

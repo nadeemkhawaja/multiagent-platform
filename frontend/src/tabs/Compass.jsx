@@ -23,13 +23,13 @@ function BiasMeter({ score, h = 10 }) {
 function SectorRow({ s }) {
   const col = s.bias > 15 ? T.green : s.bias < -15 ? T.red : "#94a3b8";
   return (
-    <div style={{ padding: "12px 0", borderBottom: `1px solid ${T.line2}` }}>
+    <div style={{ padding: "8px 0", borderBottom: `1px solid ${T.line2}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, width: 110 }}>{s.k}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, width: 110 }}>{s.k}</span>
         <div style={{ flex: 1 }}><BiasMeter score={s.bias} /></div>
         <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: col, width: 48, textAlign: "right" }}>{s.bias > 0 ? "+" : ""}{s.bias}</span>
       </div>
-      {s.why && <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 5, marginLeft: 120 }}>{s.why}</div>}
+      {s.why && <div style={{ fontSize: 11, color: T.ink3, marginTop: 3, marginLeft: 120 }}>{s.why}</div>}
     </div>
   );
 }
@@ -43,18 +43,18 @@ function LevelLadder({ f }) {
   const min = f.s2 ?? f.s1, max = f.r2 ?? f.r1, span = (max - min) || 1;
   const y = (v) => 100 - ((v - min) / span) * 100;
   return (
-    <Card pad={18}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+    <Card pad={16}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: T.mono }}>{f.t}</div>
-          <div style={{ fontSize: 11.5, color: T.ink3 }}>{f.n}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: T.mono }}>{f.t}</div>
+          <div style={{ fontSize: 11, color: T.ink3 }}>{f.n}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: T.mono, fontSize: 18, fontWeight: 700 }}>{f.px.toLocaleString()}</div>
+          <div style={{ fontFamily: T.mono, fontSize: 17, fontWeight: 700 }}>{f.px.toLocaleString()}</div>
           <span style={{ fontSize: 11, fontWeight: 700, color: biasColor(f.bias) }}>{biasLabel(f.bias)} bias</span>
         </div>
       </div>
-      <div style={{ position: "relative", height: 150, marginLeft: 6 }}>
+      <div style={{ position: "relative", height: 112, marginLeft: 6 }}>
         <div style={{ position: "absolute", left: 44, top: 0, bottom: 0, width: 2, background: T.line }} />
         {ticks.map((t) => (
           <div key={t.k} style={{ position: "absolute", left: 0, right: 0, top: `calc(${y(t.v)}% - 8px)`, display: "flex", alignItems: "center", gap: 8 }}>
@@ -114,24 +114,24 @@ export default function Compass({ status, agentError }) {
           <EmailPreviewButton agentId="compass" label="Preview brief" />
           <AgentControls agentId="compass" onRun={run} busy={busy} refresh={refresh} runLabel="Run analysis" runningLabel="Analyzing…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {empty ? (
           <EmptyState icon="◎" title="No analysis yet"
             hint="Click Run analysis to compute sector bias, pivot key levels for /ES, /NQ & the 10 majors, and a Qwen3 read." />
         ) : (
         <>
-        <Card pad={22} style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 28, alignItems: "center" }}>
+        <Card pad={16} style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 12.5, color: T.ink3, fontWeight: 600 }}>Today's composite bias</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-              <span style={{ fontSize: 38, fontWeight: 800, letterSpacing: -1.5, color: toneCol }}>{toneWord}</span>
+            <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>Today's composite bias</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 2 }}>
+              <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1.2, color: toneCol }}>{toneWord}</span>
             </div>
             <div style={{ fontSize: 12, color: T.ink3, marginTop: 2, fontWeight: 600 }}>{toneDesc}</div>
-            <div style={{ marginTop: 10 }}><BiasMeter score={overall} h={12} /></div>
+            <div style={{ marginTop: 8 }}><BiasMeter score={overall} h={12} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.mono, fontSize: 10.5, color: T.ink4, marginTop: 5 }}><span>BEARISH</span><span>{overall > 0 ? "+" : ""}{overall}</span><span>BULLISH</span></div>
             {vix && (
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 10 }}>
                 <Pill mono c={vix.regime === "Elevated" ? T.red : vix.regime === "Low" ? T.green : T.amber}
                   bg={vix.regime === "Elevated" ? T.redBg : vix.regime === "Low" ? T.greenBg : T.amberBg}>
                   VIX {vix.level} · {vix.regime} ({vix.change > 0 ? "+" : ""}{vix.change})
@@ -139,7 +139,7 @@ export default function Compass({ status, agentError }) {
               </div>
             )}
           </div>
-          <div style={{ borderLeft: `1px solid ${T.line2}`, paddingLeft: 28 }}>
+          <div style={{ borderLeft: `1px solid ${T.line2}`, paddingLeft: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
               <LufiAvatar size={26} />
               <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.2 }}>Lufi's read</span>
@@ -152,14 +152,14 @@ export default function Compass({ status, agentError }) {
         </Card>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 16, alignItems: "start" }}>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="Directional lean by sector (−100 to +100)">Sector bias</SectionTitle>
             {sectors.map((s) => <SectorRow key={s.k} s={s} />)}
           </Card>
-          <Card pad={20}>
+          <Card pad={15}>
             <SectionTitle sub="LLM-scored headlines driving today's read" right={<Pill mono c={T.ink3}>live feed</Pill>}>News sentiment</SectionTitle>
             {news.map((n, i) => (
-              <div key={i} style={{ padding: "11px 0", borderBottom: i < news.length - 1 ? `1px solid ${T.line2}` : "none" }}>
+              <div key={i} style={{ padding: "8px 0", borderBottom: i < news.length - 1 ? `1px solid ${T.line2}` : "none" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: T.ink2, fontFamily: T.mono }}>{n.src}</span>
                   <span style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono }}>{n.min}</span>
@@ -178,13 +178,13 @@ export default function Compass({ status, agentError }) {
           </div>
         </div>
 
-        <Card pad={20}>
+        <Card pad={15}>
           <SectionTitle sub="Pivot · R1 · S1 for the 10 majors">Key levels — Stocks</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(4, 1fr) 90px", padding: "8px 6px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
             <span>Symbol</span><span style={{ textAlign: "right" }}>Last</span><span style={{ textAlign: "right" }}>Pivot</span><span style={{ textAlign: "right" }}>R1</span><span style={{ textAlign: "right" }}>S1</span><span style={{ textAlign: "right" }}>Bias</span>
           </div>
           {levels.map((l) => (
-            <div key={l.t} style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(4, 1fr) 90px", padding: "11px 6px", alignItems: "center", borderBottom: `1px solid ${T.line2}`, fontFamily: T.mono, fontSize: 12.5 }}>
+            <div key={l.t} style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(4, 1fr) 90px", padding: "9px 6px", alignItems: "center", borderBottom: `1px solid ${T.line2}`, fontFamily: T.mono, fontSize: 12.5 }}>
               <span style={{ fontWeight: 700, fontFamily: T.sans }}>{l.t}</span>
               <span style={{ textAlign: "right", fontWeight: 600 }}>{l.px.toLocaleString()}</span>
               <span style={{ textAlign: "right", color: T.ink3 }}>{l.piv.toLocaleString()}</span>

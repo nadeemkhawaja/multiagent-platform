@@ -146,7 +146,7 @@ export default function EarningsCalendar({ status, agentError }) {
           <AgentControls agentId="earnings_cal" onRun={run} busy={busy} refresh={refresh} runLabel="Refresh" runningLabel="Fetching…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
         <ErrorBanner error={agentError} />
         {!cal ? (
           <EmptyState icon="📅" title="No earnings data yet" hint="Click 'Refresh' to fetch upcoming earnings for your watchlist." />
@@ -154,7 +154,7 @@ export default function EarningsCalendar({ status, agentError }) {
 
           {/* Commentary */}
           {commentary && (
-            <Card pad={20} style={{ background: GREEN_BG, borderColor: GREEN + "33" }}>
+            <Card pad={15} style={{ background: GREEN_BG, borderColor: GREEN + "33" }}>
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={36} />
                 <div>

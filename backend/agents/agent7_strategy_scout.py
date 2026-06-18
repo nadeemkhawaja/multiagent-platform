@@ -144,6 +144,48 @@ Trending posts:
     return out
 
 
+# ── LLM synthesis → ONE simple plan ──────────────────────────────────────────
+# The user doesn't want six competing ideas; they want a single call to action.
+# We collapse all the distilled strategies into exactly one stance.
+PLAN_ACTIONS = {"enter long": "Enter Long", "stay put": "Stay Put", "enter short": "Enter Short"}
+
+
+async def synthesize_plan(strategies):
+    """Weigh all distilled strategies into one decision: long / flat / short."""
+    if not strategies:
+        return None
+    listing = "\n".join(
+        f"- {s['name']} ({s['type']}, {s['timeframe']}): {s['summary']}" for s in strategies
+    )
+    prompt = f"""You are a trading-desk lead. Below are the top strategies traders are
+discussing right now. Weigh them TOGETHER into ONE simple plan for a swing trader.
+Pick exactly one action: "Enter Long", "Stay Put", or "Enter Short".
+Return ONLY JSON:
+{{"action":"Enter Long|Stay Put|Enter Short","confidence":"low|medium|high","rationale":"<=20 words, why the balance of strategies points there"}}
+
+Strategies:
+{listing}"""
+    try:
+        data = await generate_json(
+            prompt, system_prompt="You are a decisive trading-desk lead. Return only one JSON object.",
+            agent_id=AGENT_ID, use_cache=False,
+        )
+    except Exception as e:
+        print(f"[StrategyScout] plan synthesis failed: {e}")
+        return None
+    if not isinstance(data, dict):
+        return None
+    action = PLAN_ACTIONS.get(str(data.get("action", "")).strip().lower(), "Stay Put")
+    conf = str(data.get("confidence", "medium")).strip().lower()
+    if conf not in ("low", "medium", "high"):
+        conf = "medium"
+    return {
+        "action": action,
+        "confidence": conf,
+        "rationale": str(data.get("rationale", "")).strip()[:200],
+    }
+
+
 # ── persistence ──────────────────────────────────────────────────────────────
 def _save(payload):
     db = SessionLocal()
@@ -165,9 +207,31 @@ TYPE_COLORS = {"momentum": "#16a34a", "breakout": "#2563eb", "mean-reversion": "
                "swing": "#0ea5e9"}
 
 
+PLAN_COLORS = {"Enter Long": "#16a34a", "Stay Put": "#64748b", "Enter Short": "#dc2626"}
+
+
+def _plan_html(plan):
+    if not plan:
+        return ""
+    action = plan.get("action", "Stay Put")
+    col = PLAN_COLORS.get(action, "#64748b")
+    conf = plan.get("confidence", "medium")
+    rationale = plan.get("rationale", "")
+    return (
+        f'<div style="background:{col}12;border:1px solid {col}55;border-left:5px solid {col};'
+        f'border-radius:10px;padding:16px 18px;margin:0 0 18px">'
+        f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Today\'s play · all strategies combined</div>'
+        f'<div style="font-size:24px;font-weight:800;color:{col};margin:4px 0 2px">{action}'
+        f'<span style="font-size:12px;font-weight:600;color:#64748b;margin-left:8px">{conf} confidence</span></div>'
+        f'{f"<div style=\'font-size:13px;color:#475569;line-height:1.5\'>{rationale}</div>" if rationale else ""}'
+        f'</div>'
+    )
+
+
 def build_html(payload):
     strategies = payload.get("strategies", [])
     discussions = payload.get("discussions", [])
+    plan = payload.get("plan")
     strat_rows = "".join(
         f"""<div style="background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:14px;margin-bottom:8px">
           <div style="font-weight:700;font-size:15px;color:#0f172a">{i+1}. {s['name']}
@@ -187,6 +251,7 @@ def build_html(payload):
         <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:28px">
           <h1 style="color:#0ea5e9;margin-top:0">✦ Strategy Scout</h1>
           <p style="color:#64748b">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')} · top strategies trending on Reddit + TradingView</p>
+          {_plan_html(plan)}
           <h2 style="color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:8px">🏆 Top Strategies</h2>
           {strat_rows}
           <h2 style="color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:8px">🔥 Trending Discussions</h2>
@@ -227,8 +292,11 @@ async def strategy_scout_job():
         except Exception as e:
             print(f"[StrategyScout] distill failed: {e}")
 
+        plan = await synthesize_plan(strategies)
+
         payload = {
             "strategies": strategies,
+            "plan": plan,
             "discussions": items[:24],
             "sources": {"reddit": len(reddit), "tradingview": len(tv)},
             "fetched_at": datetime.utcnow().isoformat(),

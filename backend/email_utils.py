@@ -8,6 +8,7 @@ pending approvals instead of sent, and go out only when approved from the
 dashboard/API.
 """
 import os
+import html
 import smtplib
 import ssl
 from email.mime.text import MIMEText
@@ -17,6 +18,41 @@ from dotenv import load_dotenv
 import approvals
 
 load_dotenv()
+
+
+def bullets_to_html(text: str, color: str = "#334155") -> str:
+    """Render bullet commentary (newline- or •-separated) as a real HTML list.
+
+    LLM commentary comes back as "• a\\n• b\\n• c", but raw newlines collapse to a
+    single line inside an HTML <p>, which is why the email digests looked like one
+    run-on sentence while the app (which uses white-space:pre-line) showed bullets.
+    This splits on newlines *and* inline bullet chars and emits a clean <ul>.
+    Also tolerates a Python list or a stringified list ("['a', 'b']")."""
+    if not text:
+        return ""
+    if isinstance(text, (list, tuple)):
+        text = "\n".join(str(x) for x in text)
+    else:
+        text = str(text).strip()
+        if text[:1] in "[(" and text[-1:] in ")]":
+            import ast
+            try:
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, (list, tuple)):
+                    text = "\n".join(str(x) for x in parsed)
+            except (ValueError, SyntaxError):
+                pass
+    lines = []
+    for raw in str(text).replace("•", "\n").splitlines():
+        s = raw.strip().lstrip("•-*").strip()
+        if s:
+            lines.append(s)
+    if not lines:
+        return ""
+    items = "".join(
+        f'<li style="margin:0 0 5px;line-height:1.5">{html.escape(s)}</li>' for s in lines
+    )
+    return f'<ul style="margin:0;padding-left:20px;color:{color};font-size:13px">{items}</ul>'
 
 SMTP_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")

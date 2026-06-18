@@ -18,6 +18,16 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
 CATEGORIES = ["Urgent", "Action Required", "Follow-Up", "Newsletter", "Notification", "Personal", "Other"]
 
+# The only thing Mailman is allowed to touch in the real Gmail inbox: mail whose
+# subject or body mentions "LLM" gets this single label + a star. Nothing else
+# is tagged (the user keeps a clean inbox and only wants LLM mail surfaced).
+LLM_LABEL = "LLM"
+
+
+def _mentions_llm(subject: str, snippet: str) -> bool:
+    """True when 'LLM' appears (case-insensitive) in the subject or contents."""
+    return "llm" in f"{subject or ''} {snippet or ''}".lower()
+
 
 def _key_people(override=None):
     if override:
@@ -77,47 +87,46 @@ async def scan_inbox(service, max_results=10):
 
 
 async def ensure_labels(service) -> dict:
-    """Return category → Gmail label ID, creating Mailman/* labels as needed."""
+    """Ensure the single 'LLM' Gmail label exists and return {LLM_LABEL: id}.
+
+    Mailman intentionally creates just this one label now — only mail that
+    mentions LLM gets tagged, so we no longer pre-create a label per category."""
     def _list():
         return service.users().labels().list(userId='me').execute().get('labels', [])
 
     existing = await asyncio.to_thread(_list)
     label_map = {l['name']: l['id'] for l in existing}
-    result = {}
-    for cat in CATEGORIES:
-        label_name = f"Mailman/{cat}"
-        if label_name not in label_map:
-            def _create(n=label_name):
-                body = {'name': n, 'labelListVisibility': 'labelShow', 'messageListVisibility': 'show'}
-                return service.users().labels().create(userId='me', body=body).execute()
-            new_label = await asyncio.to_thread(_create)
-            result[cat] = new_label['id']
-        else:
-            result[cat] = label_map[label_name]
-    return result
+    if LLM_LABEL in label_map:
+        return {LLM_LABEL: label_map[LLM_LABEL]}
+
+    def _create():
+        body = {'name': LLM_LABEL, 'labelListVisibility': 'labelShow', 'messageListVisibility': 'show'}
+        return service.users().labels().create(userId='me', body=body).execute()
+    new_label = await asyncio.to_thread(_create)
+    return {LLM_LABEL: new_label['id']}
 
 
 def is_alert(email) -> bool:
-    """An email is an 'alert' — the set Mailman stars + labels in Gmail and
-    surfaces under Key Alerts in the summary — only when it is from a configured
-    key person. The assignment says Mailman 'alerts on key people', so we do NOT
-    tag mail just because the LLM happened to call it Urgent (that would clutter
-    the user's real inbox with strangers' mail)."""
+    """An email 'needs attention' — surfaced under Key Alerts in the summary and
+    the dashboard's Needs-attention list — only when it is from a configured key
+    person. We do NOT promote mail just because the LLM called it Urgent (that
+    would clutter the view with strangers' mail). Separately, Gmail starring +
+    labeling is gated on the LLM keyword, not on this flag — see is_llm."""
     return bool(email.get('is_key'))
 
 
 async def apply_labels_and_stars(service, processed_emails, label_ids):
-    """Star + label key-person mail only — the 'alert on key people' set — so
-    Mailman doesn't tag every routine email in the user's real inbox. The
-    category label (Mailman/<cat>) is still applied, but only to key-person mail."""
+    """Star + apply the single 'LLM' label to mail that mentions LLM — and
+    nothing else. This is the only write Mailman makes to the real inbox, so a
+    user who has cleared every other label keeps it clean."""
+    llm_label_id = label_ids.get(LLM_LABEL)
     for email in processed_emails:
         msg_id = email.get('id')
-        cat = email['category']
-        if not msg_id or not is_alert(email):
+        if not msg_id or not email.get('is_llm'):
             continue
         add_labels = ['STARRED']
-        if cat in label_ids:
-            add_labels.append(label_ids[cat])
+        if llm_label_id:
+            add_labels.append(llm_label_id)
         def _modify(mid=msg_id, al=add_labels):
             return service.users().messages().modify(
                 userId='me', id=mid, body={'addLabelIds': al, 'removeLabelIds': []}
@@ -167,10 +176,11 @@ async def classify_and_process_emails(emails, active_key_people):
             category = "Other"
         ai_summary = str(info.get("summary", "")).strip()
         is_key = any(kp.lower() in email['sender'].lower() for kp in active_key_people)
+        is_llm = _mentions_llm(email['subject'], email['snippet'])
 
         processed.append({"id": email['id'], "subject": email['subject'], "sender": email['sender'],
-                          "category": category, "is_key": is_key, "snippet": email['snippet'],
-                          "ai_summary": ai_summary})
+                          "category": category, "is_key": is_key, "is_llm": is_llm,
+                          "snippet": email['snippet'], "ai_summary": ai_summary})
     return processed
 
 
@@ -193,6 +203,14 @@ def _cat_tag(cat):
 
 def build_summary_html(processed_emails, breakdown):
     key_alerts = [e for e in processed_emails if is_alert(e)]
+    llm_mail = [e for e in processed_emails if e.get('is_llm')]
+
+    llm_note = (
+        f'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;'
+        f'padding:10px 14px;margin:0 0 8px;font-size:13px;color:#92400e">'
+        f'⭐ {len(llm_mail)} email{"s" if len(llm_mail) != 1 else ""} mention “LLM” — '
+        f'starred and labeled <b>{LLM_LABEL}</b> in Gmail.</div>'
+    ) if llm_mail else ""
 
     chips = "".join(
         f'<span style="display:inline-block;font-size:12px;font-weight:600;color:'
@@ -217,7 +235,7 @@ def build_summary_html(processed_emails, breakdown):
     list_rows = "".join(
         f'''<div style="padding:10px 0;border-bottom:1px solid #eef2f7">
           <div style="font-size:13px;font-weight:600;color:#0f172a">{_cat_tag(e['category'])}
-            <span style="margin-left:7px">{_esc(e['subject'])}</span></div>
+            <span style="margin-left:7px">{'⭐ ' if e.get('is_llm') else ''}{_esc(e['subject'])}</span></div>
           {f'<div style="color:#475569;font-size:12.5px;margin-top:3px">{_esc(e["ai_summary"])}</div>' if e.get('ai_summary') else ''}
         </div>''' for e in processed_emails
     ) or '<p style="color:#94a3b8;font-size:13px">Inbox is clear.</p>'
@@ -232,6 +250,7 @@ def build_summary_html(processed_emails, breakdown):
         <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:28px">
           <h1 style="color:#2563eb;font-size:22px;margin:0 0 4px">✉️ Mailman Daily Summary</h1>
           <p style="color:#64748b;font-size:12px;margin:0 0 20px">{datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}</p>
+          {llm_note}
           <h2 style="color:#334155;font-size:15px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin:0 0 12px">📊 Category Breakdown</h2>
           <div>{chips}</div>
           {alerts_html}
@@ -331,8 +350,9 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True, 
             _mark_summary_sent()
 
         orchestrator.update_agent_status("mailman", "idle")
-        flagged = sum(1 for e in processed_emails if is_alert(e))
-        print(f"[Mailman] Done — {len(processed_emails)} emails classified, {flagged} starred/labeled (key-person)")
+        starred = sum(1 for e in processed_emails if e.get('is_llm'))
+        key_count = sum(1 for e in processed_emails if is_alert(e))
+        print(f"[Mailman] Done — {len(processed_emails)} classified, {starred} starred/labeled (LLM), {key_count} key-person")
     except asyncio.CancelledError:
         orchestrator.update_agent_status("mailman", "idle")
         print("[Mailman] Job was manually cancelled.")
