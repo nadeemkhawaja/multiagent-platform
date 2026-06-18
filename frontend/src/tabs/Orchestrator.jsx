@@ -138,6 +138,105 @@ function AgentOverviewCard({ agent, sysAgent, onNavigate }) {
   );
 }
 
+// ── Agent orchestration mesh ─────────────────────────────────────────────────
+// Animated SVG of the master Orchestrator node dispatching work out to every
+// agent: command pulses travel center→node along each link, links light up when
+// an agent is running, and a dashed ring slowly rotates around the master.
+const MESH_NODES = ["ai_times", "mailman", "wallstreet_wolf", "compass",
+                    "devdaily", "strategy_scout", "capitol_tracker", "options_flow"];
+
+function AgentMesh({ agents = [] }) {
+  const reduce = typeof window !== "undefined" && window.matchMedia
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const meta = Object.fromEntries(ALL_AGENTS.map((a) => [a.id, a]));
+  const statusOf = (id) => (agents.find((a) => a.id === id)?.status) || "idle";
+  const cx = 310, cy = 150, rx = 250, ry = 104;
+  const nodes = MESH_NODES.map((id, i) => {
+    const ang = (i / MESH_NODES.length) * Math.PI * 2 - Math.PI / 2;
+    return {
+      id, i, label: meta[id]?.label || id, glyph: meta[id]?.glyph || "•",
+      col: AGENT_COLOR[id] || T.violet, status: statusOf(id),
+      x: Math.round(cx + rx * Math.cos(ang)), y: Math.round(cy + ry * Math.sin(ang)),
+    };
+  });
+  const running = nodes.filter((n) => n.status === "running").length;
+
+  return (
+    <Card pad={16} style={{ overflow: "hidden" }}>
+      <SectionTitle sub="Master orchestrator dispatching work to every managed agent — live"
+        right={<Pill mono c={running ? T.green : T.ink3} bg={running ? T.greenBg : T.line2}>{running} dispatching</Pill>}>
+        Agent orchestration
+      </SectionTitle>
+      <svg viewBox="0 0 620 300" width="100%" style={{ display: "block", maxHeight: 300 }} role="img"
+        aria-label="Orchestrator dispatching to agents">
+        <defs>
+          <radialGradient id="om-master" cx="50%" cy="42%" r="62%">
+            <stop offset="0%" stopColor="#b39bff" />
+            <stop offset="100%" stopColor={T.violet} />
+          </radialGradient>
+        </defs>
+
+        {/* links */}
+        {nodes.map((n) => {
+          const live = n.status === "running";
+          return (
+            <line key={"l" + n.id} x1={cx} y1={cy} x2={n.x} y2={n.y}
+              stroke={n.col} strokeWidth={live ? 2.2 : 1.2}
+              strokeOpacity={live ? 0.7 : 0.28} strokeLinecap="round">
+              {live && !reduce && (
+                <animate attributeName="stroke-opacity" values="0.35;0.85;0.35" dur="1.6s" repeatCount="indefinite" />
+              )}
+            </line>
+          );
+        })}
+
+        {/* command pulses travelling outward from the master */}
+        {!reduce && nodes.map((n) => (
+          <circle key={"p" + n.id} r="4" fill={n.col}>
+            <animateMotion dur="2.4s" begin={`${n.i * 0.28}s`} repeatCount="indefinite"
+              path={`M${cx},${cy} L${n.x},${n.y}`} />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.82;1"
+              dur="2.4s" begin={`${n.i * 0.28}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
+
+        {/* agent nodes */}
+        {nodes.map((n) => {
+          const live = n.status === "running";
+          return (
+            <g key={"n" + n.id}>
+              <circle cx={n.x} cy={n.y} r="21" fill={T.card}
+                stroke={n.col} strokeWidth={live ? 2.4 : 1.4} strokeOpacity={live ? 1 : 0.6} />
+              {live && !reduce && (
+                <circle cx={n.x} cy={n.y} r="21" fill="none" stroke={n.col} strokeWidth="2">
+                  <animate attributeName="r" values="21;30" dur="1.8s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-opacity" values="0.5;0" dur="1.8s" repeatCount="indefinite" />
+                </circle>
+              )}
+              <text x={n.x} y={n.y + 5} textAnchor="middle" fontSize="15" fill={n.col}>{n.glyph}</text>
+              <text x={n.x} y={n.y + 36} textAnchor="middle" fontSize="9.5" fontWeight="600"
+                fill={T.ink3} fontFamily={T.sans}>{n.label}</text>
+            </g>
+          );
+        })}
+
+        {/* master orchestrator node */}
+        {!reduce && (
+          <circle cx={cx} cy={cy} r="40" fill="none" stroke={T.violet} strokeOpacity="0.35"
+            strokeWidth="1.5" strokeDasharray="3 7">
+            <animateTransform attributeName="transform" type="rotate"
+              from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`} dur="16s" repeatCount="indefinite" />
+          </circle>
+        )}
+        <circle cx={cx} cy={cy} r="30" fill="url(#om-master)" />
+        <text x={cx} y={cy + 7} textAnchor="middle" fontSize="22" fontWeight="700" fill="#fff">◇</text>
+        <text x={cx} y={cy + 50} textAnchor="middle" fontSize="10.5" fontWeight="700"
+          fill={T.ink2} fontFamily={T.sans}>Orchestrator</text>
+      </svg>
+    </Card>
+  );
+}
+
 function fmtUptime(s) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return `${d}d ${h}h ${m}m`;
@@ -502,10 +601,13 @@ export default function Orchestrator({ sys, online, onNavigate }) {
           <Pill mono c={T.ink3}>{running} running</Pill>
         </>} />
 
-      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
 
         {/* ── Command-center hero: live clock, market status, KPIs ─────────── */}
         <CommandCenterHero s={s} online={online} />
+
+        {/* ── Animated master-agent orchestration mesh ─────────────────────── */}
+        <AgentMesh agents={s.agents} />
 
         {/* ── Resource metric cards (live system metrics · updates every 5s) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>

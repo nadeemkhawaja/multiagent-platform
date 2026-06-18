@@ -86,7 +86,7 @@ export default function MorningBrief({ status, agentError }) {
           <AgentControls agentId="morning_brief" onRun={run} busy={busy} refresh={refresh} runLabel="Generate now" runningLabel="Generating…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 13 }}>
         <ErrorBanner error={agentError} />
         {!brief ? (
           <EmptyState icon="☀" title="No brief yet" hint="Click 'Generate now' or wait for the 06:00 daily run." />

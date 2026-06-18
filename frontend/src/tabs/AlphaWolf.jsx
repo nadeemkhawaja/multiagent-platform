@@ -375,7 +375,7 @@ export default function AlphaWolf({ status, agentError }) {
           <AgentControls agentId="alpha_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Run plan" runningLabel="Synthesizing…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 13 }}>
         <ErrorBanner error={agentError} />
 
         {/* Live decision maker: market clock + what to do right now */}

@@ -12,10 +12,9 @@ const CAT_PALETTE = {
   Personal: "#0d9488", Newsletter: "#2f6feb", Notification: "#94a3b8", Other: "#c0c6d0",
 };
 
-// Dashboard surfaces only what needs eyes-on — Urgent / Action Required mail, or
-// anything from the configured key-people list — not every routine email scanned.
-const NOTABLE_CATS = ["Urgent", "Action Required"];
-const isNotable = (m) => m.key || NOTABLE_CATS.includes(m.cat);
+// "Needs attention" surfaces ONLY mail from the configured key-people list —
+// not every email the LLM happened to call Urgent / Action Required.
+const isNotable = (m) => m.key;
 
 function parseSender(sender = "") {
   const m = sender.match(/^(.*?)\s*<(.+?)>$/);
@@ -33,7 +32,9 @@ function adaptEmails(list) {
       email,
       subj: e.subject || e.subj || "(no subject)",
       cat: e.category || e.cat || "Other",
-      star: !!(e.starred ?? e.is_key),
+      // Only LLM-mentioning mail is actually starred + labeled in Gmail now.
+      llm: !!(e.is_llm ?? e.llm),
+      star: !!(e.is_llm ?? e.starred),
       key: !!(e.is_key ?? e.key),
       sum: e.ai_summary || e.sum || e.snippet || "",
       t: e.t || e.time || "",
@@ -112,10 +113,9 @@ export default function Mailman({ status, agentError }) {
   const baseMails = adaptEmails(data?.emails?.emails);
   const mails = baseMails.map((m) => (m.id in starOverride ? { ...m, star: starOverride[m.id] } : m));
   const shown = mails.filter(isNotable);
-  const urgent = mails.filter((m) => m.cat === "Urgent").length;
-  // Only key-person mail is actually starred + labeled in Gmail (per the
-  // assignment — "alerts on key people"); Urgent is surfaced on the dashboard
-  // for visibility but no longer tags the user's real inbox.
+  // Gmail starring + labeling is gated on the "LLM" keyword; key people drive
+  // the Needs-attention list. The two are tracked independently now.
+  const llmCount = mails.filter((m) => m.llm).length;
   const keyCount = mails.filter((m) => m.key).length;
   const onStar = (id) => setStarOverride((o) => ({ ...o, [id]: !mails.find((m) => m.id === id)?.star }));
 
@@ -135,14 +135,16 @@ export default function Mailman({ status, agentError }) {
           <EmailPreviewButton agentId="mailman" label="Preview summary" />
           <AgentControls agentId="mailman" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
         <ErrorBanner error={agentError} />
-        {keyCount > 0 && (
-          <div style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "13px 18px", display: "flex", alignItems: "center", gap: 13 }}>
-            <span style={{ fontSize: 18 }}>⭐</span>
-            <div style={{ fontSize: 13, color: T.red, fontWeight: 600 }}>
-              {keyCount} email{keyCount !== 1 ? "s" : ""} from key people — auto-starred &amp; labeled in Gmail.
-              {urgent > 0 && <span style={{ fontWeight: 500, opacity: 0.85 }}> · {urgent} urgent flagged below for review.</span>}
+        {(llmCount > 0 || keyCount > 0) && (
+          <div style={{ background: T.amberBg, border: `1px solid ${T.amber}55`, borderRadius: 12, padding: "11px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 16 }}>⭐</span>
+            <div style={{ fontSize: 12.5, color: "#92400e", fontWeight: 600 }}>
+              {llmCount > 0
+                ? <>{llmCount} email{llmCount !== 1 ? "s" : ""} mention “LLM” — auto-starred &amp; labeled in Gmail.</>
+                : <>No “LLM” mail this scan — nothing labeled in Gmail.</>}
+              {keyCount > 0 && <span style={{ fontWeight: 500, opacity: 0.85 }}> · {keyCount} from key people need attention.</span>}
             </div>
           </div>
         )}
@@ -169,16 +171,16 @@ export default function Mailman({ status, agentError }) {
             <CatBar cats={cats} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, alignItems: "start" }}>
               <Card pad={20}>
-                <SectionTitle sub="Urgent, Action Required & key-people mail only — routine email stays out of sight" right={<Pill mono c={T.ink3}>{shown.length} of {mails.length}</Pill>}>Needs attention</SectionTitle>
+                <SectionTitle sub="Mail from your key people only — routine inbox stays out of sight" right={<Pill mono c={T.ink3}>{shown.length} of {mails.length}</Pill>}>Needs attention</SectionTitle>
                 {shown.length === 0 ? (
                   <div style={{ padding: "30px 6px", textAlign: "center", color: T.ink3, fontSize: 12.5, lineHeight: 1.6 }}>
-                    Nothing urgent, action-needed, or from key people in the last scan.<br />
+                    Nothing from your key people in the last scan.<br />
                     {mails.length} routine email{mails.length !== 1 ? "s" : ""} stayed out of view.
                   </div>
                 ) : shown.map((m) => <MailRow key={m.id} m={m} onStar={onStar} />)}
               </Card>
               <Card pad={20}>
-                <SectionTitle sub={keyPeople ? "Override for the next scan" : "From Settings · always starred & surfaced"}>Key people</SectionTitle>
+                <SectionTitle sub={keyPeople ? "Override for the next scan" : "From Settings · surfaced under Needs attention"}>Key people</SectionTitle>
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                   {keyPeopleList.map((p) => (
                     <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 9px", borderRadius: 9, background: T.cardAlt, border: `1px solid ${T.line2}` }}>

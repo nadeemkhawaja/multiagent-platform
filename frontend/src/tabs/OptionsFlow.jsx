@@ -124,7 +124,7 @@ export default function OptionsFlow({ status, agentError }) {
           <AgentControls agentId="options_flow" onRun={run} busy={busy} refresh={refresh} runLabel="Scan now" runningLabel="Scanning…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 13 }}>
         <ErrorBanner error={agentError} />
         {!flow ? (
           <EmptyState icon="⚡" title="No options data yet" hint="Click 'Scan now' to analyze your watchlist for unusual options activity." />

@@ -337,7 +337,7 @@ export default function Settings({ mode, setMode }) {
     <div>
       <TabHeader icon="⚙" color={T.violet} title="Settings" sub="Schedules · agent config · system health"
         actions={<Btn size="sm" kind="primary" onClick={saveSettings}>Save settings</Btn>} />
-      <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="om-stagger" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Appearance */}
         {mode && setMode && (
           <Card pad={20}>
