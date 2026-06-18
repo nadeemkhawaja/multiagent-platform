@@ -97,13 +97,23 @@ async def ensure_labels(service) -> dict:
     return result
 
 
+def is_alert(email) -> bool:
+    """An email is an 'alert' — the set Mailman stars + labels in Gmail and
+    surfaces under Key Alerts in the summary — only when it is from a configured
+    key person. The assignment says Mailman 'alerts on key people', so we do NOT
+    tag mail just because the LLM happened to call it Urgent (that would clutter
+    the user's real inbox with strangers' mail)."""
+    return bool(email.get('is_key'))
+
+
 async def apply_labels_and_stars(service, processed_emails, label_ids):
-    """Star + label only Urgent or key-person mail — the 'alert on key people'
-    set — so Mailman doesn't tag every routine email in the user's real inbox."""
+    """Star + label key-person mail only — the 'alert on key people' set — so
+    Mailman doesn't tag every routine email in the user's real inbox. The
+    category label (Mailman/<cat>) is still applied, but only to key-person mail."""
     for email in processed_emails:
         msg_id = email.get('id')
         cat = email['category']
-        if not msg_id or not (email['is_key'] or cat == 'Urgent'):
+        if not msg_id or not is_alert(email):
             continue
         add_labels = ['STARRED']
         if cat in label_ids:
@@ -182,7 +192,7 @@ def _cat_tag(cat):
 
 
 def build_summary_html(processed_emails, breakdown):
-    key_alerts = [e for e in processed_emails if e['is_key'] or e['category'].lower() == 'urgent']
+    key_alerts = [e for e in processed_emails if is_alert(e)]
 
     chips = "".join(
         f'<span style="display:inline-block;font-size:12px;font-weight:600;color:'
@@ -241,6 +251,36 @@ def send_daily_summary_email(processed_emails, breakdown):
                     sender_name="Mailman Agent")
 
 
+def _today_str() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+
+def summary_due(last_sent, today=None) -> bool:
+    """The summary is a *daily* digest: it fires at most once per calendar day
+    (UTC). Returns True when no summary has gone out yet today, even though the
+    inbox itself is still scanned/classified/labeled every hour."""
+    return (today or _today_str()) != (last_sent or "")
+
+
+def _summary_due_today() -> bool:
+    db = SessionLocal()
+    rec = db.query(AgentData).filter_by(agent_name="mailman", key="last_summary_date").first()
+    db.close()
+    return summary_due(rec.value if rec else None)
+
+
+def _mark_summary_sent():
+    today = _today_str()
+    db = SessionLocal()
+    rec = db.query(AgentData).filter_by(agent_name="mailman", key="last_summary_date").first()
+    if rec:
+        rec.value = today
+    else:
+        db.add(AgentData(agent_name="mailman", key="last_summary_date", value=today))
+    db.commit()
+    db.close()
+
+
 def email_preview() -> str:
     db = SessionLocal()
     rec = db.query(AgentData).filter_by(agent_name="mailman", key="emails").first()
@@ -249,7 +289,7 @@ def email_preview() -> str:
     return build_summary_html(data.get("emails", []), data.get("breakdown", {}))
 
 
-async def mailman_job(key_people_override: str = None, send_email: bool = True):
+async def mailman_job(key_people_override: str = None, send_email: bool = True, force_email: bool = False):
     orchestrator.update_agent_status("mailman", "running")
     try:
         active_key_people = _key_people(key_people_override)
@@ -283,12 +323,16 @@ async def mailman_job(key_people_override: str = None, send_email: bool = True):
         db.commit()
         db.close()
 
-        if send_email:
+        # Monitoring/classifying/labeling runs hourly, but the summary is a
+        # *daily* digest: send at most once per calendar day (force_email skips
+        # the guard for an explicit "send now" from the UI).
+        if send_email and (force_email or _summary_due_today()):
             send_daily_summary_email(processed_emails, breakdown)
+            _mark_summary_sent()
 
         orchestrator.update_agent_status("mailman", "idle")
-        flagged = sum(1 for e in processed_emails if e['is_key'] or e['category'] == 'Urgent')
-        print(f"[Mailman] Done — {len(processed_emails)} emails classified, {flagged} starred/labeled (urgent or key-person)")
+        flagged = sum(1 for e in processed_emails if is_alert(e))
+        print(f"[Mailman] Done — {len(processed_emails)} emails classified, {flagged} starred/labeled (key-person)")
     except asyncio.CancelledError:
         orchestrator.update_agent_status("mailman", "idle")
         print("[Mailman] Job was manually cancelled.")

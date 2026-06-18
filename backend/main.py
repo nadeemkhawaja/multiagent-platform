@@ -286,7 +286,10 @@ async def trigger_agent(agent_name: str, config: Optional[AgentTriggerConfig] = 
     if agent_name == "devdaily":
         task = asyncio.create_task(devdaily_job(language=cfg.language, count=cfg.count, topic=cfg.topic))
     elif agent_name == "mailman":
-        task = asyncio.create_task(mailman_job(key_people_override=cfg.key_people, send_email=cfg.send_email))
+        # An explicit UI trigger with "send email" ticked is a deliberate
+        # "send now" — force past the once-per-day daily-summary guard.
+        task = asyncio.create_task(mailman_job(key_people_override=cfg.key_people,
+                                               send_email=cfg.send_email, force_email=cfg.send_email))
     elif agent_name in JOBS:
         task = asyncio.create_task(JOBS[agent_name]())
     else:

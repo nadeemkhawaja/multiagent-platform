@@ -113,6 +113,10 @@ export default function Mailman({ status, agentError }) {
   const mails = baseMails.map((m) => (m.id in starOverride ? { ...m, star: starOverride[m.id] } : m));
   const shown = mails.filter(isNotable);
   const urgent = mails.filter((m) => m.cat === "Urgent").length;
+  // Only key-person mail is actually starred + labeled in Gmail (per the
+  // assignment — "alerts on key people"); Urgent is surfaced on the dashboard
+  // for visibility but no longer tags the user's real inbox.
+  const keyCount = mails.filter((m) => m.key).length;
   const onStar = (id) => setStarOverride((o) => ({ ...o, [id]: !mails.find((m) => m.id === id)?.star }));
 
   const scan = async () => {
@@ -133,11 +137,12 @@ export default function Mailman({ status, agentError }) {
         </>} />
       <div className="om-stagger" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
         <ErrorBanner error={agentError} />
-        {urgent > 0 && (
+        {keyCount > 0 && (
           <div style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "13px 18px", display: "flex", alignItems: "center", gap: 13 }}>
-            <span style={{ fontSize: 18 }}>🔔</span>
+            <span style={{ fontSize: 18 }}>⭐</span>
             <div style={{ fontSize: 13, color: T.red, fontWeight: 600 }}>
-              {urgent} urgent email{urgent !== 1 ? "s" : ""} flagged — auto-starred &amp; labeled <b>Urgent</b>.
+              {keyCount} email{keyCount !== 1 ? "s" : ""} from key people — auto-starred &amp; labeled in Gmail.
+              {urgent > 0 && <span style={{ fontWeight: 500, opacity: 0.85 }}> · {urgent} urgent flagged below for review.</span>}
             </div>
           </div>
         )}

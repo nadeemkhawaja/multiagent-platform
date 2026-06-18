@@ -1,100 +1,82 @@
-# Multi-Agent Personal Auto-Scheduling Platform — Complete Handoff (Finalized)
+# Multi-Agent Platform — AI Handoff (portable)
 
-> **Last updated:** 2026-06-04 | **Status:** All gaps fixed. Project is fully functional, local LLM integration complete, running on macOS.
-
----
-
-## 1. Project Overview & Key Requirements
-
-Design, implement, and demonstrate a fully operational Multi-Agent Auto-Scheduling Platform running entirely on a local machine using a locally hosted LLM. A central orchestrator manages four specialized agents, handles resource scheduling, and serves a web-based dashboard.
-
-### Constraints & Requirements
-- **Local LLM Only:** Must use Ollama with `qwen3.5:4b`. No OpenAI/Anthropic API calls for inference.
-- **Auto-restart:** Orchestrator must restart crashed agents.
-- **Deadlock Prevention:** LLM calls must be serialized (using `asyncio.Semaphore(1)`).
-- **Resource Monitoring:** CPU, RAM, Disk must be monitored with specific alarm actions if > 90%.
-- **Zero Discrepancy:** The build must match the rubric 100%.
+> **Updated:** 2026-06-18 · **Branch:** `main` (merge `73dca72`) · **Repo:** https://github.com/nadeemkhawaja/multiagent-platform (PUBLIC)
+> Drop this file into any AI assistant to resume work. It is self-contained and platform-agnostic.
 
 ---
 
-## 2. Current Status of the Discussion
-- **All 12 previously identified gaps are FIXED.**
-- **Ollama** has been installed via Homebrew and the `qwen3:14b` model has been successfully pulled and verified (running on Apple Silicon Metal GPU).
-- Both the **Backend (FastAPI)** and **Frontend (React/Vite)** are currently running perfectly on `localhost:8000` and `localhost:5173`.
-- **API Keys Setup:** YouTube and GitHub API keys, along with a Gmail App Password, still need to be entered into the `.env` file by the user to fully test the automated email functionalities.
+## What this project is
+A **Multi-Agent Personal Auto-Scheduling Platform** for a university assignment (Assignment-2, 100 marks). A FastAPI **orchestrator** manages a fleet of agents, monitors system resources, serializes LLM calls, auto-restarts crashes, and serves a React dashboard. **All AI inference is local** via **Ollama + `qwen3.5:4b`** — no hosted LLM APIs for the agents.
 
----
+## Hard constraints (do not violate)
+- **No hosted LLM APIs for agent inference.** Local Ollama only. (A Settings UI lets the *user* optionally route an agent to a frontier model with their own key, but the default and graded path is local Qwen.)
+- **Backend port is 5174**, frontend dev is 5173. (Old docs said 8000 — wrong.)
+- **Never commit secrets.** `credentials.json`, `token.json`, `*.db`, `.env` are gitignored — keep it that way.
+- **Repo must stay PUBLIC** (assignment gives zero marks otherwise).
+- **Demo video ≤10 min**, all 5 graded agents live, on YouTube — this is the user's job, not code.
 
-## 3. Key Decision Points So Far
-1. **Model Selection:** Switched default model explicitly to `qwen3.5:4b` to match the user's specific local download and maximize quality.
-2. **Pathing & Venv:** Re-created the Python virtual environment (`venv`) to fix absolute pathing issues caused by a trailing space in the root folder name.
-3. **Syntax Error Fix:** Extracted f-string comprehensions into separate variables in `agent3_wallstreet_wolf.py` to ensure compatibility across all Python versions and prevent Uvicorn crashes.
-4. **Email Utilities:** Created a centralized `email_utils.py` that handles real Gmail SMTP sending for all 4 agents.
-5. **Security:** Hardened the FastAPI backend by restricting CORS to exactly `http://localhost:5173`.
-
----
-
-## 4. Specific Code Snippets Finalized
-
-### Centralized LLM Call with Semaphore
-```python
-# backend/llm_client.py
-import asyncio
-import httpx
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:14b")
-
-# Global Semaphore so only one agent calls the LLM at a time (deadlock prevention)
-llm_semaphore = asyncio.Semaphore(1)
-
-async def generate_completion(prompt: str, system_prompt: str = "You are a helpful AI assistant.") -> str:
-    async with llm_semaphore:
-        async with httpx.AsyncClient() as client:
-            payload = {
-                "model": LLM_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "stream": False
-            }
-            try:
-                response = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=120.0)
-                response.raise_for_status()
-                return response.json().get("message", {}).get("content", "")
-            except Exception as e:
-                print(f"Error calling LLM: {e}")
-                return f"Error: {e}"
+## Architecture (where things live)
+```
+backend/
+  main.py                  FastAPI app, APScheduler jobs, all /api routes, lifespan startup
+  orchestrator.py          resource sampler (2s), 90% alarm + ALARM_ACTIONS, watchdog auto-restart, WS broadcast
+  llm_client.py            llm_semaphore = asyncio.Semaphore(1); generate_json(); provider routing
+  paper_broker.py          Alpha Wolf paper portfolio: _fetch_prices_sync (yfinance), sizing, execute_plan
+  email_utils.py           Gmail SMTP HTML email
+  database.py              SQLite (SQLAlchemy): AgentData, config, ResourceSample, AgentRun
+  agents/agent1_ai_times.py .. agent13_alpha_wolf.py   (13 agents)
+  tests/                   pytest; 165 passing
+frontend/src/
+  App.jsx                  shell: sidebar nav, ⌘K palette, toasts, shortcuts, <Aurora/>, tab cross-fade
+  index.css                motion keyframes + .om-stagger utility + prefers-reduced-motion guard
+  theme/tokens.js          T (mutable, light/dark), AGENT_COLOR, STAT
+  theme/ui.jsx             Card, Pill, Ring(draw-in), Spark, Btn, TabHeader(glass), CountUp, Reveal, LiveDot
+  components/Aurora.jsx     ambient animated background (theme-aware blobs + dot-grid)
+  tabs/*.jsx               one file per agent + Orchestrator + Settings
+  state/api.js             fetch helpers + useSystemState/useAgentData (WS)
+architecture.png / .mmd    diagram for the rubric
 ```
 
-### Agent Auto-Restart Watchdog
-```python
-# backend/orchestrator.py
-# An async background task (started via start_watchdog) checks every 10s for
-# agents in the "error" state and re-runs their registered job coroutine.
-async def _watchdog_loop(self):
-    while True:
-        await asyncio.sleep(10)
-        for agent_name, info in self.agents_status.items():
-            if info["status"] == "error" and agent_name in self._agent_jobs:
-                print(f"[Watchdog] Detected crashed agent '{agent_name}'. Restarting...")
-                self.update_agent_status(agent_name, "restarting")
-                try:
-                    asyncio.create_task(self._agent_jobs[agent_name]())
-                except Exception as e:
-                    print(f"[Watchdog] Failed to restart '{agent_name}': {e}")
+## Mailman (agent2) — rubric behaviour
+Rubric: *"classifies with LLM; labels, stars, alerts on **key people**; sends **daily** summary."*
+- **Alerting is key-person-only.** `is_alert(email)` = `email['is_key']`; used by `apply_labels_and_stars` (star + `Mailman/<cat>` label in Gmail) and the digest's Key Alerts. Classification runs on *all* mail, but only key-person mail is tagged in the real inbox — do **not** re-add an `or category=='Urgent'` clause (that was the "tagging other mails" bug).
+- **Digest is once per calendar day.** Job runs hourly (monitor/classify/label), but the summary email is gated by `summary_due()` + `_summary_due_today()`/`_mark_summary_sent()` (AgentData `last_summary_date`, UTC). `mailman_job(..., force_email=True)` bypasses the guard; the UI trigger forces only when the user explicitly ticks "send email".
+
+## The headline feature — Alpha Wolf (agent13)
+The platform's **primary trading decision maker**. It fuses six sub-agents (Wallstreet Wolf, Compass, Strategy Scout, Capitol Tracker, Options Flow, Earnings Calendar) + **live yfinance quotes** into ONE local-LLM game-plan, then paper-trades it.
+
+- Daily plan has a **session timeline** (pre-market → open → midday → power hour → close) and ideas with **entry/stop/target/when** + **dollar sizing**.
+- **`GET /api/alpha-wolf/now`** (`decision_now()`) = live "what do I do right now": market clock + each idea scored vs live quote into `WAIT / ACT / IN_WINDOW / STOPPED / TARGET_HIT / WINDOW_PASSED / NEXT_SESSION / MONITOR`.
+- **`POST /api/alpha-wolf/pulse`** (`pulse_job`, scheduled every 30 min, self-gates to market hours) emails only on actionable change (window opens, entry hit, stop/target hit), deduped per plan.
+- `market_clock()` uses `ZoneInfo("America/New_York")`. `_first_price()` rejects hallucinated levels (>2.5× or <0.4× the live quote). Frontend "Right now" card polls `/now` every 60 s; timeline highlights the active slot with a NOW badge.
+
+## GUI design system (just overhauled — PR #7)
+Direction: **refined-modern · animated aurora/mesh · tasteful motion**. NOT photographic backgrounds (they hurt data legibility).
+- `Aurora.jsx`: fixed, `pointer-events:none`, theme-aware blurred blobs (`omDriftA/B/C`) + masked dot-grid. Rendered as a **sibling before** the layout; layout root is `background:transparent; zIndex:1`.
+- `index.css`: keyframes (`omFadeUp/FadeIn/ScaleIn/Live/Shimmer/DriftA-C`), utilities (`.om-rise/.om-fade/.om-pop/.om-lift`, **`.om-stagger > *`** with nth-child delays), and a global `prefers-reduced-motion` guard.
+- `ui.jsx`: `Ring` draws in; `CountUp`/`useCountUp` tween numbers; `Reveal` stagger; `LiveDot` breathing; `Card` `interactive` hover-lift; **`TabHeader` frosted glass** (`backdropFilter: blur(14px)`).
+- Orchestrator has a `CommandCenterHero` (live clock, US market-session chip via `Intl` America/New_York, animated KPIs).
+- Every tab content column has `className="om-stagger"` (Orchestrator excluded — it uses explicit `Reveal`s).
+
+## Run it
+```bash
+# Ollama must be running: ollama pull qwen3.5:4b
+python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+cd backend && uvicorn main:app --reload --port 5174
+cd frontend && npm install && npm run dev      # http://localhost:5173
+# convenience: ./start.sh   ./stop.sh
+pytest backend/tests -q                          # 162 passing
 ```
 
----
+## Git workflow used
+Feature branch → commit (Co-Authored-By trailer) → push → `gh pr create` → merge to `main` → delete branch. Recent merged PRs: #6 Alpha Wolf live decision maker, #7 GUI aurora/motion.
 
-## 5. How to Run on Any Machine
-1. Install Python 3.12+, Node.js, and Ollama.
-2. Run `ollama pull qwen3.5:4b` and keep Ollama running.
-3. Clone repository and run `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt`.
-4. Run Backend: `cd backend && uvicorn main:app --reload --port 8000`.
-5. Run Frontend: `cd frontend && npm install && npm run dev`.
+## Open follow-ups (nice-to-have, not blocking)
+- Per-card hover-lift on data lists (watchlist rows, email items, video cards); value-flash green/red on price tick; market ticker-tape; skeleton-shimmer loaders.
+- Optional real imagery only on a login/splash screen (never behind data tables).
+- Surface the Alpha Wolf "Right now" directive on the Orchestrator home; optional browser/desktop push alongside email pulse.
+
+## Gotchas
+- Ollama `/api/chat` **404 = model not pulled** (name mismatch with `ollama list` or a DB `agent_models` override). Check `.env` `LLM_MODEL`.
+- Root folder name has a **trailing space** ("MultiAgent Platform") — quote paths.
+- Backend started in background for verification stays up; `./stop.sh` to clean up.

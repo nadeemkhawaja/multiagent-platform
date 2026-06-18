@@ -530,3 +530,41 @@ def test_idea_now_states():
     # sizing: $2500 budget / $146.25 → 17 shares
     sized = _idea_now(idea, 146.25, clock, 2500)
     assert sized["size_shares"] == 17
+
+
+# ── Mailman: alert gating (key people only) + once-per-day summary ───────────
+def test_mailman_is_alert_only_key_people():
+    from agents.agent2_mailman import is_alert
+    # Key-person mail is always an alert (star + label + Key-Alerts highlight).
+    assert is_alert({"is_key": True, "category": "Newsletter"}) is True
+    # A stranger's mail is NOT an alert even when the LLM calls it Urgent —
+    # that was the bug that tagged "other mails" in the real inbox.
+    assert is_alert({"is_key": False, "category": "Urgent"}) is False
+    assert is_alert({"is_key": False, "category": "Other"}) is False
+
+
+def test_mailman_summary_key_alerts_only_key_people():
+    from agents.agent2_mailman import build_summary_html
+    emails = [
+        {"is_key": True,  "category": "Personal", "subject": "Lunch?",
+         "sender": "boss@corp.com", "ai_summary": "wants to meet"},
+        {"is_key": False, "category": "Urgent",  "subject": "ACT NOW WINNER",
+         "sender": "spam@x.com", "ai_summary": "obvious spam"},
+    ]
+    html = build_summary_html(emails, {"Personal": 1, "Urgent": 1})
+    assert "Key Alerts" in html
+    # The key-person subject is surfaced as an alert (⭐ row); the urgent
+    # stranger is not (it only appears once, in the plain All-Emails list).
+    assert "⭐ Lunch?" in html
+    assert "⭐ ACT NOW WINNER" not in html
+    assert html.count("ACT NOW WINNER") == 1
+
+
+def test_mailman_summary_due_once_per_calendar_day():
+    from agents.agent2_mailman import summary_due
+    # Already sent today → not due again.
+    assert summary_due("2026-06-18", today="2026-06-18") is False
+    # Last sent yesterday → due.
+    assert summary_due("2026-06-17", today="2026-06-18") is True
+    # Never sent → due.
+    assert summary_due(None, today="2026-06-18") is True
