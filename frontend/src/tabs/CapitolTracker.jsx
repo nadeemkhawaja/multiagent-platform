@@ -248,7 +248,7 @@ export default function CapitolTracker({ status, agentError }) {
         </>}
       />
 
-      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
         <ErrorBanner error={agentError} />
 
         {trades.length === 0 ? (

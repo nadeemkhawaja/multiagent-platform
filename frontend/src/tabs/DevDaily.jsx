@@ -37,7 +37,7 @@ export default function DevDaily({ status, agentError }) {
           <Pill mono c={T.ink3}>digest 09:00 daily</Pill>
           <AgentControls agentId="devdaily" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Fetching…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
         <ErrorBanner error={agentError} />
         <Card pad={14}>
           <SectionTitle sub="Tune the next fetch">Configuration</SectionTitle>

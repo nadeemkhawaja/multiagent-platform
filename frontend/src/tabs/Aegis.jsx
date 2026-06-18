@@ -79,7 +79,7 @@ export default function Aegis({ status, agentError }) {
           <EmailPreviewButton agentId="aegis" label="Preview digest" />
           <AgentControls agentId="aegis" onRun={scan} busy={busy} refresh={refresh} runLabel="Scan forums" runningLabel="Scanning…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
         <ErrorBanner error={agentError} />
         {highCount > 0 && (
           <div style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "13px 18px", display: "flex", alignItems: "center", gap: 13 }}>

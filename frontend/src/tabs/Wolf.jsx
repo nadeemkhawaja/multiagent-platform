@@ -157,7 +157,7 @@ export default function Wolf({ status, agentError }) {
           <EmailPreviewButton agentId="wallstreet_wolf" label="Preview brief" />
           <AgentControls agentId="wallstreet_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Running…" />
         </>} />
-      <div className="om-stagger" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
         <ErrorBanner error={agentError} />
         {watch.length === 0 ? (
           <EmptyState icon="$" title="No market data yet"
