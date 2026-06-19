@@ -11,9 +11,7 @@
   },
   "dependencies": {
     "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "react-grid-layout": "^2.2.3",
-    "react-resizable": "^4.0.1"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

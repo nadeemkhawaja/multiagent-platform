@@ -9,7 +9,6 @@ import { T } from "../theme/tokens";
 import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio, getWolfNow } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
-import DashboardGrid from "../components/DashboardGrid";
 
 const PURPLE = "#7c3aed"; const PURPLE_BG = "#f5f3ff";
 
@@ -442,29 +441,14 @@ export default function AlphaWolf({ status, agentError }) {
           <AgentControls agentId="alpha_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Run plan" runningLabel="Synthesizing…" />
         </>}
       />
-      <div style={{ padding: "0" }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
         <ErrorBanner error={agentError} />
 
-        <DashboardGrid id="alpha_wolf" defaultLayout={[
-          { i: "right_now", x: 0, y: 0, w: 12, h: 7 },
-          { i: "pack_status", x: 0, y: 7, w: 12, h: 4 },
-          { i: "portfolio", x: 0, y: 11, w: 12, h: 9 },
-          { i: "execution", x: 0, y: 20, w: 12, h: 5 },
-          { i: "headline", x: 0, y: 25, w: 12, h: 4 },
-          { i: "regime", x: 0, y: 29, w: 12, h: 5 },
-          { i: "confluence", x: 0, y: 34, w: 12, h: 6 },
-          { i: "daily", x: 0, y: 40, w: 12, h: 10 },
-          { i: "weekly", x: 0, y: 50, w: 12, h: 10 },
-          { i: "catalysts", x: 0, y: 60, w: 4, h: 6 },
-          { i: "avoid", x: 4, y: 60, w: 4, h: 6 },
-          { i: "risk", x: 8, y: 60, w: 4, h: 6 },
-          { i: "inputs", x: 0, y: 66, w: 12, h: 8 }
-        ]}>
-          <div key="right_now" data-title="Live Decision Maker">
-            <RightNowCard now={nowData} />
-          </div>
+        <Card pad={14}>
+          <RightNowCard now={nowData} />
+        </Card>
 
-          <div key="pack_status" data-title="The Pack — Sub-Agents" style={{ padding: 16 }}>
+        <Card pad={14}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink3, marginBottom: 8 }}>The pack — sub-agents feeding Alpha Wolf</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {ALL_SOURCES.map((id) => {
@@ -479,20 +463,20 @@ export default function AlphaWolf({ status, agentError }) {
             })}
           </div>
           {plan?.generated_at && <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>Last synthesized: {plan.generated_at}</div>}
-          </div>
+        </Card>
 
-          <div key="portfolio" data-title="Paper Trading Portfolio">
-            <PortfolioCard portfolio={portfolio} onChanged={refreshPortfolio} />
-          </div>
+        <Card pad={14}>
+          <PortfolioCard portfolio={portfolio} onChanged={refreshPortfolio} />
+        </Card>
 
         {/* Execution report from the latest run */}
         {plan?.execution && (
           plan.execution.enabled === false ? (
-            <div key="execution" data-title="Execution Report" style={{ padding: 14 }}>
+            <Card pad={14}>
               <div style={{ fontSize: 12.5, color: T.ink3 }}>⏸ {plan.execution.note || "Trade execution was OFF for the last run."}</div>
-            </div>
+            </Card>
           ) : (plan.execution.executed || []).length > 0 && (
-            <div key="execution" data-title="Execution Report" style={{ padding: 16 }}>
+            <Card pad={14}>
               <div style={{ fontSize: 12, fontWeight: 800, color: T.green, marginBottom: 8 }}>
                 ⚡ Executed {plan.execution.executed.length} trade{plan.execution.executed.length !== 1 ? "s" : ""} on the last run
               </div>
@@ -506,30 +490,28 @@ export default function AlphaWolf({ status, agentError }) {
                   </span>
                 ))}
               </div>
-            </div>
+            </Card>
           )
         )}
 
         {!plan ? (
-          <div key="empty" data-title="No game-plan yet">
-            <EmptyState icon="🐺" title="No game-plan yet"
-              hint="Run the sub-agents (Wolf, Compass, Strategy Scout, Capitol Tracker, Options Flow, Earnings), then click 'Run plan'." />
-          </div>
+          <EmptyState icon="🐺" title="No game-plan yet"
+            hint="Run the sub-agents (Wolf, Compass, Strategy Scout, Capitol Tracker, Options Flow, Earnings), then click 'Run plan'." />
         ) : (<>
 
           {/* Headline action — the single most important move right now */}
           {plan.headline && (
-            <div key="headline" data-title="Headline Action" style={{ padding: 15 }}>
+            <Card pad={14}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <StancePill stance={plan.stance} />
                 <div style={{ fontSize: 16, fontWeight: 800, color: "#4c1d95", flex: 1, minWidth: 0, lineHeight: 1.4 }}>{txt(plan.headline)}</div>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Regime read */}
           {plan.regime && (
-            <div key="regime" data-title="Market Regime" style={{ padding: 15 }}>
+            <Card pad={14}>
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={38} />
                 <div>
@@ -537,44 +519,49 @@ export default function AlphaWolf({ status, agentError }) {
                   <div style={{ fontSize: 13.5, color: "#4c1d95", lineHeight: 1.55 }}>{txt(plan.regime)}</div>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Confluence — where multiple agents agree */}
           {(plan.confluence || []).length > 0 && (
-            <div key="confluence" data-title="🎯 Confluence" style={{ padding: 15 }}>
+            <Card pad={14}>
               <SectionTitle sub="where multiple agents line up — highest conviction">🎯 Confluence</SectionTitle>
               <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
                 {plan.confluence.map((c, i) => <li key={i}>{txt(c)}</li>)}
               </ul>
-            </div>
+            </Card>
           )}
 
-          <div key="daily" data-title="Daily Plan"><PlanBlock title="Daily Plan" plan={plan.daily} weekly={false} currentIdx={nowData?.current_slot?.index} /></div>
-          <div key="weekly" data-title="Weekly Plan"><PlanBlock title="Weekly Plan" plan={plan.weekly} weekly={true} /></div>
+          <Card pad={14}><PlanBlock title="Daily Plan" plan={plan.daily} weekly={false} currentIdx={nowData?.current_slot?.index} /></Card>
+          <Card pad={14}><PlanBlock title="Weekly Plan" plan={plan.weekly} weekly={true} /></Card>
 
           {/* Catalysts + avoid + risk */}
-          <div key="catalysts" data-title="Catalysts" style={{ padding: 15 }}>
-            {(plan.catalysts || []).length > 0 ? (
-              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
-                {plan.catalysts.map((c, i) => <li key={i}>{txt(c)}</li>)}
-              </ul>
-            ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>None flagged.</div>}
-          </div>
-          <div key="avoid" data-title="⛔ Avoid" style={{ padding: 15 }}>
-            {(plan.avoid || []).length > 0 ? (
-              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
-                {plan.avoid.map((c, i) => <li key={i}>{txt(c)}</li>)}
-              </ul>
-            ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>Nothing flagged.</div>}
-          </div>
-          <div key="risk" data-title="Risk management" style={{ padding: 15 }}>
-            <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginTop: 8 }}>{txt(plan.risk_notes) || "—"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Card pad={14}>
+              <SectionTitle sub="upcoming events to watch">Catalysts</SectionTitle>
+              {(plan.catalysts || []).length > 0 ? (
+                <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
+                  {plan.catalysts.map((c, i) => <li key={i}>{txt(c)}</li>)}
+                </ul>
+              ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>None flagged.</div>}
+            </Card>
+            <Card pad={14}>
+              <SectionTitle sub="setups to steer clear of">⛔ Avoid</SectionTitle>
+              {(plan.avoid || []).length > 0 ? (
+                <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
+                  {plan.avoid.map((c, i) => <li key={i}>{txt(c)}</li>)}
+                </ul>
+              ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>Nothing flagged.</div>}
+            </Card>
+            <Card pad={14}>
+              <SectionTitle sub="position sizing & stop discipline">Risk management</SectionTitle>
+              <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginTop: 8 }}>{txt(plan.risk_notes) || "—"}</div>
+            </Card>
           </div>
 
           {/* Pack intel snapshot */}
           {Object.keys(inputs).length > 0 && (
-            <div key="inputs" data-title="Pack Intel" style={{ padding: 15 }}>
+            <Card pad={14}>
               <SectionTitle sub="the raw signals Alpha Wolf reasoned over">Pack intel</SectionTitle>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                 {Object.entries(inputs).map(([k, v]) => (
@@ -583,15 +570,12 @@ export default function AlphaWolf({ status, agentError }) {
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Disclaimer */}
-          <div key="disclaimer" data-title="Disclaimer">
-            <div style={{ fontSize: 11, color: T.ink4, lineHeight: 1.5, padding: "8px 15px" }}>{txt(plan.disclaimer)}</div>
-          </div>
+          <div style={{ fontSize: 11, color: T.ink4, lineHeight: 1.5, padding: "0 4px" }}>{txt(plan.disclaimer)}</div>
         </>)}
-        </DashboardGrid>
       </div>
     </div>
   );
