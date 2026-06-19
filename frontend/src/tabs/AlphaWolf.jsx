@@ -149,7 +149,7 @@ function RightNowCard({ now }) {
   const ideas = now.ideas || [];
   const next = clock.next_event || {};
   return (
-    <Card pad={15} style={{ borderColor: PURPLE + "55", background: T.card }}>
+    <div style={{ padding: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: open ? T.green : T.ink3, padding: "4px 12px", borderRadius: 999 }}>
           {open ? "● MARKET OPEN" : "○ MARKET CLOSED"}
@@ -167,25 +167,41 @@ function RightNowCard({ now }) {
         🐺 {txt(now.directive)}
       </div>
       {ideas.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 8 }}>
-          {ideas.map((i, k) => {
-            const st = STATE_STYLE[i.state] || STATE_STYLE.MONITOR;
-            return (
-              <div key={k} style={{ border: `1px solid ${st.c}33`, borderRadius: 10, padding: "9px 12px", background: st.c + "08" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                  <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 13.5, color: T.ink }}>{i.ticker}</span>
-                  <span style={{ fontSize: 9, fontWeight: 800, color: dirColor(i.direction), textTransform: "uppercase" }}>{i.direction}</span>
-                  {i.live != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.ink2 }}>{fmt$(i.live)}</span>}
-                  <div style={{ flex: 1 }} />
-                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fff", background: st.c, padding: "2px 8px", borderRadius: 4 }}>{st.label}</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 5, lineHeight: 1.45 }}>{txt(i.note)}</div>
-                {i.size_usd != null && (
-                  <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 3, fontFamily: T.mono }}>size ~{fmt$(i.size_usd)} · {i.size_shares} sh</div>
-                )}
-              </div>
-            );
-          })}
+        <div style={{ overflowX: "auto", marginTop: 12 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                {["Ticker", "Dir", "Live", "Size", "Note", "State"].map((h) => (
+                  <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${T.line}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ideas.map((i, k) => {
+                const st = STATE_STYLE[i.state] || STATE_STYLE.MONITOR;
+                return (
+                  <tr key={k} style={{ borderBottom: `1px solid ${T.line2}`, background: st.c + "08" }}>
+                    <td style={{ padding: "8px 10px", fontFamily: T.mono, fontWeight: 800, color: T.ink }}>{i.ticker}</td>
+                    <td style={{ padding: "8px 10px" }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, color: dirColor(i.direction), textTransform: "uppercase" }}>{i.direction}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px", fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: T.ink2 }}>
+                      {i.live != null ? fmt$(i.live) : "—"}
+                    </td>
+                    <td style={{ padding: "8px 10px", fontSize: 10.5, color: T.ink4, fontFamily: T.mono }}>
+                      {i.size_usd != null ? `~${fmt$(i.size_usd)} · ${i.size_shares} sh` : "—"}
+                    </td>
+                    <td style={{ padding: "8px 10px", fontSize: 11.5, color: T.ink3, lineHeight: 1.45, maxWidth: 300 }}>
+                      {txt(i.note)}
+                    </td>
+                    <td style={{ padding: "8px 10px" }}>
+                      <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fff", background: st.c, padding: "3px 8px", borderRadius: 4, whiteSpace: "nowrap" }}>{st.label}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
       {now.pulse?.checked_at && (
@@ -193,7 +209,7 @@ function RightNowCard({ now }) {
           Pulse: checked {now.pulse.checked_at} ET{now.pulse.alerts?.length ? ` · ${now.pulse.alerts.length} alert${now.pulse.alerts.length !== 1 ? "s" : ""} sent` : " · no alerts"} · auto-checks every 30 min in market hours
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -233,7 +249,7 @@ function PortfolioCard({ portfolio, onChanged }) {
   };
 
   return (
-    <Card pad={15} style={{ borderColor: PURPLE + "33" }}>
+    <div style={{ padding: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <SectionTitle sub="simulated fills at live prices · virtual capital">⚡ Paper Trading Portfolio</SectionTitle>
         <div style={{ flex: 1 }} />
@@ -261,21 +277,31 @@ function PortfolioCard({ portfolio, onChanged }) {
 
       <div style={{ fontSize: 11.5, fontWeight: 700, color: T.ink3, marginBottom: 6 }}>Open positions ({positions.length})</div>
       {positions.length > 0 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginBottom: 16 }}>
-          {positions.map((p) => (
-            <div key={p.ticker} style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", background: T.card }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 14, color: T.ink }}>{p.ticker}</span>
-                <span style={{ fontSize: 9.5, fontWeight: 800, color: dirColor(p.direction), background: dirColor(p.direction) + "16", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{p.direction}</span>
-                <div style={{ flex: 1 }} />
-                <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 12.5, color: pnlColor(p.pnl) }}>{(p.pnl ?? 0) >= 0 ? "+" : ""}{fmt$(p.pnl)}</span>
-              </div>
-              <div style={{ fontSize: 11, color: T.ink3, marginTop: 5, fontFamily: T.mono }}>
-                {p.shares} sh · in {fmt$(p.entry_price)} · last {fmt$(p.last_price)}
-              </div>
-              <div style={{ fontSize: 10.5, color: T.ink4, marginTop: 3 }}>{p.entry_date}</div>
-            </div>
-          ))}
+        <div style={{ marginBottom: 16, overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                {["Ticker", "Dir", "Shares", "Entry", "Last", "P&L", "Opened"].map((h, i) => (
+                  <th key={h} style={{ textAlign: i >= 2 && i <= 5 ? "right" : "left", padding: "5px 10px", fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${T.line}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {positions.map((p) => (
+                <tr key={p.ticker} style={{ borderBottom: `1px solid ${T.line2}` }}>
+                  <td style={{ padding: "6px 10px", fontFamily: T.mono, fontWeight: 800, color: T.ink }}>{p.ticker}</td>
+                  <td style={{ padding: "6px 10px" }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: dirColor(p.direction), background: dirColor(p.direction) + "16", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" }}>{p.direction}</span>
+                  </td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{p.shares}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{fmt$(p.entry_price)}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{fmt$(p.last_price)}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, fontWeight: 800, color: pnlColor(p.pnl) }}>{(p.pnl ?? 0) >= 0 ? "+" : ""}{fmt$(p.pnl)}</td>
+                  <td style={{ padding: "6px 10px", fontFamily: T.mono, color: T.ink4 }}>{p.entry_date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div style={{ fontSize: 12.5, color: T.ink4, marginBottom: 16 }}>No open positions — run the plan to put capital to work.</div>
@@ -296,14 +322,14 @@ function PortfolioCard({ portfolio, onChanged }) {
           ))}
         </div>
       </>)}
-    </Card>
+    </div>
   );
 }
 
 function PlanBlock({ title, plan, weekly, currentIdx }) {
   const ideas = plan?.ideas || [];
   return (
-    <Card pad={15}>
+    <div style={{ padding: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
         <SectionTitle sub={weekly ? "swing / position horizon" : "today's actionable read"}>{title}</SectionTitle>
         <BiasPill bias={plan?.bias} />
@@ -316,13 +342,53 @@ function PlanBlock({ title, plan, weekly, currentIdx }) {
         </div>
       )}
       {ideas.length > 0 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-          {ideas.map((idea, i) => <IdeaCard key={i} idea={idea} weekly={weekly} />)}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                {["Ticker", "Dir", "Levels", weekly ? "Catalyst" : "Trigger", "Thesis & Risk"].map((h) => (
+                  <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${T.line}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ideas.map((idea, i) => {
+                const dc = dirColor(idea.direction);
+                return (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.line2}` }}>
+                    <td style={{ padding: "8px 10px", fontFamily: T.mono, fontWeight: 800, color: T.ink, verticalAlign: "top" }}>
+                      {txt(idea.ticker)}<br/>
+                      {!weekly && idea.when && <span style={{ fontSize: 9, fontWeight: 700, color: PURPLE, fontFamily: T.mono, marginTop: 4, display: "inline-block" }}>⏰ {txt(idea.when)}</span>}
+                    </td>
+                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, color: dc, background: dc + "16", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" }}>{txt(idea.direction) || "n/a"}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px", fontSize: 11, fontFamily: T.mono, verticalAlign: "top", whiteSpace: "nowrap" }}>
+                      {!weekly ? (
+                        <>
+                          <div><span style={{ color: T.ink4, fontSize: 9.5 }}>ENT</span> {txt(idea.entry)}</div>
+                          <div><span style={{ color: T.ink4, fontSize: 9.5 }}>TGT</span> {txt(idea.target)}</div>
+                          <div><span style={{ color: T.ink4, fontSize: 9.5 }}>STP</span> {txt(idea.stop)}</div>
+                        </>
+                      ) : "—"}
+                    </td>
+                    <td style={{ padding: "8px 10px", fontSize: 11.5, color: T.ink2, verticalAlign: "top", maxWidth: 200 }}>
+                      {txt(weekly ? idea.catalyst : idea.trigger)}
+                    </td>
+                    <td style={{ padding: "8px 10px", fontSize: 11.5, color: T.ink3, lineHeight: 1.45, verticalAlign: "top", minWidth: 250 }}>
+                      <div style={{ color: T.ink2, marginBottom: 4 }}>{txt(idea.thesis)}</div>
+                      {idea.risk && <div style={{ fontSize: 10.5 }}><b style={{ color: T.ink4 }}>RISK:</b> {txt(idea.risk)}</div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div style={{ fontSize: 12.5, color: T.ink4 }}>No specific ideas this run.</div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -375,14 +441,14 @@ export default function AlphaWolf({ status, agentError }) {
           <AgentControls agentId="alpha_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Run plan" runningLabel="Synthesizing…" />
         </>}
       />
-      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
         <ErrorBanner error={agentError} />
 
-        {/* Live decision maker: market clock + what to do right now */}
-        <RightNowCard now={nowData} />
+        <Card pad={14}>
+          <RightNowCard now={nowData} />
+        </Card>
 
-        {/* Pack status: which sub-agents have fed the plan */}
-        <Card pad={16} style={{ background: T.cardAlt }}>
+        <Card pad={14}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink3, marginBottom: 8 }}>The pack — sub-agents feeding Alpha Wolf</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {ALL_SOURCES.map((id) => {
@@ -399,17 +465,18 @@ export default function AlphaWolf({ status, agentError }) {
           {plan?.generated_at && <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>Last synthesized: {plan.generated_at}</div>}
         </Card>
 
-        {/* Paper portfolio — always visible so the trader can track P&L */}
-        <PortfolioCard portfolio={portfolio} onChanged={refreshPortfolio} />
+        <Card pad={14}>
+          <PortfolioCard portfolio={portfolio} onChanged={refreshPortfolio} />
+        </Card>
 
         {/* Execution report from the latest run */}
         {plan?.execution && (
           plan.execution.enabled === false ? (
-            <Card pad={14} style={{ background: T.cardAlt }}>
+            <Card pad={14}>
               <div style={{ fontSize: 12.5, color: T.ink3 }}>⏸ {plan.execution.note || "Trade execution was OFF for the last run."}</div>
             </Card>
           ) : (plan.execution.executed || []).length > 0 && (
-            <Card pad={16} style={{ borderColor: T.green + "44", background: T.green + "08" }}>
+            <Card pad={14}>
               <div style={{ fontSize: 12, fontWeight: 800, color: T.green, marginBottom: 8 }}>
                 ⚡ Executed {plan.execution.executed.length} trade{plan.execution.executed.length !== 1 ? "s" : ""} on the last run
               </div>
@@ -434,7 +501,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Headline action — the single most important move right now */}
           {plan.headline && (
-            <Card pad={15} style={{ background: PURPLE_BG, borderColor: PURPLE + "44" }}>
+            <Card pad={14}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <StancePill stance={plan.stance} />
                 <div style={{ fontSize: 16, fontWeight: 800, color: "#4c1d95", flex: 1, minWidth: 0, lineHeight: 1.4 }}>{txt(plan.headline)}</div>
@@ -444,7 +511,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Regime read */}
           {plan.regime && (
-            <Card pad={15} style={{ background: PURPLE_BG, borderColor: PURPLE + "33" }}>
+            <Card pad={14}>
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={38} />
                 <div>
@@ -457,7 +524,7 @@ export default function AlphaWolf({ status, agentError }) {
 
           {/* Confluence — where multiple agents agree */}
           {(plan.confluence || []).length > 0 && (
-            <Card pad={15} style={{ borderColor: PURPLE + "33" }}>
+            <Card pad={14}>
               <SectionTitle sub="where multiple agents line up — highest conviction">🎯 Confluence</SectionTitle>
               <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
                 {plan.confluence.map((c, i) => <li key={i}>{txt(c)}</li>)}
@@ -465,12 +532,12 @@ export default function AlphaWolf({ status, agentError }) {
             </Card>
           )}
 
-          <PlanBlock title="Daily Plan" plan={plan.daily} weekly={false} currentIdx={nowData?.current_slot?.index} />
-          <PlanBlock title="Weekly Plan" plan={plan.weekly} weekly={true} />
+          <Card pad={14}><PlanBlock title="Daily Plan" plan={plan.daily} weekly={false} currentIdx={nowData?.current_slot?.index} /></Card>
+          <Card pad={14}><PlanBlock title="Weekly Plan" plan={plan.weekly} weekly={true} /></Card>
 
           {/* Catalysts + avoid + risk */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-            <Card pad={15}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Card pad={14}>
               <SectionTitle sub="upcoming events to watch">Catalysts</SectionTitle>
               {(plan.catalysts || []).length > 0 ? (
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
@@ -478,23 +545,23 @@ export default function AlphaWolf({ status, agentError }) {
                 </ul>
               ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>None flagged.</div>}
             </Card>
-            <Card pad={15} style={{ borderColor: T.red + "33" }}>
-              <SectionTitle sub="what to stay away from">⛔ Avoid</SectionTitle>
+            <Card pad={14}>
+              <SectionTitle sub="setups to steer clear of">⛔ Avoid</SectionTitle>
               {(plan.avoid || []).length > 0 ? (
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
                   {plan.avoid.map((c, i) => <li key={i}>{txt(c)}</li>)}
                 </ul>
               ) : <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>Nothing flagged.</div>}
             </Card>
-            <Card pad={15}>
-              <SectionTitle sub="how to size and protect">Risk management</SectionTitle>
+            <Card pad={14}>
+              <SectionTitle sub="position sizing & stop discipline">Risk management</SectionTitle>
               <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginTop: 8 }}>{txt(plan.risk_notes) || "—"}</div>
             </Card>
           </div>
 
           {/* Pack intel snapshot */}
           {Object.keys(inputs).length > 0 && (
-            <Card pad={15}>
+            <Card pad={14}>
               <SectionTitle sub="the raw signals Alpha Wolf reasoned over">Pack intel</SectionTitle>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                 {Object.entries(inputs).map(([k, v]) => (

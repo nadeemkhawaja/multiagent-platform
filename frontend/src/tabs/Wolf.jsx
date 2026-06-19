@@ -41,36 +41,22 @@ function adaptFutures(list) {
 function FutureCard({ f }) {
   const up = f.ch >= 0, col = up ? T.green : T.red;
   return (
-    <Card pad={14} style={{ position: "relative", overflow: "hidden" }}>
+    <Card pad={12} style={{ position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3, background: col }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 19, fontWeight: 800, fontFamily: T.mono, letterSpacing: -0.5 }}>{f.label}</span>
-            <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3, background: T.line2, padding: "2px 7px", borderRadius: 5, letterSpacing: 0.4 }}>FUTURES</span>
+            <span style={{ fontSize: 17, fontWeight: 800, fontFamily: T.mono, letterSpacing: -0.5 }}>{f.label}</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3, background: T.line2, padding: "2px 6px", borderRadius: 5, letterSpacing: 0.4 }}>FUTURES</span>
           </div>
-          <div style={{ fontSize: 11.5, color: T.ink4, marginTop: 1 }}>{f.name}</div>
+          <div style={{ fontSize: 11, color: T.ink4, marginTop: 1 }}>{f.name}</div>
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 7 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
         <span style={{ fontSize: 22, fontWeight: 800, fontFamily: T.mono, letterSpacing: -1 }}>{f.p.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
         <span style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 700, color: col }}>{up ? "▲" : "▼"} {up ? "+" : ""}{f.ch.toFixed(2)}%</span>
       </div>
     </Card>
-  );
-}
-
-// Pure-CSS change bar — no chart lib needed
-function ChangeBar({ pct, maxAbs = 5 }) {
-  const up = pct >= 0;
-  const col = up ? T.green : T.red;
-  const w = Math.min(100, (Math.abs(pct) / maxAbs) * 100);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, width: 80 }}>
-      {!up && <div style={{ flex: `0 0 ${w / 2}%`, height: 6, background: col, borderRadius: 3, marginLeft: "auto" }} />}
-      <div style={{ width: 1, height: 10, background: T.line, flexShrink: 0 }} />
-      {up && <div style={{ flex: `0 0 ${w / 2}%`, height: 6, background: col, borderRadius: 3 }} />}
-    </div>
   );
 }
 
@@ -79,28 +65,27 @@ function MoverRow({ s, rank }) {
   const col = up ? T.green : T.red;
   const barW = Math.min(100, Math.abs(s.ch) * 8);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 80px auto auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: "20px 1fr 80px auto auto", gap: 10, alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${T.line2}` }}>
       <span style={{ fontFamily: T.mono, fontSize: 11, color: T.ink4 }}>{rank}</span>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{s.t}</div>
-        <div style={{ fontSize: 10.5, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>{s.n}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{s.t}</div>
+        <div style={{ fontSize: 10, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>{s.n}</div>
       </div>
-      {/* Change bar */}
-      <div style={{ height: 6, background: T.line2, borderRadius: 3, overflow: "hidden" }}>
+      <div style={{ height: 5, background: T.line2, borderRadius: 3, overflow: "hidden" }}>
         <div style={{ width: barW + "%", height: "100%", background: col, borderRadius: 3, transition: "width .4s ease" }} />
       </div>
-      <span style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{s.p.toFixed(2)}</span>
-      <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: col, textAlign: "right", minWidth: 64 }}>{up ? "+" : ""}{s.ch.toFixed(2)}%</span>
+      <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, textAlign: "right" }}>{s.p.toFixed(2)}</span>
+      <span style={{ fontFamily: T.mono, fontSize: 11.5, fontWeight: 700, color: col, textAlign: "right", minWidth: 58 }}>{up ? "+" : ""}{s.ch.toFixed(2)}%</span>
     </div>
   );
 }
 function MoverBlock({ title, list, accent, badge }) {
   return (
     <Card pad={14}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 8, background: accent }} />
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-        <span style={{ marginLeft: "auto", fontSize: 10.5, fontFamily: T.mono, color: accent, background: accent + "16", padding: "3px 8px", borderRadius: 6 }}>{badge}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ width: 7, height: 7, borderRadius: 7, background: accent }} />
+        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{title}</div>
+        <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: T.mono, color: accent, background: accent + "16", padding: "2px 7px", borderRadius: 6 }}>{badge}</span>
       </div>
       {list.map((s, i) => <MoverRow key={s.t} s={s} rank={i + 1} />)}
     </Card>
@@ -114,7 +99,6 @@ export default function Wolf({ status, agentError }) {
   const seeded = useRef(null);
 
   const md = data?.market_data || {};
-  // reseed local ticking state whenever the backend delivers a new snapshot
   const sig = JSON.stringify((md.watchlist || []).map((w) => w.symbol));
   useEffect(() => {
     if (seeded.current !== sig) { setWatch(adaptWatch(md.watchlist)); seeded.current = sig; }
@@ -157,47 +141,62 @@ export default function Wolf({ status, agentError }) {
           <EmailPreviewButton agentId="wallstreet_wolf" label="Preview brief" />
           <AgentControls agentId="wallstreet_wolf" onRun={run} busy={busy} refresh={refresh} runLabel="Manual run" runningLabel="Running…" />
         </>} />
-      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
         <ErrorBanner error={agentError} />
         {watch.length === 0 ? (
           <EmptyState icon="$" title="No market data yet"
             hint="Click Refresh to pull live Yahoo Finance prices for the watchlist, FX and metals." />
         ) : (
         <>
-        <Card pad={15} style={{ background: T.cardAlt, borderColor: T.line }}>
-          <div style={{ display: "flex", gap: 14 }}>
-            <LufiAvatar size={38} />
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Market commentary <span style={{ fontSize: 11.5, fontWeight: 600, color: T.ink4 }}>by Lufi</span> <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill></div>
-              <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.55, marginTop: 6, maxWidth: 920, whiteSpace: "pre-line" }}>
-                {commentary || `Breadth is ${advancers >= watch.length / 2 ? "constructive" : "soft"} (${advancers}/${watch.length} advancing). Run a refresh to fetch fresh Yahoo Finance prices and a Qwen3 commentary for today's tape.`}
+        {/* Commentary + Futures side by side */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
+          <Card pad={14} style={{ background: T.cardAlt, borderColor: T.line }}>
+            <div style={{ display: "flex", gap: 12 }}>
+              <LufiAvatar size={32} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  Market commentary <span style={{ fontSize: 11, fontWeight: 600, color: T.ink4 }}>by Lufi</span>
+                  <Pill mono c={T.violet} bg={T.violetBg} style={{ padding: "2px 7px" }}>Qwen3</Pill>
+                </div>
+                {commentary ? (
+                  <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5, color: T.ink2, lineHeight: 1.5, listStyleType: "disc" }}>
+                    {commentary.split("\n").map((l) => l.replace(/^[•\-*]\s*/, "").trim()).filter(Boolean).map((l, i) => (
+                      <li key={i} style={{ marginBottom: 2 }}>{l}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.5 }}>
+                    {`Breadth is ${advancers >= watch.length / 2 ? "constructive" : "soft"} (${advancers}/${watch.length} advancing). Run a refresh to fetch fresh Yahoo Finance prices and a Qwen3 commentary for today's tape.`}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        </Card>
-
-        {futures.length > 0 && (
-          <div>
-            <SectionTitle sub="Broad-market risk gauges — what traders watch first">Index futures</SectionTitle>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          </Card>
+          {futures.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 220 }}>
               {futures.map((f) => <FutureCard key={f.label} f={f} />)}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {/* Movers */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <MoverBlock title="Top 5 Gainers" list={gainers} accent={T.green} badge="Block 1" />
           <MoverBlock title="Top 5 Losers" list={losers} accent={T.red} badge="Block 2" />
         </div>
 
-        <Card pad={15}>
-          <SectionTitle sub="Full watchlist · live prices" right={<Pill mono c={T.ink3}>updating · 2s</Pill>}>Watchlist <span style={{ fontSize: 11, fontFamily: T.mono, color: T.ink4 }}>Block 3</span></SectionTitle>
-          {/* Column headers */}
+        {/* Watchlist */}
+        <Card pad={14}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Watchlist</span>
+            <span style={{ fontSize: 11, fontFamily: T.mono, color: T.ink4 }}>Block 3</span>
+            <Pill mono c={T.ink3} style={{ marginLeft: "auto" }}>updating · 2s</Pill>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 28px" }}>
             {[0, 1].map((col) => (
-              <div key={col} style={{ display: "grid", gridTemplateColumns: "52px 1fr 72px auto 70px", gap: 10, padding: "4px 0 6px", borderBottom: `1px solid ${T.line}` }}>
-                {["Ticker", "Name", "Change", "Price", "Hi / Lo"].map((h) => (
-                  <span key={h} style={{ fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4 }}>{h}</span>
+              <div key={col} style={{ display: "grid", gridTemplateColumns: "48px 1fr 68px auto 60px", gap: 8, padding: "3px 0 5px", borderBottom: `1px solid ${T.line}` }}>
+                {["Ticker", "Name", "Change", "Price", "Hi/Lo"].map((h) => (
+                  <span key={h} style={{ fontSize: 9, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4 }}>{h}</span>
                 ))}
               </div>
             ))}
@@ -211,40 +210,39 @@ export default function Wolf({ status, agentError }) {
                 ? { hi: Math.max(...w.h).toFixed(2), lo: Math.min(...w.h).toFixed(2) }
                 : null;
               return (
-                <div key={w.t} style={{ display: "grid", gridTemplateColumns: "52px 1fr 72px auto 70px", gap: 10, alignItems: "center", padding: "5px 0", borderBottom: `1px solid ${T.line2}` }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 800 }}>{w.t}</span>
-                  <span style={{ fontSize: 10.5, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.n}</span>
-                  {/* CSS change bar */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <div style={{ height: 5, background: T.line2, borderRadius: 3, overflow: "hidden" }}>
+                <div key={w.t} style={{ display: "grid", gridTemplateColumns: "48px 1fr 68px auto 60px", gap: 8, alignItems: "center", padding: "4px 0", borderBottom: `1px solid ${T.line2}` }}>
+                  <span style={{ fontSize: 12, fontWeight: 800 }}>{w.t}</span>
+                  <span style={{ fontSize: 10, color: T.ink4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.n}</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <div style={{ height: 4, background: T.line2, borderRadius: 3, overflow: "hidden" }}>
                       <div style={{ width: barW + "%", height: "100%", background: col, borderRadius: 3, transition: "width .4s" }} />
                     </div>
-                    <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 700, color: col }}>{up ? "+" : ""}{w.ch.toFixed(2)}%</span>
+                    <span style={{ fontFamily: T.mono, fontSize: 9.5, fontWeight: 700, color: col }}>{up ? "+" : ""}{w.ch.toFixed(2)}%</span>
                   </div>
-                  <span style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{w.p.toFixed(2)}</span>
-                  {/* Period hi/lo */}
+                  <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, textAlign: "right" }}>{w.p.toFixed(2)}</span>
                   {hiLo ? (
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 10, fontFamily: T.mono, color: T.green }}>{hiLo.hi}</div>
-                      <div style={{ fontSize: 10, fontFamily: T.mono, color: T.red }}>{hiLo.lo}</div>
+                      <div style={{ fontSize: 9.5, fontFamily: T.mono, color: T.green }}>{hiLo.hi}</div>
+                      <div style={{ fontSize: 9.5, fontFamily: T.mono, color: T.red }}>{hiLo.lo}</div>
                     </div>
-                  ) : <span style={{ fontSize: 10, color: T.ink4 }}>—</span>}
+                  ) : <span style={{ fontSize: 9.5, color: T.ink4 }}>—</span>}
                 </div>
               );
             })}
           </div>
         </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+        {/* Currencies + Metals */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 10 }}>
           <Card pad={14}>
             <SectionTitle sub="Major pairs">Currencies</SectionTitle>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
               {fx.map((f) => (
-                <div key={f.p} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: T.mono }}>{f.p}</span>
+                <div key={f.p} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.line2}` }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, fontFamily: T.mono }}>{f.p}</span>
                   <div style={{ textAlign: "right" }}>
-                    <span style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600 }}>{f.v.toFixed(4)}</span>
-                    <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, marginLeft: 8, color: f.ch >= 0 ? T.green : T.red }}>{f.ch >= 0 ? "+" : ""}{f.ch}%</span>
+                    <span style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600 }}>{f.v.toFixed(4)}</span>
+                    <span style={{ fontFamily: T.mono, fontSize: 10.5, fontWeight: 700, marginLeft: 8, color: f.ch >= 0 ? T.green : T.red }}>{f.ch >= 0 ? "+" : ""}{f.ch}%</span>
                   </div>
                 </div>
               ))}
@@ -253,15 +251,15 @@ export default function Wolf({ status, agentError }) {
           <Card pad={14}>
             <SectionTitle sub="Spot">Precious metals</SectionTitle>
             {metals.map((m) => (
-              <div key={m.p} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${T.line2}` }}>
-                <span style={{ width: 30, height: 30, borderRadius: 8, background: m.p === "Gold" ? "#f59e0b1a" : "#94a3b81a", color: m.p === "Gold" ? "#d4920a" : "#64748b", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>{m.p[0]}</span>
+              <div key={m.p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
+                <span style={{ width: 26, height: 26, borderRadius: 7, background: m.p === "Gold" ? "#f59e0b1a" : "#94a3b81a", color: m.p === "Gold" ? "#d4920a" : "#64748b", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>{m.p[0]}</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{m.p}</div>
-                  <div style={{ fontSize: 10.5, color: T.ink4, fontFamily: T.mono }}>{m.sym}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>{m.p}</div>
+                  <div style={{ fontSize: 10, color: T.ink4, fontFamily: T.mono }}>{m.sym}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600 }}>${m.v.toFixed(2)}</div>
-                  <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: m.ch >= 0 ? T.green : T.red }}>{m.ch >= 0 ? "+" : ""}{m.ch}%</span>
+                  <div style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600 }}>${m.v.toFixed(2)}</div>
+                  <span style={{ fontFamily: T.mono, fontSize: 10.5, fontWeight: 700, color: m.ch >= 0 ? T.green : T.red }}>{m.ch >= 0 ? "+" : ""}{m.ch}%</span>
                 </div>
               </div>
             ))}
