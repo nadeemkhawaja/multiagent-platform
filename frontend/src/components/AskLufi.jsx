@@ -1,5 +1,5 @@
 // ============================================================================
-// AskAI.jsx — per-agent AI assistant. A floating panel on every agent tab:
+// AskLufi.jsx — per-agent AI assistant. A floating panel on every agent tab:
 // ask the agent's model to do ad-hoc work over that agent's latest data
 // ("summarize today's movers", "draft a reply", "which idea is riskiest?").
 // Uses the agent's configured model (Settings → AI models).
@@ -8,7 +8,7 @@ import { useState, useRef, useEffect } from "react";
 import { T } from "../theme/tokens";
 import { agentAssist } from "../state/api";
 
-export default function AskAI({ agentId, agentName, color }) {
+export default function AskLufi({ agentId, agentName, color }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState([]);   // {role: "user"|"ai"|"error", text}
@@ -38,13 +38,13 @@ export default function AskAI({ agentId, agentName, color }) {
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} title={`Ask AI about ${agentName}`} style={{
+      <button onClick={() => setOpen(true)} title={`Ask Lufi about ${agentName}`} style={{
         position: "fixed", right: 22, bottom: 22, zIndex: 900,
         display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
         background: col, color: "#fff", border: "none", borderRadius: 999,
         fontSize: 13, fontWeight: 800, fontFamily: T.sans, cursor: "pointer",
         boxShadow: "0 6px 20px rgba(0,0,0,.22)",
-      }}>✦ Ask AI</button>
+      }}>✦ Ask Lufi</button>
     );
   }
 
@@ -59,7 +59,7 @@ export default function AskAI({ agentId, agentName, color }) {
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", background: col + "14", borderBottom: `1px solid ${T.line}` }}>
         <span style={{ width: 26, height: 26, borderRadius: 8, background: col, color: "#fff", display: "grid", placeItems: "center", fontSize: 13, fontWeight: 800 }}>✦</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: T.ink }}>Ask AI · {agentName}</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: T.ink }}>Ask Lufi · {agentName}</div>
           <div style={{ fontSize: 10.5, color: T.ink3 }}>works on this agent's latest data · uses its configured model</div>
         </div>
         <button onClick={() => setOpen(false)} style={{ border: "none", background: "transparent", color: T.ink3, fontSize: 16, cursor: "pointer", padding: 4 }}>✕</button>

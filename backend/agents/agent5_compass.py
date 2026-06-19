@@ -23,7 +23,7 @@ import yfinance as yf
 from database import SessionLocal, AgentData
 from llm_client import generate_completion, generate_json
 from orchestrator import orchestrator
-from email_utils import send_html_email
+from email_utils import send_html_email, bullets_to_html
 
 AGENT_ID = "compass"
 DAILY_DIGEST_EMAIL = os.getenv("DAILY_DIGEST_EMAIL", "")
@@ -229,9 +229,11 @@ async def llm_read(sectors, futures, headlines, vix=None):
     vix_txt = (f"  VIX {vix['level']} ({vix['regime']} volatility, "
                f"{'+' if vix['change'] >= 0 else ''}{vix['change']} on the session)") if vix else "  (no VIX data)"
     prompt = f"""You are a pre-market strategist. Give a directional read of today's market tone
-as 3-5 bullet points. Each bullet starts with '• ' on its own line, max 12 words, crisp and
-specific. Reference /ES or /NQ pivot levels, 1-2 sectors, and the VIX regime if notable.
-Plain-English, non-hyperbolic. No paragraphs, no intro/outro text.
+as 3-4 concise bullet points. Hard rules: each bullet is its own idea, MAX 12 words, plain English,
+specific — reference /ES or /NQ pivots, 1-2 sectors, and the VIX regime if notable. No filler,
+no hype, no run-on sentences. 
+
+Return ONLY JSON: {{"bullets": ["First concise bullet", "Second concise bullet", "Third concise bullet"]}}
 
 Sector bias (-100 bearish .. +100 bullish):
 {sec_txt}
@@ -243,11 +245,17 @@ Futures & pivots:
 {fut_txt}
 
 Headlines:
-{head_txt}
-/no_think"""
+{head_txt}"""
     try:
-        out = await generate_completion(prompt, agent_id=AGENT_ID)
-        return re.sub(r"<think>.*?</think>", "", out, flags=re.DOTALL).strip()
+        data = await generate_json(prompt, system_prompt="You are a pre-market strategist. Return only one JSON object.",
+                                   agent_id=AGENT_ID, use_cache=False)
+        bullets = data.get("bullets") if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        out = []
+        for b in (bullets or [])[:4]:
+            words = str(b).strip().lstrip("•-* ").split()
+            if words:
+                out.append("• " + " ".join(words[:14]))  # clamp length so it stays concise
+        return "\n".join(out)
     except Exception as e:
         print(f"[Compass] LLM error: {e}")
         return ""
@@ -294,7 +302,7 @@ def build_compass_html(payload):
         <div style='color:#5b6472;font-size:13px;margin-top:2px'>{tone_desc}</div>
         <div style='font-family:monospace;color:#8a909c;margin-top:4px'>composite {composite:+d}</div>
       </div>
-      <p style='line-height:1.55;white-space:pre-line'>{payload.get('read', '')}</p>
+      {bullets_to_html(payload.get('read', '')) or "<p style='color:#8a909c'>No read.</p>"}
       <table style='width:100%;border-collapse:collapse;margin-top:12px'>
         <thead><tr style='text-align:left;color:#8a909c;font-size:11px'>
           <th style='padding:6px 12px'>SECTOR</th><th style='padding:6px 12px'>BIAS</th></tr></thead>

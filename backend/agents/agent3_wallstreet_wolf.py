@@ -20,6 +20,28 @@ DEFAULT_WATCHLIST = [
     "DELL", "BABA", "PLTR", "GBTC", "COIN", "MSTR",                   # hardware, China tech, crypto
 ]
 
+# Symbol → company name. The watchlist table shows a real name instead of just
+# echoing the ticker; unknown (user-added) symbols fall back to the ticker.
+TICKER_NAMES = {
+    "AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Alphabet", "AMZN": "Amazon",
+    "META": "Meta Platforms", "TSLA": "Tesla", "NFLX": "Netflix", "ORCL": "Oracle",
+    "NVDA": "NVIDIA", "AMD": "Advanced Micro Devices", "INTC": "Intel", "AVGO": "Broadcom",
+    "QCOM": "Qualcomm", "MU": "Micron Technology", "SMCI": "Super Micro Computer",
+    "CSCO": "Cisco Systems", "DELL": "Dell Technologies", "BABA": "Alibaba Group",
+    "PLTR": "Palantir Technologies", "GBTC": "Grayscale Bitcoin Trust",
+    "COIN": "Coinbase Global", "MSTR": "Strategy (MicroStrategy)",
+    # extra common names so a customized watchlist still resolves
+    "AMAT": "Applied Materials", "LRCX": "Lam Research", "ARM": "Arm Holdings",
+    "TSM": "Taiwan Semiconductor", "ASML": "ASML Holding", "MRVL": "Marvell Technology",
+    "CRM": "Salesforce", "ADBE": "Adobe", "UBER": "Uber Technologies", "SHOP": "Shopify",
+    "JPM": "JPMorgan Chase", "BAC": "Bank of America", "V": "Visa", "MA": "Mastercard",
+    "DIS": "Walt Disney", "PYPL": "PayPal", "SQ": "Block", "HOOD": "Robinhood",
+}
+
+
+def ticker_name(symbol: str) -> str:
+    return TICKER_NAMES.get((symbol or "").upper(), symbol)
+
 # Broad-market index futures — the headline risk gauges traders watch first.
 FUTURES = {"ES=F": ("/ES", "S&P 500 E-mini"), "NQ=F": ("/NQ", "Nasdaq-100 E-mini")}
 METALS = ["GC=F", "SI=F"]  # Gold, Silver
@@ -122,6 +144,8 @@ async def wallstreet_wolf_job():
         # Separate stocks, metals, currencies
         watchlist = get_watchlist()
         stocks_only = [d for d in market_data if d["symbol"] in watchlist]
+        for d in stocks_only:                       # attach a readable company name
+            d["name"] = d.get("name") or ticker_name(d["symbol"])
         stocks_only.sort(key=lambda x: x["change_pct"], reverse=True)
 
         top_gainers = stocks_only[:5]

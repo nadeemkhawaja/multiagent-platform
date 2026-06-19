@@ -7,7 +7,7 @@ import { Dot } from "./theme/ui";
 import { useSystemState, useAgentData } from "./state/api";
 import { ToastContainer, useToasts, useAgentToasts } from "./components/Toast";
 import CommandPalette from "./components/CommandPalette";
-import AskAI from "./components/AskAI";
+import AskLufi from "./components/AskLufi";
 import Aurora from "./components/Aurora";
 
 import Orchestrator   from "./tabs/Orchestrator";
@@ -346,8 +346,8 @@ export default function App() {
         <TabErrorBoundary key={tab}><div className="om-fade">{content}</div></TabErrorBoundary>
       </div>
 
-      {/* Per-agent AI assistant — every agent tab gets an Ask-AI panel */}
-      {TABS[tab] && <AskAI key={"ai-" + tab} agentId={tab} agentName={agent?.n || tab} color={AGENT_COLOR[tab]} />}
+      {/* Per-agent AI assistant — every agent tab gets an Ask-Lufi panel */}
+      {TABS[tab] && <AskLufi key={"ai-" + tab} agentId={tab} agentName={agent?.n || tab} color={AGENT_COLOR[tab]} />}
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
