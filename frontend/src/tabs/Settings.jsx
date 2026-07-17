@@ -68,8 +68,14 @@ function ScheduleRow({ agent, info, onSave }) {
   );
 }
 
-const PROVIDER_LABEL = { grok: "Grok (xAI) · free", openai: "OpenAI · paid", anthropic: "Claude (Anthropic) · paid" };
-const KEY_PLACEHOLDER = { grok: "xai-…", openai: "sk-…", anthropic: "sk-ant-…" };
+const PROVIDER_LABEL = {
+  anthropic: "Claude (Anthropic)",
+  local: "Local endpoint (vLLM/LM Studio)",
+  ollama: "Ollama",
+  grok: "Grok (xAI)",
+  openai: "OpenAI",
+};
+const KEY_PLACEHOLDER = { grok: "xai-…", openai: "sk-…", anthropic: "sk-ant-…", local: "usually not needed" };
 
 function ProviderKeyRow({ prov, st, onSave }) {
   const [val, setVal] = useState("");
@@ -145,7 +151,7 @@ function ModelRow({ agent, name, llm, onSave }) {
         </div>
       ) : (
         <select value={current} onChange={change} style={{ ...inputStyle(), marginTop: 0 }}>
-          <option value="">Local · {llm.default_model} (default)</option>
+          <option value="">Default · {llm.default_model}</option>
           {!known.has(current) && current && <option value={current}>{current} (custom)</option>}
           {options.map((g) => (
             <optgroup key={g.label} label={g.configured ? g.label : `${g.label} — no API key`}>
@@ -157,7 +163,7 @@ function ModelRow({ agent, name, llm, onSave }) {
           <option value="__custom__">Custom model…</option>
         </select>
       )}
-      <span style={{ fontSize: 11, color: T.ink4, minWidth: 56 }}>{saving ? "Saving…" : current ? "frontier" : "local"}</span>
+      <span style={{ fontSize: 11, color: T.ink4, minWidth: 56 }}>{saving ? "Saving…" : current ? current.split(":")[0] : "default"}</span>
     </div>
   );
 }
@@ -391,7 +397,7 @@ export default function Settings({ mode, setMode }) {
 
         {/* AI models */}
         <Card pad={15}>
-          <SectionTitle sub="Local Qwen by default — route any agent to a frontier model (applies on its next run)">AI models</SectionTitle>
+          <SectionTitle sub={`Default: ${llm?.default_model || "…"} — route any agent to Claude, the local endpoint, or Ollama (applies on its next run)`}>AI models</SectionTitle>
           {llm ? (
             <>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -402,18 +408,27 @@ export default function Settings({ mode, setMode }) {
                 ))}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "6px 0 2px" }}>Provider API keys</div>
-              {["grok", "openai", "anthropic"].map((prov) => (
+              {["anthropic", "grok", "openai"].map((prov) => (
                 <ProviderKeyRow key={prov} prov={prov} st={llm.providers?.[prov] || {}} onSave={onKeySave} />
               ))}
+              {llm.providers?.local && (
+                <div style={{ fontSize: 11, color: T.ink4, marginTop: 6 }}>
+                  Local endpoint: <span style={{ fontFamily: T.mono }}>{llm.providers.local.base_url}</span>
+                  {llm.providers.local.model
+                    ? <> serving <span style={{ fontFamily: T.mono }}>{llm.providers.local.model}</span> — no API key needed.</>
+                    : <> — set <span style={{ fontFamily: T.mono }}>LOCAL_LLM_MODEL</span> in .env to enable it.</>}
+                </div>
+              )}
               <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 2px" }}>Model per agent</div>
               {schedules && Object.entries(schedules).map(([agent, info]) => (
                 <ModelRow key={agent} agent={agent} name={info.name} llm={llm} onSave={onModelSave} />
               ))}
               <div style={{ fontSize: 11, color: T.ink4, marginTop: 10 }}>
                 Keys saved here apply immediately — no restart. <span style={{ fontFamily: T.mono }}>.env</span> vars
-                (<span style={{ fontFamily: T.mono }}>XAI_API_KEY</span>, <span style={{ fontFamily: T.mono }}>OPENAI_API_KEY</span>,
-                <span style={{ fontFamily: T.mono }}> ANTHROPIC_API_KEY</span>) still work as a fallback.
-                Agents without an override always use local <span style={{ fontFamily: T.mono }}>{llm.default_model}</span>.
+                (<span style={{ fontFamily: T.mono }}>ANTHROPIC_API_KEY</span>, <span style={{ fontFamily: T.mono }}>XAI_API_KEY</span>,
+                <span style={{ fontFamily: T.mono }}> OPENAI_API_KEY</span>) still work as a fallback.
+                Agents without an override use the default <span style={{ fontFamily: T.mono }}>{llm.default_model}</span>;
+                if a cloud provider is down or has no key, calls automatically fall back to the local endpoint, then Ollama.
               </div>
             </>
           ) : <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>}

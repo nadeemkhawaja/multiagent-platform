@@ -340,8 +340,10 @@ def test_decide_orders_closes_and_reopens_on_direction_flip():
     positions = {"TSLA": {"direction": "short", "shares": 5, "entry_price": 200.0}}
     orders = decide_orders(plan, positions, _settings())
     assert orders[0]["action"] == "close" and orders[0]["ticker"] == "TSLA"
-    assert orders[1] == {"action": "open", "ticker": "TSLA", "direction": "long",
-                         "thesis": "", "reason": "daily plan idea"}
+    # open orders now also carry parsed risk levels (stop/target/atr14/confidence)
+    assert orders[1]["action"] == "open" and orders[1]["ticker"] == "TSLA"
+    assert orders[1]["direction"] == "long" and orders[1]["reason"] == "daily plan idea"
+    assert set(orders[1]) >= {"stop", "target", "atr14", "confidence"}
 
 
 def test_decide_orders_closes_avoided_holdings_without_reopening():
@@ -438,7 +440,7 @@ def test_sanitize_plan_coerces_object_fields_to_text():
     idea = plan["daily"]["ideas"][0]
     # daily ideas carry live-trading fields (entry/stop/target/when), absent → ""
     assert idea == {"ticker": "NVDA", "direction": "long", "thesis": "AI demand",
-                    "risk": "below 110", "trigger": "120",
+                    "risk": "below 110", "trigger": "120", "confidence": None,
                     "entry": "", "stop": "", "target": "", "when": ""}
     assert plan["daily"]["timeline"] == []              # no timeline given → []
     assert plan["weekly"]["bias"] == "NEUTRAL"          # invalid bias → NEUTRAL
@@ -568,3 +570,131 @@ def test_mailman_summary_due_once_per_calendar_day():
     assert summary_due("2026-06-17", today="2026-06-18") is True
     # Never sent → due.
     assert summary_due(None, today="2026-06-18") is True
+
+
+# ── Paper Broker: risk management (stops/targets) + journal stats ────────────
+def test_stop_target_orders_long_and_short():
+    from paper_broker import stop_target_orders
+    positions = {
+        "NVDA": {"direction": "long",  "stop": 95.0,  "target": 120.0},
+        "AMD":  {"direction": "long",  "stop": 90.0,  "target": 110.0},
+        "TSLA": {"direction": "short", "stop": 260.0, "target": 200.0},
+        "MSFT": {"direction": "long",  "stop": 300.0, "target": 400.0},
+    }
+    prices = {"NVDA": 94.0,    # long, below stop → close
+              "AMD": 111.0,    # long, above target → close
+              "TSLA": 261.0,   # short, above stop → close
+              "MSFT": 350.0}   # between levels → hold
+    orders = {o["ticker"]: o["reason"] for o in stop_target_orders(positions, prices)}
+    assert "stop hit" in orders["NVDA"]
+    assert "target hit" in orders["AMD"]
+    assert "stop hit" in orders["TSLA"]
+    assert "MSFT" not in orders
+
+
+def test_stop_target_orders_ignores_missing_prices_and_levels():
+    from paper_broker import stop_target_orders
+    positions = {"A": {"direction": "long", "stop": 10.0, "target": 20.0},
+                 "B": {"direction": "long"}}
+    assert stop_target_orders(positions, {"B": 5.0}) == []
+
+
+def test_default_levels_from_atr():
+    from paper_broker import _default_levels
+    stop, target = _default_levels("long", 100.0, 2.0)   # risk = 1.2×2 = 2.4
+    assert stop == 97.6 and target == 104.8
+    stop, target = _default_levels("short", 100.0, 2.0)
+    assert stop == 102.4 and target == 95.2
+    stop, target = _default_levels("long", 100.0, None)  # 2% envelope fallback
+    assert stop == 98.0 and target == 104.0
+
+
+def test_sane_stop_rejects_wrong_side():
+    from paper_broker import _sane_stop, _sane_target
+    assert _sane_stop("long", 100.0, 95.0) == 95.0
+    assert _sane_stop("long", 100.0, 105.0) is None     # stop above a long entry
+    assert _sane_stop("short", 100.0, 105.0) == 105.0
+    assert _sane_target("long", 100.0, 95.0) is None    # target below a long entry
+    assert _sane_target("short", 100.0, 95.0) == 95.0
+
+
+def test_apply_orders_stores_stop_target_and_journals_closes():
+    from paper_broker import apply_orders, new_portfolio
+    settings = {"enabled": True, "capital": 100_000.0, "position_pct": 10.0, "max_positions": 8}
+    portfolio = new_portfolio(100_000.0)
+    trades, journal = [], []
+    apply_orders(portfolio, [{"action": "open", "ticker": "NVDA", "direction": "long",
+                              "thesis": "t", "reason": "daily plan idea",
+                              "stop": 95.0, "target": 120.0, "confidence": 8}],
+                 {"NVDA": 100.0}, settings, trades, journal)
+    pos = portfolio["positions"]["NVDA"]
+    assert pos["stop"] == 95.0 and pos["target"] == 120.0 and pos["confidence"] == 8
+
+    apply_orders(portfolio, [{"action": "close", "ticker": "NVDA", "reason": "target hit ($120.0)"}],
+                 {"NVDA": 121.0}, settings, trades, journal)
+    assert len(journal) == 1
+    j = journal[0]
+    assert j["ticker"] == "NVDA" and j["pnl"] > 0 and j["reason"].startswith("target hit")
+    assert j["exit_price"] == 121.0 and j["confidence"] == 8
+
+
+def test_apply_orders_derives_levels_when_plan_gave_none():
+    from paper_broker import apply_orders, new_portfolio
+    settings = {"enabled": True, "capital": 100_000.0, "position_pct": 10.0, "max_positions": 8}
+    portfolio = new_portfolio(100_000.0)
+    apply_orders(portfolio, [{"action": "open", "ticker": "AMD", "direction": "long",
+                              "thesis": "", "reason": "daily plan idea", "atr14": 3.0}],
+                 {"AMD": 150.0}, settings, [], [])
+    pos = portfolio["positions"]["AMD"]
+    assert pos["stop"] == 146.4          # 150 − 1.2×3
+    assert pos["target"] == 157.2        # 150 + 2×3.6
+
+
+def test_journal_stats_win_rate_and_profit_factor():
+    from paper_broker import journal_stats
+    journal = [
+        {"pnl": 100.0, "hold_days": 1.0, "reason": "target hit ($x)"},
+        {"pnl": 60.0,  "hold_days": 2.0, "reason": "plan flipped"},
+        {"pnl": -40.0, "hold_days": 0.5, "reason": "stop hit ($y)"},
+        {"pnl": -20.0, "hold_days": 1.5, "reason": "stop hit ($z)"},
+    ]
+    s = journal_stats(journal)
+    assert s["trades"] == 4 and s["wins"] == 2 and s["losses"] == 2
+    assert s["win_rate"] == 50.0
+    assert s["total_pnl"] == 100.0
+    assert s["profit_factor"] == round(160 / 60, 2)
+    assert s["by_exit"]["stop"]["n"] == 2
+    assert s["by_exit"]["target"]["n"] == 1
+    assert s["by_exit"]["plan"]["n"] == 1
+    assert journal_stats([]) == {"trades": 0}
+
+
+# ── Alpha Wolf: confidence coercion + idea enrichment ────────────────────────
+def test_as_confidence_coercion():
+    from agents.agent13_alpha_wolf import _as_confidence
+    assert _as_confidence(7) == 7
+    assert _as_confidence("8/10") == 8
+    assert _as_confidence("9.4") == 9
+    assert _as_confidence(15) == 10
+    assert _as_confidence(0) == 1
+    assert _as_confidence("high") is None
+    assert _as_confidence(None) is None
+
+
+def test_enrich_ideas_parses_levels_and_sorts_by_confidence():
+    from agents.agent13_alpha_wolf import _enrich_ideas
+    plan = {"daily": {"ideas": [
+        {"ticker": "AMD", "direction": "long", "confidence": 4,
+         "entry": "$150 zone", "stop": "$147", "target": "$156"},
+        {"ticker": "NVDA", "direction": "long", "confidence": 9,
+         "entry": "$100.50", "stop": "$98", "target": "$106"},
+    ]}}
+    prices = {"AMD": 150.2, "NVDA": 100.6}
+    tech = {"NVDA": {"atr14": 2.5}}
+    _enrich_ideas(plan, prices, tech)
+    ideas = plan["daily"]["ideas"]
+    assert ideas[0]["ticker"] == "NVDA"          # sorted by confidence desc
+    assert ideas[0]["entry_px"] == 100.5 and ideas[0]["stop_px"] == 98.0
+    assert ideas[0]["rr"] == round(5.5 / 2.5, 1)
+    assert ideas[0]["atr14"] == 2.5
+    assert ideas[1]["entry_px"] == 150.0

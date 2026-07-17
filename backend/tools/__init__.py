@@ -8,4 +8,5 @@ from .registry import tool, all_tools, get, call, ToolError
 from . import web        # noqa: F401  web.fetch_json
 from . import weather    # noqa: F401  weather.current
 from . import market     # noqa: F401  market.quotes
+from . import technicals # noqa: F401  market.technicals
 from . import mcp_bridge # noqa: F401  mcp.call / mcp.list_tools

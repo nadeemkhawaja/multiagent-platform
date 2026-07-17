@@ -17,3 +17,4 @@ pytest==8.2.0
 # MCP client support (mcp_client.py). Optional at runtime — the platform
 # degrades gracefully if absent — but installed by default.
 mcp==1.27.2
+anthropic>=0.117.0

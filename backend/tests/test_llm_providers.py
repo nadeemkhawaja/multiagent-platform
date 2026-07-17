@@ -30,15 +30,45 @@ def test_resolve_model_honors_agent_override(monkeypatch):
     import database
     monkeypatch.setattr(database, "get_config",
                         lambda key, default=None: {"wolf": "openai:gpt-test"} if key == "agent_models" else default)
+    default = llm_client.parse_model_spec(llm_client.default_model_spec())
     assert llm_client.resolve_model("wolf") == ("openai", "gpt-test")
-    assert llm_client.resolve_model("other") == llm_client.parse_model_spec(llm_client.LLM_MODEL)
-    assert llm_client.resolve_model(None) == llm_client.parse_model_spec(llm_client.LLM_MODEL)
+    assert llm_client.resolve_model("other") == default
+    assert llm_client.resolve_model(None) == default
+
+
+def test_default_model_spec_follows_ai_provider(monkeypatch):
+    monkeypatch.setattr(llm_client, "AI_PROVIDER", "anthropic")
+    monkeypatch.setattr(llm_client, "ANTHROPIC_MODEL", "claude-opus-4-8")
+    assert llm_client.default_model_spec() == "anthropic:claude-opus-4-8"
+    monkeypatch.setattr(llm_client, "AI_PROVIDER", "local")
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "google/gemma-test")
+    assert llm_client.default_model_spec() == "local:google/gemma-test"
+    monkeypatch.setattr(llm_client, "AI_PROVIDER", "")
+    assert llm_client.default_model_spec() == llm_client.LLM_MODEL
+    # provider selected but no model configured → fall back to LLM_MODEL
+    monkeypatch.setattr(llm_client, "AI_PROVIDER", "local")
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "")
+    assert llm_client.default_model_spec() == llm_client.LLM_MODEL
 
 
 def test_provider_status_shape():
     st = llm_client.provider_status()
-    assert set(st.keys()) == {"ollama", "openai", "anthropic", "grok"}
+    assert set(st.keys()) == {"ollama", "local", "openai", "anthropic", "grok"}
     assert st["ollama"]["configured"] is True
+    assert st["local"]["needs_key"] is False
+
+
+def test_candidate_chain_degrades_to_local_then_ollama(monkeypatch):
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "gemma-test")
+    chain = llm_client._candidate_chain("anthropic", "claude-opus-4-8")
+    assert chain == [("anthropic", "claude-opus-4-8"),
+                     ("local", "gemma-test"),
+                     ("ollama", llm_client._ollama_fallback_model())]
+    # local primary skips itself; ollama primary still gets local as a backup
+    assert llm_client._candidate_chain("local", "gemma-test") == [
+        ("local", "gemma-test"), ("ollama", llm_client._ollama_fallback_model())]
+    assert llm_client._candidate_chain("ollama", "qwen3.5:4b") == [
+        ("ollama", "qwen3.5:4b"), ("local", "gemma-test")]
 
 
 # ── API key resolution (Settings UI keys override env, env is fallback) ─────
@@ -89,7 +119,8 @@ def test_ui_key_reaches_request_header(monkeypatch):
 
 
 def test_suggested_models_cover_frontier_providers():
-    assert set(llm_client.SUGGESTED_MODELS.keys()) == {"grok", "openai", "anthropic"}
+    assert set(llm_client.SUGGESTED_MODELS.keys()) == {"grok", "openai", "anthropic", "local"}
+    assert "claude-opus-4-8" in llm_client.SUGGESTED_MODELS["anthropic"]
 
 
 # ── provider routing (mocked HTTP) ───────────────────────────────────────────
@@ -143,20 +174,68 @@ def test_generate_completion_routes_to_grok(monkeypatch):
     assert captured["json"]["model"] == "grok-4-fast"
 
 
+def _patch_anthropic_sdk(monkeypatch, captured, text='{"ok": true}'):
+    """Fake the official Anthropic SDK client used by _call_anthropic."""
+    from types import SimpleNamespace as NS
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            return NS(stop_reason="end_turn",
+                      content=[NS(type="text", text=text)],
+                      usage=NS(input_tokens=9, output_tokens=4))
+
+    class FakeSDK:
+        def __init__(self, **kw):
+            captured["client"] = kw
+            self.messages = FakeMessages()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(llm_client.anthropic_sdk, "AsyncAnthropic", FakeSDK)
+
+
 def test_generate_completion_routes_to_anthropic_with_json_mode(monkeypatch):
     captured = {}
-    _patch_post(monkeypatch, {
-        "content": [{"type": "text", "text": '{"ok": true}'}],
-        "usage": {"input_tokens": 9, "output_tokens": 4},
-    }, captured)
+    _patch_anthropic_sdk(monkeypatch, captured)
     monkeypatch.setattr(llm_client, "ANTHROPIC_API_KEY", "sk-ant-test")
-    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-test"))
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-opus-4-8"))
 
     out = asyncio.run(llm_client.generate_completion("hello", json_mode=True, use_cache=False))
     assert out == '{"ok": true}'
-    assert captured["url"].endswith("/v1/messages")
-    assert captured["headers"]["x-api-key"] == "sk-ant-test"
-    assert "JSON" in captured["json"]["system"]
+    assert captured["client"]["api_key"] == "sk-ant-test"
+    assert captured["model"] == "claude-opus-4-8"
+    assert "JSON" in captured["system"]
+    assert captured["thinking"] == {"type": "adaptive"}
+
+
+def test_anthropic_haiku_omits_adaptive_thinking(monkeypatch):
+    captured = {}
+    _patch_anthropic_sdk(monkeypatch, captured, text="hi")
+    monkeypatch.setattr(llm_client, "ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-haiku-4-5"))
+
+    out = asyncio.run(llm_client.generate_completion("hello", use_cache=False))
+    assert out == "hi"
+    assert "thinking" not in captured
+
+
+def test_generate_completion_routes_to_local_endpoint(monkeypatch):
+    captured = {}
+    _patch_post(monkeypatch, {
+        "choices": [{"message": {"content": "gemma says hi"}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+    }, captured)
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_BASE_URL", "http://10.20.1.232:8001/v1")
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("local", "google/gemma-test"))
+
+    out = asyncio.run(llm_client.generate_completion("hello", json_mode=True, use_cache=False))
+    assert out == "gemma says hi"
+    assert captured["url"] == "http://10.20.1.232:8001/v1/chat/completions"
+    assert "Authorization" not in captured["headers"]        # no key required
+    assert "response_format" not in captured["json"]         # JSON asked via prompt
+    assert "JSON" in captured["json"]["messages"][0]["content"]
 
 
 def test_generate_completion_ollama_records_tokens_to_trace(monkeypatch):
@@ -178,9 +257,19 @@ def test_generate_completion_ollama_records_tokens_to_trace(monkeypatch):
     assert metrics["tokens_out"] == 25
 
 
-def test_missing_api_key_fails_fast_without_retries(monkeypatch):
+def test_missing_api_key_falls_back_to_ollama(monkeypatch):
+    """A missing Claude key must not error out — the call degrades through the
+    fallback chain (local skipped here — unset) and Ollama answers."""
+    import database
+    monkeypatch.setattr(database, "get_config", lambda key, default=None: default)
     monkeypatch.setattr(llm_client, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "")
     monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-test"))
+    captured = {}
+    _patch_post(monkeypatch, {
+        "message": {"content": "ollama caught it"},
+        "prompt_eval_count": 5, "eval_count": 3, "eval_duration": int(1e9),
+    }, captured)
 
     slept = {"n": 0}
 
@@ -189,6 +278,25 @@ def test_missing_api_key_fails_fast_without_retries(monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", count_sleep)
 
     out = asyncio.run(llm_client.generate_completion("hello", use_cache=False))
+    assert out == "ollama caught it"
+    assert captured["url"].endswith("/api/chat")
+    assert slept["n"] == 0   # ConfigError skips straight to the next provider
+
+
+def test_all_providers_down_returns_error(monkeypatch):
+    import database
+    monkeypatch.setattr(database, "get_config", lambda key, default=None: default)
+    monkeypatch.setattr(llm_client, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "")
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-test"))
+
+    async def failing_post(self, url, json=None, headers=None, timeout=None):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(httpx.AsyncClient, "post", failing_post)
+
+    async def no_sleep(_seconds):
+        pass
+    monkeypatch.setattr(asyncio, "sleep", no_sleep)
+
+    out = asyncio.run(llm_client.generate_completion("hello", use_cache=False))
     assert out.startswith("Error:")
-    assert "ANTHROPIC_API_KEY" in out
-    assert slept["n"] == 0   # ConfigError short-circuits the retry loop

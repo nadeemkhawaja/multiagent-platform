@@ -71,7 +71,7 @@ function CommandCenterHero({ s, online }) {
                 {healthy ? "All systems nominal" : s.alarm ? "Alarm active" : "Backend offline"}
               </span>
               <span style={{ color: T.ink4 }}>·</span>
-              <span>{(s.llm && s.llm.model) || "Qwen3"} · local inference</span>
+              <span>{(s.llm && s.llm.model) || "Qwen3"} inference</span>
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -264,7 +264,7 @@ const METRICS = [
   { k: "cpu",  label: "CPU",       sub: "processor load",  icon: CpuIcon,  unit: "%",    cap: 100, warn: 85 },
   { k: "ram",  label: "Memory",    sub: "system RAM",      icon: RamIcon,  unit: "%",    cap: 100, warn: 88 },
   { k: "disk", label: "Disk",      sub: "root volume",     icon: DiskIcon, unit: "%",    cap: 100, warn: 90 },
-  { k: "gpu",  label: "GPU · LLM", sub: "Qwen3 inference", icon: GpuIcon,  unit: "%",    cap: 100, warn: 85 },
+  { k: "gpu",  label: "GPU · LLM", sub: "LLM inference", icon: GpuIcon,  unit: "%",    cap: 100, warn: 85 },
   { k: "net",  label: "Network",   sub: "throughput",      icon: NetIcon,  unit: "Mb/s", cap: 100, warn: 60 },
 ];
 const fmtVal = (v, unit) => (unit === "%" ? Math.round(v) : (v || 0).toFixed(1));
@@ -613,7 +613,7 @@ export default function Orchestrator({ sys, online, onNavigate }) {
             : alarm
               ? <Pill c={T.red} bg={T.redBg} bd={T.red + "55"}><Dot c={T.red} />Alarm active</Pill>
               : <Pill c={T.green} bg={T.greenBg} bd={T.green + "55"}><Dot c={T.green} />All systems nominal</Pill>}
-          <Pill mono c={T.ink2}>{(s.llm && s.llm.model) || "Qwen3"} · local</Pill>
+          <Pill mono c={T.ink2}>{(s.llm && s.llm.model) || "…"}</Pill>
           <Pill mono c={T.ink3}>{running} running</Pill>
         </>} />
 
