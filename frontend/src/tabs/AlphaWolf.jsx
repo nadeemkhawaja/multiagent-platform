@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { T } from "../theme/tokens";
 import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
-import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio, getWolfNow } from "../state/api";
+import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio, getWolfNow, getWolfJournal } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar } from "../components/Common";
 
 const PURPLE = "#7c3aed"; const PURPLE_BG = "#f5f3ff";
@@ -64,6 +64,7 @@ function IdeaCard({ idea, weekly }) {
   const when = txt(idea.when);
   const levels = weekly ? [] : [
     ["Entry", txt(idea.entry)], ["Stop", txt(idea.stop)], ["Target", txt(idea.target)],
+    ["R:R", idea.rr != null ? `${idea.rr}:1` : ""],
     ["Size", idea.size_usd != null ? `~${fmt$(idea.size_usd)} · ${idea.size_shares} sh` : ""],
   ].filter(([, v]) => v);
   return (
@@ -71,6 +72,9 @@ function IdeaCard({ idea, weekly }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 15, color: T.ink }}>{txt(idea.ticker) || "—"}</span>
         <span style={{ fontSize: 9.5, fontWeight: 800, color: dc, background: dc + "16", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{txt(idea.direction) || "n/a"}</span>
+        {idea.confidence != null && (
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: PURPLE, background: PURPLE + "14", padding: "2px 8px", borderRadius: 4 }}>{idea.confidence}/10</span>
+        )}
         {!weekly && when && (
           <span style={{ fontSize: 10, fontWeight: 700, color: PURPLE, background: PURPLE + "14", padding: "2px 8px", borderRadius: 4, fontFamily: T.mono }}>⏰ {when}</span>
         )}
@@ -281,8 +285,8 @@ function PortfolioCard({ portfolio, onChanged }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr>
-                {["Ticker", "Dir", "Shares", "Entry", "Last", "P&L", "Opened"].map((h, i) => (
-                  <th key={h} style={{ textAlign: i >= 2 && i <= 5 ? "right" : "left", padding: "5px 10px", fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${T.line}` }}>{h}</th>
+                {["Ticker", "Dir", "Shares", "Entry", "Stop", "Target", "Last", "P&L", "Opened"].map((h, i) => (
+                  <th key={h} style={{ textAlign: i >= 2 && i <= 7 ? "right" : "left", padding: "5px 10px", fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${T.line}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -295,6 +299,8 @@ function PortfolioCard({ portfolio, onChanged }) {
                   </td>
                   <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{p.shares}</td>
                   <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{fmt$(p.entry_price)}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, color: T.red }}>{p.stop ? fmt$(p.stop) : "—"}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, color: T.green }}>{p.target ? fmt$(p.target) : "—"}</td>
                   <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{fmt$(p.last_price)}</td>
                   <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, fontWeight: 800, color: pnlColor(p.pnl) }}>{(p.pnl ?? 0) >= 0 ? "+" : ""}{fmt$(p.pnl)}</td>
                   <td style={{ padding: "6px 10px", fontFamily: T.mono, color: T.ink4 }}>{p.entry_date}</td>
@@ -322,6 +328,72 @@ function PortfolioCard({ portfolio, onChanged }) {
           ))}
         </div>
       </>)}
+    </div>
+  );
+}
+
+function PerformanceCard({ journal }) {
+  const stats = journal?.stats || {};
+  const rows = journal?.journal || [];
+  if (!stats.trades) {
+    return (
+      <div>
+        <SectionTitle sub="win rate · profit factor · closed-trade journal">📊 Performance</SectionTitle>
+        <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>
+          No closed trades yet — stats appear once positions exit (plan rotation, stop, or target).
+        </div>
+      </div>
+    );
+  }
+  const s = stats;
+  const exits = s.by_exit || {};
+  return (
+    <div>
+      <SectionTitle sub="closed paper trades · stops and targets enforced every 10 min in-session">📊 Performance</SectionTitle>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", margin: "12px 0 14px" }}>
+        <Stat label="Closed trades" value={s.trades} />
+        <Stat label="Win rate" value={`${s.win_rate}%`} color={s.win_rate >= 50 ? T.green : T.red} />
+        <Stat label="Total P&L" value={fmt$(s.total_pnl)} color={pnlColor(s.total_pnl)} />
+        <Stat label="Avg win" value={fmt$(s.avg_win)} color={T.green} />
+        <Stat label="Avg loss" value={fmt$(s.avg_loss)} color={T.red} />
+        <Stat label="Profit factor" value={s.profit_factor ?? "∞"} color={(s.profit_factor ?? 99) >= 1 ? T.green : T.red} />
+        {s.avg_hold_days != null && <Stat label="Avg hold" value={`${s.avg_hold_days}d`} />}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {Object.entries(exits).map(([k, v]) => (
+          <span key={k} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, fontWeight: 600, background: T.line2, color: T.ink3 }}>
+            {k === "stop" ? "🛑 stop exits" : k === "target" ? "🎯 target exits" : "🔁 plan rotations"}: {v.n} · <span style={{ fontFamily: T.mono, color: pnlColor(v.pnl) }}>{v.pnl >= 0 ? "+" : ""}{fmt$(v.pnl)}</span>
+          </span>
+        ))}
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              {["Closed", "Ticker", "Dir", "Entry", "Exit", "P&L", "%", "Hold", "Exit reason"].map((h, i) => (
+                <th key={h} style={{ textAlign: i >= 3 && i <= 7 ? "right" : "left", padding: "5px 10px", fontSize: 9.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${T.line}` }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 12).map((j, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid ${T.line2}` }}>
+                <td style={{ padding: "6px 10px", fontFamily: T.mono, color: T.ink4, whiteSpace: "nowrap" }}>{j.ts}</td>
+                <td style={{ padding: "6px 10px", fontFamily: T.mono, fontWeight: 800 }}>{j.ticker}</td>
+                <td style={{ padding: "6px 10px" }}>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: dirColor(j.direction), background: dirColor(j.direction) + "16", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" }}>{j.direction}</span>
+                </td>
+                <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{fmt$(j.entry_price)}</td>
+                <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono }}>{fmt$(j.exit_price)}</td>
+                <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, fontWeight: 800, color: pnlColor(j.pnl) }}>{j.pnl >= 0 ? "+" : ""}{fmt$(j.pnl)}</td>
+                <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, color: pnlColor(j.pnl_pct) }}>{j.pnl_pct >= 0 ? "+" : ""}{j.pnl_pct}%</td>
+                <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: T.mono, color: T.ink4 }}>{j.hold_days != null ? `${j.hold_days}d` : "—"}</td>
+                <td style={{ padding: "6px 10px", color: T.ink3, fontSize: 11.5 }}>{j.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -396,12 +468,14 @@ export default function AlphaWolf({ status, agentError }) {
   const { data, refresh } = useAgentData("alpha_wolf");
   const [refreshing, setRefreshing] = useState(false);
   const [portfolio, setPortfolio] = useState(null);
+  const [journal, setJournal] = useState(null);
   const [nowData, setNowData] = useState(null);
   const plan = data?.plan || null;
   const busy = refreshing || status === "running";
 
   const refreshPortfolio = useCallback(async () => {
     try { setPortfolio(await getWolfPortfolio()); } catch { /* backend offline */ }
+    try { setJournal(await getWolfJournal()); } catch { /* backend offline */ }
   }, []);
   useEffect(() => {
     refreshPortfolio();
@@ -469,6 +543,10 @@ export default function AlphaWolf({ status, agentError }) {
           <PortfolioCard portfolio={portfolio} onChanged={refreshPortfolio} />
         </Card>
 
+        <Card pad={14}>
+          <PerformanceCard journal={journal} />
+        </Card>
+
         {/* Execution report from the latest run */}
         {plan?.execution && (
           plan.execution.enabled === false ? (
@@ -515,7 +593,7 @@ export default function AlphaWolf({ status, agentError }) {
               <div style={{ display: "flex", gap: 14 }}>
                 <LufiAvatar size={38} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>Market regime <span style={{ fontSize: 11, color: T.ink4 }}>by Alpha Wolf · Qwen3</span></div>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>Market regime <span style={{ fontSize: 11, color: T.ink4 }}>by Alpha Wolf</span></div>
                   <div style={{ fontSize: 13.5, color: "#4c1d95", lineHeight: 1.55 }}>{txt(plan.regime)}</div>
                 </div>
               </div>

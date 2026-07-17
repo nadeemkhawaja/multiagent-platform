@@ -14,9 +14,10 @@ import logging
 from zoneinfo import ZoneInfo
 
 from database import save_agent_data, get_agent_data, get_config
-from llm_client import generate_json
+from llm_client import generate_json, resolve_model
 from orchestrator import orchestrator
 from email_utils import send_html_email
+from tools import technicals as technicals_tool
 import paper_broker
 
 log = logging.getLogger("alpha_wolf")
@@ -170,6 +171,15 @@ def _as_text_list(v, limit: int = 8) -> list:
     return [t for t in (_as_text(x) for x in items[:limit]) if t]
 
 
+def _as_confidence(v):
+    """Coerce a confidence score to an int in 1..10, or None."""
+    try:
+        c = int(round(float(str(v).strip().split("/")[0])))
+        return min(10, max(1, c))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 def _sanitize_idea(idea, weekly: bool) -> dict:
     if not isinstance(idea, dict):
         return {}
@@ -179,6 +189,7 @@ def _sanitize_idea(idea, weekly: bool) -> dict:
         "direction": direction if direction in ("long", "short", "neutral") else "neutral",
         "thesis": _as_text(idea.get("thesis")),
         "risk": _as_text(idea.get("risk")),
+        "confidence": _as_confidence(idea.get("confidence")),
     }
     if weekly:
         out["catalyst"] = _as_text(idea.get("catalyst"))
@@ -235,6 +246,29 @@ def _sanitize_plan(plan: dict) -> dict:
         "catalysts": _as_text_list(plan.get("catalysts"), 8),
         "risk_notes": _as_text(plan.get("risk_notes")),
     }
+
+
+def _enrich_ideas(plan: dict, prices: dict, tech: dict):
+    """Validate each daily idea against live quotes and real volatility:
+    parse the LLM's entry/stop/target into floats (anchored to the live price
+    so hallucinated levels get dropped), compute reward/risk, attach ATR, and
+    order ideas by conviction. The paper broker executes off these parsed
+    levels — never off raw LLM text."""
+    daily = plan.get("daily") or {}
+    ideas = daily.get("ideas") or []
+    for i in ideas:
+        t = str(i.get("ticker", "")).upper()
+        live = prices.get(t)
+        entry = _first_price(i.get("entry") or i.get("trigger"), live)
+        stop = _first_price(i.get("stop"), live)
+        target = _first_price(i.get("target"), live)
+        i["entry_px"], i["stop_px"], i["target_px"] = entry, stop, target
+        if entry and stop and target and abs(entry - stop) > 1e-9:
+            i["rr"] = round(abs(target - entry) / abs(entry - stop), 1)
+        tk = tech.get(t) or {}
+        if tk.get("atr14"):
+            i["atr14"] = tk["atr14"]
+    ideas.sort(key=lambda x: -(x.get("confidence") or 0))
 
 
 # ── Market clock & live "decision now" engine ────────────────────────────────
@@ -522,6 +556,8 @@ Each agent below reports a different slice of the market:
 - OPTIONS     = unusual options flow / positioning (Options Flow)
 - EARNINGS    = upcoming earnings catalysts (Earnings Calendar)
 - LIVE PRICES = real-time quotes — anchor EVERY entry/stop/target level to these; never invent a price
+- TECHNICALS  = computed indicators from real daily bars (RSI-14, SMA20/50 trend, ATR-14 volatility,
+  5-day change) — these are REAL numbers; use them to place levels, don't contradict them
 
 INTEL:
 {context}
@@ -541,14 +577,14 @@ Return ONLY valid JSON with this exact shape:
   "daily": {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
     "summary": "2-3 sentences on today's plan",
-    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","thesis":"why — cite which agents support it","trigger":"entry condition/level","entry":"entry price/zone","stop":"stop-loss level","target":"profit target","when":"best time window e.g. 9:30-10:30 ET open","risk":"what invalidates it"}}],
+    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","confidence":7,"thesis":"why — cite which agents support it","trigger":"entry condition/level","entry":"entry price/zone","stop":"stop-loss level","target":"profit target","when":"best time window e.g. 9:30-10:30 ET open","risk":"what invalidates it"}}],
     "timeline": [{{"time":"08:30 ET pre-market","action":"specific instruction — what to check or do, with levels","tickers":["SYM"]}}]
   }},
   "weekly": {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
     "summary": "2-3 sentences on the week",
     "themes": ["theme 1","theme 2"],
-    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","thesis":"why — cite which agents support it","catalyst":"event/why this week","risk":"what invalidates it"}}]
+    "ideas": [{{"ticker":"SYM","direction":"long|short|neutral","confidence":6,"thesis":"why — cite which agents support it","catalyst":"event/why this week","risk":"what invalidates it"}}]
   }},
   "avoid": ["what to stay away from right now and why"],
   "catalysts": ["upcoming catalyst 1","catalyst 2"],
@@ -556,12 +592,19 @@ Return ONLY valid JSON with this exact shape:
 }}
 Both "daily.ideas" and "weekly.ideas" MUST contain 2-4 entries each — never leave them empty;
 every daily idea needs concrete entry/stop/target levels and a "when" time window. Pick daily
-tickers from the LIVE PRICES feed when possible and derive levels from the quoted price
-(entry near it, stop ~1-2% beyond, target ~2-4% beyond, direction-appropriate). The daily
-timeline must walk the whole US session in order — pre-market (before 9:30 ET), the open
-(9:30-10:30), midday (10:30-15:00), power hour (15:00-16:00) and the close — one entry each,
-naming the exact tickers to act on or watch in that window. Give 1-3 confluence calls and
-1-3 avoids. /no_think"""
+tickers from the LIVE PRICES feed when possible and derive levels from the quoted price.
+Sizing the levels — use the TECHNICALS feed, not round-number guesses:
+- stop: about 1.2×ATR beyond the entry (against the trade direction); tighter than 0.8×ATR
+  gets noise-stopped, wider than 2×ATR risks too much
+- target: at least 2× the risk (reward/risk ≥ 2 from entry vs stop)
+- respect RSI extremes: don't propose fresh longs on RSI ≥ 75 or fresh shorts on RSI ≤ 25
+  unless a specific catalyst justifies it, and never fight the SMA trend without saying why
+"confidence" is an integer 1-10: how many independent feeds agree and how cleanly the
+technicals line up. Be honest — most ideas are 4-7; reserve 8+ for true multi-feed confluence.
+The daily timeline must walk the whole US session in order — pre-market (before 9:30 ET),
+the open (9:30-10:30), midday (10:30-15:00), power hour (15:00-16:00) and the close — one
+entry each, naming the exact tickers to act on or watch in that window. Give 1-3 confluence
+calls and 1-3 avoids."""
     plan = await generate_json(
         prompt,
         system_prompt="You are a disciplined trading strategist who fuses many signals into one plan. Return only valid JSON.",
@@ -583,7 +626,14 @@ async def alpha_wolf_job():
         if prices:
             summaries["LIVE PRICES"] = ", ".join(f"{t} ${p}" for t, p in sorted(prices.items()))
 
-        orchestrator.set_progress(AGENT_ID, "Synthesizing the game-plan with Qwen3…")
+        orchestrator.set_progress(AGENT_ID, "Computing technicals (RSI · SMA trend · ATR)…")
+        tech = await asyncio.to_thread(technicals_tool.compute_sync, candidates) if candidates else {}
+        if tech:
+            summaries["TECHNICALS"] = " | ".join(
+                technicals_tool.summary_line(t) for _, t in sorted(tech.items()))
+
+        provider, model = resolve_model(AGENT_ID)
+        orchestrator.set_progress(AGENT_ID, f"Synthesizing the game-plan with {model}…")
         plan = await _synthesize(summaries)
         if plan:
             plan = _sanitize_plan(plan)
@@ -607,6 +657,11 @@ async def alpha_wolf_job():
         missing = [t for t in _plan_tickers(plan) if t not in prices]
         if missing:
             prices.update(await asyncio.to_thread(paper_broker._fetch_prices_sync, missing))
+            missing_tech = [t for t in missing if t not in tech]
+            if missing_tech:
+                tech.update(await asyncio.to_thread(technicals_tool.compute_sync, missing_tech))
+        _enrich_ideas(plan, prices, tech)
+        plan["technicals"] = tech
         settings = paper_broker.get_settings()
         portfolio = (get_agent_data(AGENT_ID) or {}).get("portfolio") or {}
         equity = paper_broker.portfolio_equity(portfolio) if portfolio.get("positions") is not None else settings["capital"]
@@ -654,16 +709,22 @@ def _idea_rows(ideas: list, weekly: bool = False) -> str:
             parts = [f"<b>{lbl}:</b> {x[k]}" for lbl, k in
                      (("Entry", "entry"), ("Stop", "stop"), ("Target", "target"), ("When", "when"))
                      if x.get(k)]
+            if x.get("rr"):
+                parts.append(f"<b>R:R</b> {x['rr']}:1")
             if x.get("size_usd"):
                 parts.append(f"<b>Size:</b> ~${x['size_usd']:,.0f} · {x.get('size_shares')} sh")
             if parts:
                 levels = (f"<div style='font-size:11.5px;color:#4c1d95;margin-top:4px;font-family:monospace'>"
                           f"{' &nbsp;·&nbsp; '.join(parts)}</div>")
+        conf = x.get("confidence")
+        conf_pill = (f"<span style='font-size:10px;font-weight:800;color:#4c1d95;background:#4c1d9514;"
+                     f"padding:2px 8px;border-radius:4px'>conviction {conf}/10</span>") if conf else ""
         rows += f"""
         <div style='padding:12px 0;border-bottom:1px solid #f0f0f0'>
           <div style='display:flex;align-items:center;gap:8px'>
             <span style='font-family:monospace;font-weight:800;font-size:14px;color:#1a1a2e'>{x.get('ticker','—')}</span>
             <span style='font-size:10px;font-weight:800;color:{dc};background:{dc}14;padding:2px 8px;border-radius:4px;text-transform:uppercase'>{d or 'n/a'}</span>
+            {conf_pill}
           </div>
           <div style='font-size:12.5px;color:#444;margin-top:4px;line-height:1.45'>{x.get('thesis','')}</div>
           {levels}

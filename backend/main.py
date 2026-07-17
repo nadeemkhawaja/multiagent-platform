@@ -12,7 +12,8 @@ import httpx
 from database import init_db, SessionLocal, AgentData, AgentRun, get_config, set_config, all_config
 from orchestrator import orchestrator, AGENT_META, AGENT_ORDER, CORE_AGENTS
 from llm_client import (OLLAMA_BASE_URL, LLM_MODEL, get_llm_state, provider_status,
-                        parse_model_spec, KNOWN_PROVIDERS, SUGGESTED_MODELS)
+                        parse_model_spec, default_model_spec,
+                        KNOWN_PROVIDERS, SUGGESTED_MODELS)
 from ws import manager
 import approvals
 import memory
@@ -112,6 +113,9 @@ async def lifespan(app: FastAPI):
     # Alpha Wolf pulse: in-session live check-in every 30 min (self-gates to
     # market hours) — alerts on slot openings, entry-zone and stop/target hits.
     scheduler.add_job(agent13_alpha_wolf.pulse_job, "interval", minutes=30, id="alpha_wolf_pulse")
+    # Paper-broker risk check: every 10 min during market hours, exit any open
+    # position whose stop-loss or profit target has been crossed.
+    scheduler.add_job(paper_broker.risk_check, "interval", minutes=10, id="alpha_wolf_risk")
     # Demo mode (persisted): pause non-core agents so only the four graded
     # agents are scheduled during a recording — no extras firing mid-demo.
     if orchestrator.demo_mode:
@@ -456,6 +460,19 @@ async def alpha_wolf_pulse(email: bool = True):
     return await agent13_alpha_wolf.pulse_job(force=True, send_email=email)
 
 
+@app.get("/api/alpha-wolf/journal")
+async def alpha_wolf_journal(limit: int = 100):
+    """Closed-trade journal + performance stats (win rate, profit factor,
+    avg win/loss, P&L by exit reason)."""
+    return paper_broker.journal_view(limit=limit)
+
+
+@app.post("/api/alpha-wolf/risk-check")
+async def alpha_wolf_risk_check():
+    """Run the stop/target enforcement pass now (bypasses the market-hours gate)."""
+    return await paper_broker.risk_check(force=True)
+
+
 # ─── Run history & metrics ───────────────────────────────────────────
 def _run_to_dict(r: AgentRun) -> dict:
     return {
@@ -514,8 +531,10 @@ async def get_metrics(window: int = 50):
 # ─── LLM providers & per-agent models ────────────────────────────────
 @app.get("/api/llm/providers")
 async def llm_providers():
+    spec = default_model_spec()
     return {
-        "default_model": LLM_MODEL,
+        "default_model": spec,
+        "default_provider": parse_model_spec(spec)[0],
         "providers": provider_status(),
         "agent_models": get_config("agent_models", {}) or {},
         "suggested_models": SUGGESTED_MODELS,
@@ -553,7 +572,7 @@ class ProviderKeyUpdate(BaseModel):
 @app.post("/api/llm/keys")
 async def set_provider_key(body: ProviderKeyUpdate):
     prov = body.provider.lower().strip()
-    if prov not in ("openai", "anthropic", "grok"):
+    if prov not in ("openai", "anthropic", "grok", "local"):
         return {"error": f"unknown provider '{body.provider}'"}
     keys = get_config("provider_keys", {}) or {}
     if body.api_key.strip():

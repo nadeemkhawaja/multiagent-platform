@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 const HOST = window.location.hostname;
-const PORT = 5174;
+const PORT = import.meta.env.VITE_API_PORT || 5174;   // override when 5174 is taken
 export const API_BASE = `http://${HOST}:${PORT}`;
 const WS_URL = `ws://${HOST}:${PORT}/ws`;
 
@@ -99,6 +99,8 @@ export const setWolfExecution = (body) => jsonPost("/api/alpha-wolf/execution", 
 export const resetWolfPortfolio = () => jsonPost("/api/alpha-wolf/portfolio/reset");
 export const getWolfNow = () => jsonGet("/api/alpha-wolf/now");
 export const runWolfPulse = (email = true) => jsonPost(`/api/alpha-wolf/pulse?email=${email}`);
+export const getWolfJournal = (limit = 100) => jsonGet(`/api/alpha-wolf/journal?limit=${limit}`);
+export const runWolfRiskCheck = () => jsonPost("/api/alpha-wolf/risk-check");
 
 // ── Settings / schedules / health / email preview ───────────────────────────
 export const getConfig = () => jsonGet("/api/config");
