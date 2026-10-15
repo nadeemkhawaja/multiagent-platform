@@ -3,20 +3,35 @@
 // ============================================================================
 import { useState, useEffect, useCallback } from "react";
 import { T, AGENT_COLOR } from "../theme/tokens";
-import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance } from "../theme/ui";
+import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance, gridCols, useMediaQuery, MOBILE_Q } from "../theme/ui";
 import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel, setProviderKey,
          getMCP, addMCPServer, removeMCPServer, pingMCPServer, getMCPTools } from "../state/api";
 
+// Settings is the one screen built out of fixed multi-track grids (agent |
+// control | value | button). Those tracks have real minimums — a 1.2fr label
+// beside a 2fr key field cannot survive 375px — so below MOBILE_Q every row
+// becomes a single stacked column. The trailing buttons keep their own row via
+// `display: contents`, which makes their wrapper vanish into the parent grid on
+// a desktop and become a plain flex row on a phone.
+const rowStack = { display: "flex", gap: 8, alignItems: "center" };
+const rowFlat = { display: "contents" };
+
 const inputStyle = () => ({
   width: "100%", marginTop: 6, border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px",
-  fontFamily: T.sans, fontSize: 13, background: T.card, color: T.ink, outline: "none", boxSizing: "border-box",
+  fontFamily: T.sans, fontSize: 13, background: T.card, color: T.ink, boxSizing: "border-box",
 });
 
+// The label wraps its control, which associates the two implicitly — a bare
+// <label> next to an input, as this was, names nothing. Settings is where API
+// keys and model overrides are entered, so unlabelled fields here are the most
+// consequential ones in the app.
 function Field({ label, children, hint }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</label>
-      {children}
+      <label style={{ display: "block" }}>
+        <span style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>{label}</span>
+        {children}
+      </label>
       {hint && <div style={{ fontSize: 11, color: T.ink4, marginTop: 4 }}>{hint}</div>}
     </div>
   );
@@ -24,6 +39,7 @@ function Field({ label, children, hint }) {
 
 function ScheduleRow({ agent, info, onSave }) {
   const col = AGENT_COLOR[agent] || T.violet;
+  const stack = useMediaQuery(MOBILE_Q);
   const [type, setType] = useState(info.config.type);
   const [minutes, setMinutes] = useState(info.config.minutes ?? 15);
   const [hour, setHour] = useState(info.config.hour ?? 8);
@@ -40,7 +56,7 @@ function ScheduleRow({ agent, info, onSave }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1.4fr auto", gap: 12, alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${T.line2}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: stack ? "1fr" : "1.2fr 0.8fr 1.4fr auto", gap: stack ? 8 : 12, alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${T.line2}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <span style={{ width: 26, height: 26, borderRadius: 7, background: col + "1a", color: col, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>●</span>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{info.name}</span>
@@ -78,6 +94,7 @@ const PROVIDER_LABEL = {
 const KEY_PLACEHOLDER = { grok: "xai-…", openai: "sk-…", anthropic: "sk-ant-…", local: "usually not needed" };
 
 function ProviderKeyRow({ prov, st, onSave }) {
+  const stack = useMediaQuery(MOBILE_Q);
   const [val, setVal] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -89,7 +106,7 @@ function ProviderKeyRow({ prov, st, onSave }) {
     : `key from .env ${st.key_hint || ""}`;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr auto auto", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: stack ? "1fr" : "1.2fr 2fr auto auto", gap: stack ? 8 : 10, alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${T.line2}` }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 700 }}>{PROVIDER_LABEL[prov] || prov}</div>
         <div style={{ fontSize: 10.5, color: st.configured ? T.green : T.ink4, marginTop: 2 }}>{status}</div>
@@ -97,14 +114,17 @@ function ProviderKeyRow({ prov, st, onSave }) {
       <input type="password" autoComplete="off" value={val} onChange={(e) => setVal(e.target.value)}
         placeholder={st.configured ? "Replace key…" : `Paste key (${KEY_PLACEHOLDER[prov] || "…"})`}
         style={{ ...inputStyle(), marginTop: 0 }} />
-      <Btn size="sm" onClick={save} disabled={busy || !val.trim()}>{busy ? "…" : "Save"}</Btn>
-      <Btn size="sm" onClick={clear} disabled={busy || st.source !== "ui"}>Clear</Btn>
+      <div style={stack ? rowStack : rowFlat}>
+        <Btn size="sm" onClick={save} disabled={busy || !val.trim()}>{busy ? "…" : "Save"}</Btn>
+        <Btn size="sm" onClick={clear} disabled={busy || st.source !== "ui"}>Clear</Btn>
+      </div>
     </div>
   );
 }
 
 function ModelRow({ agent, name, llm, onSave }) {
   const col = AGENT_COLOR[agent] || T.violet;
+  const stack = useMediaQuery(MOBILE_Q);
   const current = llm.agent_models?.[agent] || "";
   const [saving, setSaving] = useState(false);
   const [customMode, setCustomMode] = useState(false);
@@ -135,7 +155,7 @@ function ModelRow({ agent, name, llm, onSave }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr auto", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: stack ? "1fr" : "1.2fr 2fr auto", gap: stack ? 8 : 12, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.line2}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <span style={{ width: 26, height: 26, borderRadius: 7, background: col + "1a", color: col, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>●</span>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{name}</span>
@@ -262,7 +282,9 @@ function MCPCard() {
 
   const remove = async (name) => {
     if (!window.confirm(`Remove MCP server "${name}"?`)) return;
-    await removeMCPServer(name);
+    setError(null);
+    const r = await removeMCPServer(name).catch((e) => ({ error: String(e?.message || e) }));
+    if (r?.error) { setError(`Couldn't remove "${name}" — ${r.error}`); return; }
     load();
   };
 
@@ -285,7 +307,7 @@ function MCPCard() {
             : servers.map(([name, cfg]) => <MCPServerRow key={name} name={name} cfg={cfg} onRemove={remove} />)}
 
           <div style={{ fontSize: 11, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.4, margin: "16px 0 2px" }}>Add server</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: gridCols(2, 24, 300), gap: "0 24px" }}>
             <Field label="Name" hint="Identifier, e.g. filesystem, github">
               <input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="filesystem" style={inputStyle()} />
             </Field>
@@ -308,11 +330,18 @@ function MCPCard() {
 }
 
 export default function Settings({ mode, setMode }) {
+  const stack = useMediaQuery(MOBILE_Q);
   const [config, setConfig] = useState(null);
   const [schedules, setSchedules] = useState(null);
   const [health, setHealth] = useState(null);
   const [llm, setLlm] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
+  // Every write on this page used to be unguarded: `request()` throws an
+  // ApiError on a non-2xx, so a rejected watchlist, a bad cron field or a key
+  // the backend refused produced an unhandled rejection, no "Saved" pill, and
+  // no message — the button simply appeared to do nothing. This is where API
+  // keys and schedules are set, so a silent failure is the worst kind here.
+  const [saveError, setSaveError] = useState(null);
 
   const load = useCallback(async () => {
     setConfig(await getConfig().catch(() => ({})));
@@ -322,28 +351,51 @@ export default function Settings({ mode, setMode }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const onModelSave = async (agent, model) => {
+  // One guard for every write on the page, so a failure always says which
+  // action failed and why instead of vanishing.
+  const guard = useCallback(async (what, fn) => {
+    setSaveError(null);
+    try { await fn(); return true; }
+    catch (e) { setSaveError(`${what}: ${e?.message || "the backend rejected the change."}`); return false; }
+  }, []);
+
+  const onModelSave = (agent, model) => guard("Couldn't set the model", async () => {
     await setAgentModel(agent, model);
     setLlm(await getLLMProviders().catch(() => llm));
-  };
+  });
 
-  const onKeySave = async (provider, key) => {
+  const onKeySave = (provider, key) => guard("Couldn't save the API key", async () => {
     await setProviderKey(provider, key);
     setLlm(await getLLMProviders().catch(() => llm));
-  };
+  });
 
-  const saveSettings = async () => {
+  const saveSettings = () => guard("Couldn't save settings", async () => {
     const c = await saveConfig(config);
     setConfig(c); setSavedAt(new Date().toLocaleTimeString());
-  };
-  const onScheduleSave = async (agent, body) => { await setSchedule(agent, body); setSchedules(await getSchedules()); };
+  });
+
+  const onScheduleSave = (agent, body) => guard("Couldn't save the schedule", async () => {
+    await setSchedule(agent, body);
+    setSchedules(await getSchedules());
+  });
   const setField = (k, v) => setConfig((c) => ({ ...c, [k]: v }));
 
   return (
     <div>
       <TabHeader icon="⚙" color={T.violet} title="Settings" sub="Schedules · agent config · system health"
         actions={<Btn size="sm" kind="primary" onClick={saveSettings}>Save settings</Btn>} />
-      <div className="om-stagger" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <div className="om-page om-stagger">
+        {/* Sits above every card, because the control that failed can be any of
+            them and the header's Save button is the most common culprit. */}
+        {saveError && (
+          <div role="alert" style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12,
+            padding: "11px 16px", display: "flex", alignItems: "center", gap: 11, fontSize: 12.5, color: T.red, fontWeight: 600 }}>
+            <span aria-hidden="true" style={{ fontSize: 16, flex: "0 0 auto" }}>⚠</span>
+            <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{saveError}</span>
+            <Btn size="sm" kind="ghost" onClick={() => setSaveError(null)} style={{ flex: "0 0 auto" }}>Dismiss</Btn>
+          </div>
+        )}
+
         {/* Appearance */}
         {mode && setMode && (
           <Card pad={15}>
@@ -355,16 +407,21 @@ export default function Settings({ mode, setMode }) {
         {/* Health */}
         <Card pad={15}>
           <SectionTitle sub="Live dependency status">System health</SectionTitle>
+          {/* Reads `local`, the key /api/health actually returns. This block was
+              still reading `ollama` from before the multi-provider rename, so the
+              whole Settings tab threw on render and was unreachable — which also
+              made the light/dark toggle above unreachable. Optional chaining
+              throughout so a future shape change degrades instead of crashing. */}
           {health ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-              <HealthStat label="Status" value={health.status} ok={health.status === "ok"} />
-              <HealthStat label="Ollama" value={health.ollama.reachable ? "reachable" : "offline"} ok={health.ollama.reachable} />
-              <HealthStat label="Model" value={health.ollama.model} ok={health.ollama.available?.length > 0} />
-              <HealthStat label="Database" value={health.database ? "ok" : "error"} ok={health.database} />
+            <div style={{ display: "grid", gridTemplateColumns: gridCols(4, 14, 150), gap: 14 }}>
+              <HealthStat label="Status" value={health.status || "unknown"} ok={health.status === "ok"} />
+              <HealthStat label="Local endpoint" value={health.local?.reachable ? "reachable" : "offline"} ok={!!health.local?.reachable} />
+              <HealthStat label="Model" value={health.local?.model || "—"} ok={!!health.local?.model} />
+              <HealthStat label="Database" value={health.database ? "ok" : "error"} ok={!!health.database} />
             </div>
           ) : <div style={{ fontSize: 12.5, color: T.ink3 }}>Loading…</div>}
           {health && <div style={{ marginTop: 12, fontSize: 11.5, color: T.ink4, fontFamily: T.mono }}>
-            LLM calls: {health.llm.calls} · cache hits: {health.llm.cache_hits}
+            LLM calls: {health.llm?.calls ?? "—"} · cache hits: {health.llm?.cache_hits ?? "—"}
           </div>}
         </Card>
 
@@ -372,24 +429,12 @@ export default function Settings({ mode, setMode }) {
         <Card pad={15}>
           <SectionTitle sub="Applied on the next agent run" right={savedAt && <Pill c={T.green} bg={T.greenBg}><Dot c={T.green} />Saved {savedAt}</Pill>}>Agent configuration</SectionTitle>
           {config && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
-              <Field label="Digest recipient email" hint="Where agent emails are sent">
+            <div style={{ display: "grid", gridTemplateColumns: gridCols(2, 24, 300), gap: "0 24px" }}>
+              <Field label="Digest recipient email" hint="Attribution only — email sending is disabled">
                 <input value={config.recipient || ""} onChange={(e) => setField("recipient", e.target.value)} placeholder="you@gmail.com" style={inputStyle()} />
-              </Field>
-              <Field label="Mailman key people" hint="Comma-separated names/emails to alert on">
-                <input value={config.key_people || ""} onChange={(e) => setField("key_people", e.target.value)} placeholder="Sarah Chen, marcus@acme.io" style={inputStyle()} />
               </Field>
               <Field label="Wolf watchlist (20+ tickers)" hint="Comma-separated tickers · falls back to defaults if < 20">
                 <textarea rows={4} value={config.watchlist || ""} onChange={(e) => setField("watchlist", e.target.value)} placeholder={"AAPL, MSFT, NVDA, GOOGL,\nAMZN, TSLA, META, AMD, …"} style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.55 }} />
-              </Field>
-              <Field label="Capitol Tracker politicians" hint="Comma-separated last names or full names — one per line OK">
-                <textarea rows={5} value={config.capitol_politicians || ""} onChange={(e) => setField("capitol_politicians", e.target.value)} placeholder={"Pelosi, Trump, Cruz, McClain,\nMoore, McCormick, Greene, Issa, …"} style={{ ...inputStyle(), resize: "vertical", lineHeight: 1.55 }} />
-              </Field>
-              <Field label="Capitol Tracker lookback window" hint={`${config.capitol_months || 2} month${(config.capitol_months || 2) === 1 ? "" : "s"} of STOCK Act disclosures`}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8 }}>
-                  <input type="range" min="1" max="12" step="1" value={config.capitol_months || 2} onChange={(e) => setField("capitol_months", Number(e.target.value))} style={{ flex: 1, accentColor: T.violet }} />
-                  <span style={{ fontFamily: T.mono, fontWeight: 700, fontSize: 16, minWidth: 36, textAlign: "center" }}>{config.capitol_months || 2}<span style={{ fontSize: 11, fontWeight: 600, color: T.ink4, marginLeft: 2 }}>mo</span></span>
-                </div>
               </Field>
             </div>
           )}
@@ -440,7 +485,10 @@ export default function Settings({ mode, setMode }) {
         {/* Schedules */}
         <Card pad={15}>
           <SectionTitle sub="Change how often each agent runs (persisted)">Schedules</SectionTitle>
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1.4fr auto", gap: 12, padding: "0 0 8px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
+          {/* Column captions for a table that is no longer a table once the rows
+              stack — a lone "Agent / Type / Cadence" strip above stacked fields
+              labels nothing. */}
+          <div style={{ display: stack ? "none" : "grid", gridTemplateColumns: "1.2fr 0.8fr 1.4fr auto", gap: 12, padding: "0 0 8px", fontSize: 10.5, color: T.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${T.line2}` }}>
             <span>Agent</span><span>Type</span><span>Cadence</span><span></span>
           </div>
           {schedules && Object.entries(schedules).map(([agent, info]) => (

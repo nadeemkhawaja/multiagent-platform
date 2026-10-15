@@ -13,14 +13,10 @@ import tracing
 
 load_dotenv()
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.5:4b")
-
 # ── Providers ─────────────────────────────────────────────────────────────────
-# The platform speaks to five backends. AI_PROVIDER picks the global default;
+# The platform speaks to four backends. AI_PROVIDER picks the global default;
 # individual agents can be routed anywhere via the "agent_models" config
 # ({"agent_id": "anthropic:claude-opus-4-8"} / {"agent_id": "local:gemma..."}).
-#   ollama    — local Ollama daemon (LLM_MODEL)
 #   local     — any OpenAI-compatible server (vLLM, LM Studio…) at LOCAL_LLM_BASE_URL
 #   anthropic — Claude via the official Anthropic SDK
 #   openai / grok — OpenAI-compatible cloud APIs
@@ -40,7 +36,7 @@ LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "")
 LOCAL_LLM_API_KEY = os.getenv("LOCAL_LLM_API_KEY", "")
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "16000"))
 
-KNOWN_PROVIDERS = ("ollama", "local", "openai", "anthropic", "grok")
+KNOWN_PROVIDERS = ("local", "openai", "anthropic", "grok")
 
 # Dropdown suggestions for the Settings UI — any model name works via the API.
 SUGGESTED_MODELS = {
@@ -57,24 +53,22 @@ class ConfigError(Exception):
 
 def parse_model_spec(spec: str):
     """'anthropic:claude-opus-4-8' → ('anthropic', 'claude-opus-4-8');
-    bare model names ('qwen3.5:4b') default to ollama."""
+    bare model names default to the local endpoint."""
     if spec and ":" in spec:
         head, rest = spec.split(":", 1)
         if head in KNOWN_PROVIDERS and rest:
             return head, rest
-    return "ollama", spec
+    return "local", spec or LOCAL_LLM_MODEL
 
 
 def default_model_spec() -> str:
     """Global default 'provider:model'. AI_PROVIDER selects the provider and the
-    per-provider model env picks the model; with AI_PROVIDER unset, LLM_MODEL
-    keeps its historical role (bare Ollama model, or a full provider:model spec)."""
-    prov = AI_PROVIDER if AI_PROVIDER in KNOWN_PROVIDERS else ""
-    if not prov or prov == "ollama":
-        return LLM_MODEL
+    per-provider model env picks the model; defaults to the local endpoint
+    when AI_PROVIDER is unset or unrecognized."""
+    prov = AI_PROVIDER if AI_PROVIDER in KNOWN_PROVIDERS else "local"
     model = {"anthropic": ANTHROPIC_MODEL, "local": LOCAL_LLM_MODEL,
              "openai": OPENAI_MODEL, "grok": GROK_MODEL}[prov]
-    return f"{prov}:{model}" if model else LLM_MODEL
+    return f"{prov}:{model}"
 
 
 def resolve_model(agent_id: str = None):
@@ -115,8 +109,6 @@ def provider_status() -> dict:
     ui = _ui_keys()
     default_prov, default_model = parse_model_spec(default_model_spec())
     out = {
-        "ollama": {"configured": True, "base_url": OLLAMA_BASE_URL,
-                   "source": "local", "model": LLM_MODEL},
         "local": {"configured": bool(LOCAL_LLM_MODEL), "base_url": LOCAL_LLM_BASE_URL,
                   "source": "env" if LOCAL_LLM_MODEL else None,
                   "model": LOCAL_LLM_MODEL, "needs_key": False},
@@ -166,37 +158,11 @@ def _cache_key(model, system, prompt, json_mode):
 
 
 def strip_think(text: str) -> str:
-    """Remove Qwen <think>…</think> blocks from a response."""
+    """Remove <think>…</think> reasoning blocks some local models emit."""
     return re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL).strip()
 
 
 # ── Provider backends — each returns (content, tokens_in, tokens_out, rate) ──
-async def _call_ollama(client, model, system_prompt, prompt, json_mode):
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False,
-        # Disable Qwen3's hidden <think> reasoning block. The inline
-        # "/no_think" hint is unreliable on this model; this Ollama flag
-        # actually suppresses it, cutting ~100–1300 wasted tokens per call.
-        "think": False,
-    }
-    if json_mode:
-        payload["format"] = "json"
-    r = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=300.0)
-    r.raise_for_status()
-    data = r.json()
-    tokens_in = int(data.get("prompt_eval_count", 0) or 0)
-    tokens_out = int(data.get("eval_count", 0) or 0)
-    dur_ns = int(data.get("eval_duration", 0) or 0)
-    rate = round(tokens_out / (dur_ns / 1e9), 1) if dur_ns else 0
-    content = strip_think(data.get("message", {}).get("content", ""))
-    return content, tokens_in, tokens_out, rate
-
-
 async def _call_openai_compatible(client, base_url, api_key, key_name,
                                   model, system_prompt, prompt, json_mode,
                                   require_key=True, json_via_prompt=False):
@@ -290,24 +256,17 @@ async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
             int(usage.output_tokens or 0), 0)
 
 
-_PROVIDER_CALLS = {"ollama": _call_ollama, "openai": _call_openai, "local": _call_local,
+_PROVIDER_CALLS = {"openai": _call_openai, "local": _call_local,
                    "anthropic": _call_anthropic, "grok": _call_grok}
-
-
-def _ollama_fallback_model() -> str:
-    prov, model = parse_model_spec(LLM_MODEL)
-    return model if prov == "ollama" else "qwen3.5:4b"
 
 
 def _candidate_chain(provider: str, model: str) -> list:
     """(provider, model) candidates in order: the resolved primary, then the
-    local endpoint, then Ollama — a missing key or cloud outage degrades to a
-    local model instead of surfacing an error string to the agent."""
+    local endpoint — a missing key or cloud outage degrades to the local
+    model instead of surfacing an error string to the agent."""
     chain = [(provider, model)]
-    if provider not in ("local",) and LOCAL_LLM_MODEL:
+    if provider != "local" and LOCAL_LLM_MODEL:
         chain.append(("local", LOCAL_LLM_MODEL))
-    if provider != "ollama":
-        chain.append(("ollama", _ollama_fallback_model()))
     return chain
 
 
@@ -323,10 +282,6 @@ async def generate_completion(
     config; the global default is AI_PROVIDER. Token usage is recorded against
     the agent's open run trace."""
     provider, model = resolve_model(agent_id)
-
-    # `/no_think` keeps Qwen3 fast for structured/utility prompts (Ollama only).
-    if provider == "ollama" and "/no_think" not in prompt:
-        prompt = prompt + "\n/no_think"
 
     key = _cache_key(f"{provider}:{model}", system_prompt, prompt, json_mode)
     if use_cache:
@@ -347,7 +302,7 @@ async def generate_completion(
         try:
             last_err = None
             for ci, (prov, mdl) in enumerate(_candidate_chain(provider, model)):
-                llm_state["model"] = f"{prov}:{mdl}" if prov != "ollama" else mdl
+                llm_state["model"] = f"{prov}:{mdl}"
                 if ci > 0:
                     llm_state["fallbacks"] += 1
                     print(f"LLM fallback: {provider}:{model} unavailable → trying {prov}:{mdl} ({last_err})")

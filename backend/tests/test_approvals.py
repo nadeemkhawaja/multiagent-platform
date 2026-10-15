@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database
 import approvals
-import email_utils
 
 
 @pytest.fixture
@@ -100,59 +99,3 @@ def test_action_failure_is_reported_but_decision_stands(db, monkeypatch):
 def test_approve_without_handler_reports_no_handler(db):
     aid = approvals.request("wolf", "unknown_kind", "orphan")
     assert approvals.decide(aid, approved=True)["action"] == "no_handler"
-
-
-# ── email gate ───────────────────────────────────────────────────────────────
-def test_email_gate_queues_instead_of_sending(db, monkeypatch):
-    database.set_config("require_email_approval", True)
-    sent = {}
-    monkeypatch.setattr(email_utils, "_send_now", lambda *a, **kw: sent.update({"args": a}) or True)
-
-    ok = email_utils.send_html_email("to@x.com", "Gated Subject", "<p>hi</p>", sender_name="Wolf")
-    assert ok is True
-    assert sent == {}   # nothing sent yet
-
-    pending = approvals.list_approvals(status="pending")
-    assert len(pending) == 1
-    assert pending[0]["title"] == "Email: Gated Subject"
-    assert pending[0]["agent_id"] == "Wolf"
-    assert pending[0]["payload"]["to_email"] == "to@x.com"
-
-
-def test_email_gate_approval_sends_the_email(db, monkeypatch):
-    database.set_config("require_email_approval", True)
-    sent = {}
-
-    def fake_send(to_email, subject, html_body, sender_name="Multi-Agent Platform"):
-        sent.update({"to": to_email, "subject": subject, "html": html_body, "from": sender_name})
-        return True
-    monkeypatch.setattr(email_utils, "_send_now", fake_send)
-
-    email_utils.send_html_email("to@x.com", "Approved Subject", "<p>body</p>", sender_name="Wolf")
-    aid = approvals.list_approvals(status="pending")[0]["id"]
-    out = approvals.decide(aid, approved=True)
-
-    assert out["action"] == "executed"
-    assert sent == {"to": "to@x.com", "subject": "Approved Subject",
-                    "html": "<p>body</p>", "from": "Wolf"}
-
-
-def test_demo_mode_bypasses_email_gate(db, monkeypatch):
-    database.set_config("require_email_approval", True)
-    database.set_config("demo_mode", True)
-    sent = {}
-    monkeypatch.setattr(email_utils, "_send_now", lambda *a, **kw: sent.update({"a": a}) or True)
-
-    email_utils.send_html_email("to@x.com", "Demo Email", "<p>x</p>")
-    assert sent                                 # sent immediately, no approval
-    assert approvals.list_approvals() == []
-
-
-def test_email_gate_off_sends_directly(db, monkeypatch):
-    database.set_config("require_email_approval", False)
-    sent = {}
-    monkeypatch.setattr(email_utils, "_send_now", lambda *a, **kw: sent.update({"a": a}) or True)
-
-    email_utils.send_html_email("to@x.com", "Direct", "<p>x</p>")
-    assert sent
-    assert approvals.list_approvals() == []

@@ -4,17 +4,29 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "frontend",
       "port": 5173,
-      "autoPort": true
+      "autoPort": false
     },
     {
       "name": "backend",
       "runtimeExecutable": "/Users/nkhawaja/Downloads/Claud Programming/MultiAgent Platform/venv/bin/python3.12",
-      "runtimeArgs": ["-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5174"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5174"
+      ],
       "cwd": "backend",
-      "port": 5174
+      "port": 5174,
+      "autoPort": false
     }
   ]
 }

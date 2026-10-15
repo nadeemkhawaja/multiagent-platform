@@ -62,16 +62,16 @@ def test_all_config_returns_all_keys(db):
 
 # ── Agent data store ──────────────────────────────────────────────────────────
 def test_save_and_get_agent_data(db):
-    db.save_agent_data("compass", {"compass": {"composite": 5}, "extra": [1, 2, 3]})
-    out = db.get_agent_data("compass")
+    db.save_agent_data("wallstreet_wolf", {"compass": {"composite": 5}, "extra": [1, 2, 3]})
+    out = db.get_agent_data("wallstreet_wolf")
     assert out["compass"] == {"composite": 5}
     assert out["extra"] == [1, 2, 3]
 
 
 def test_save_agent_data_updates_existing_key(db):
-    db.save_agent_data("compass", {"compass": {"composite": 5}})
-    db.save_agent_data("compass", {"compass": {"composite": 10}})
-    out = db.get_agent_data("compass")
+    db.save_agent_data("wallstreet_wolf", {"compass": {"composite": 5}})
+    db.save_agent_data("wallstreet_wolf", {"compass": {"composite": 10}})
+    out = db.get_agent_data("wallstreet_wolf")
     assert out["compass"] == {"composite": 10}
 
 
@@ -80,7 +80,7 @@ def test_get_agent_data_returns_empty_dict_for_unknown_agent(db):
 
 
 def test_save_agent_data_keeps_separate_agents_isolated(db):
-    db.save_agent_data("compass", {"compass": {"composite": 1}})
-    db.save_agent_data("options_flow", {"flow": {"signals": []}})
-    assert "flow" not in db.get_agent_data("compass")
-    assert "compass" not in db.get_agent_data("options_flow")
+    db.save_agent_data("wallstreet_wolf", {"compass": {"composite": 1}})
+    db.save_agent_data("technologia", {"signals": {"setups": []}})
+    assert "signals" not in db.get_agent_data("wallstreet_wolf")
+    assert "compass" not in db.get_agent_data("technologia")

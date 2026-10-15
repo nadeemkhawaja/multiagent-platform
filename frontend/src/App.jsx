@@ -1,74 +1,42 @@
 // ============================================================================
 // App.jsx — shell: collapsible nav, command palette, toasts, keyboard shortcuts
 // ============================================================================
-import { useState, useEffect, useRef, useCallback, Component } from "react";
-import { T, applyMode, AGENT_COLOR } from "./theme/tokens";
-import { Dot } from "./theme/ui";
-import { useSystemState, useAgentData } from "./state/api";
-import { ToastContainer, useToasts, useAgentToasts } from "./components/Toast";
+import { useState, useEffect, useCallback, useMemo, Component } from "react";
+import { T, applyMode, AGENT_COLOR, STAT } from "./theme/tokens";
+import { Dot, useDialog, useMediaQuery, NavContext, MOBILE_Q } from "./theme/ui";
+import { useSystemState } from "./state/api";
 import CommandPalette from "./components/CommandPalette";
 import AskLufi from "./components/AskLufi";
 import Aurora from "./components/Aurora";
 
-import Orchestrator   from "./tabs/Orchestrator";
-import AITimes        from "./tabs/AITimes";
-import Mailman        from "./tabs/Mailman";
 import Wolf           from "./tabs/Wolf";
-import Compass        from "./tabs/Compass";
-import DevDaily       from "./tabs/DevDaily";
-import StrategyScout  from "./tabs/StrategyScout";
-import CapitolTracker from "./tabs/CapitolTracker";
-import MorningBrief   from "./tabs/MorningBrief";
-import OptionsFlow    from "./tabs/OptionsFlow";
-import EarningsCalendar from "./tabs/EarningsCalendar";
-import CiscoPulse     from "./tabs/CiscoPulse";
+import Technologia    from "./tabs/Technologia";
 import AlphaWolf      from "./tabs/AlphaWolf";
 import Settings       from "./tabs/Settings";
 
-// Main panel — always-pinned agents (the graded four + Cisco Pulse).
-const MAIN_AGENTS = [
-  { id: "ai_times",         label: "AI-Times",          glyph: "▶"  },
-  { id: "mailman",          label: "Mailman",            glyph: "✉"  },
-  { id: "wallstreet_wolf",  label: "Wallstreet Wolf",   glyph: "$"  },
-  { id: "cisco_pulse",      label: "Cisco Pulse",       glyph: "◈"  },
-  { id: "devdaily",         label: "GitHub Trending",   glyph: "⌥"  },
-];
 // Alpha Wolf — master agent (the group header itself) + its pack of sub-agents.
 const ALPHA_MASTER = { id: "alpha_wolf", label: "Alpha Wolf", glyph: "🐺" };
 const ALPHA_GROUP = [
   { id: "wallstreet_wolf",  label: "Wallstreet Wolf",   glyph: "$"  },
-  { id: "compass",          label: "Wallstreet Compass", glyph: "◎"  },
-  { id: "strategy_scout",   label: "Strategy Scout",    glyph: "✦"  },
-  { id: "capitol_tracker",  label: "Capitol Tracker",   glyph: "🏛" },
-  { id: "options_flow",     label: "Options Flow",      glyph: "⚡" },
-  { id: "earnings_cal",     label: "Earnings Calendar", glyph: "📅" },
+  { id: "technologia",      label: "Technologia",       glyph: "◭" },
 ];
 const SETTINGS_ITEM   = { id: "settings",     label: "Settings",     glyph: "⚙" };
-const ORCHESTRATOR_IT = { id: "orchestrator", label: "Orchestrator", glyph: "◇" };
-
-// The four graded agents. Demo mode collapses the sidebar to just these so a
-// 10-minute video only shows the rubric-scored components.
-const CORE_AGENTS = ["ai_times", "mailman", "wallstreet_wolf", "devdaily"];
 
 const TABS = {
-  ai_times:         AITimes,
-  mailman:          Mailman,
   wallstreet_wolf:  Wolf,
-  compass:          Compass,
-  devdaily:         DevDaily,
-  strategy_scout:   StrategyScout,
-  capitol_tracker:  CapitolTracker,
-  morning_brief:    MorningBrief,
-  options_flow:     OptionsFlow,
-  earnings_cal:     EarningsCalendar,
-  cisco_pulse:      CiscoPulse,
+  technologia:      Technologia,
   alpha_wolf:       AlphaWolf,
 };
 
-// All tabs for keyboard shortcut ordering (no home)
-const ORDERED_TABS = ["orchestrator","ai_times","mailman","wallstreet_wolf","cisco_pulse","devdaily","alpha_wolf","compass","strategy_scout","capitol_tracker","options_flow","earnings_cal","morning_brief"];
+// All tabs for keyboard shortcut ordering
+const ORDERED_TABS = ["alpha_wolf","wallstreet_wolf","technologia"];
 
-const dotColor = { running: T.green, queued: T.amber, crashed: T.red, idle: "#aeb4bf" };
+// Agent status colour comes from STAT in tokens.js — the same table the rest of
+// the app reads. This was a second, hand-written copy that had already drifted:
+// it painted `idle` with ink4 while STAT.idle is ink3, so the same agent in the
+// same state wore two different greys depending on which component drew it.
+// Read at call time, never captured: STAT is mutated in place by applyMode().
+const dotColor = (s) => (STAT[s] || STAT.idle).c;
 
 // ── Tab error boundary ───────────────────────────────────────────────────────
 // A crash inside one tab must never blank the whole app: catch it, show the
@@ -109,16 +77,20 @@ class TabErrorBoundary extends Component {
 
 // ── Keyboard shortcut help overlay ──────────────────────────────────────────
 function ShortcutHelp({ onClose }) {
+  const dialogRef = useDialog(true, onClose);
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 998, background: "rgba(0,0,0,.45)", display: "grid", placeItems: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 16, padding: "24px 28px", width: 380, boxShadow: "0 20px 60px rgba(0,0,0,.2)" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Keyboard shortcuts</div>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="om-shortcuts-title" tabIndex={-1}
+        onClick={(e) => e.stopPropagation()} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 16, padding: "24px 28px", width: 380, boxShadow: "0 20px 60px rgba(0,0,0,.2)" }}>
+        <h2 id="om-shortcuts-title" style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, marginTop: 0 }}>Keyboard shortcuts</h2>
+        {/* Generated from ORDERED_TABS rather than hand-listed: the range drifted
+            to "1 – 9" while three tabs exist, and an "R — Refresh active agent"
+            row survived here long after the binding it documented was gone. */}
         {[
           ["⌘ K", "Command palette"],
-          ["1 – 9", "Jump to tab by number"],
-          ["R", "Refresh active agent"],
+          [`1 – ${ORDERED_TABS.length}`, "Jump to tab by number"],
+          ["W", "Go to Alpha Wolf"],
           ["S", "Go to Settings"],
-          ["O", "Go to Orchestrator"],
           ["?", "Show this help"],
           ["Esc", "Close overlay"],
         ].map(([k, d]) => (
@@ -168,15 +140,35 @@ function NavItem({ item, active, onClick, badge, collapsed }) {
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollapsed, onCmdK }) {
+function Sidebar({ tab, setTab, sys, online, collapsed: collapsedProp, setCollapsed, mobile, open, onClose }) {
+  // The width breakpoints that force the rail on a narrow desktop window also
+  // fire on a phone, where the drawer wants full labels — so the drawer wins.
+  const collapsed = mobile ? false : collapsedProp;
   const agents = sys?.agents || [];
-  const res = sys?.res;
   const statusOf = (id) => agents.find((a) => a.id === id)?.status;
-  const anyAlarm = !!sys?.alarm;
-  const demo = !!sys?.demo;
-  const mainList = demo ? MAIN_AGENTS.filter((a) => CORE_AGENTS.includes(a.id)) : MAIN_AGENTS;
   const [alphaOpen, setAlphaOpen] = useState(true);
-  const W = collapsed ? 58 : 232;
+  // A drawer costs a deliberate tap to open, so it always shows labels — the
+  // icon rail exists to buy back horizontal space, and a drawer isn't competing
+  // for any. `collapsed` is ignored here rather than fought with.
+  const W = mobile ? 272 : collapsed ? 58 : 232;
+
+  // Off-canvas: out of the flex flow entirely, so `main` gets the full width
+  // instead of the 58px rail it would otherwise keep reserving on a 390px phone.
+  const shell = mobile
+    ? { position: "fixed", top: 0, left: 0, zIndex: 60, width: W, flex: "none",
+        transform: open ? "none" : "translateX(-101%)",
+        // visibility is in the transition on purpose: it keeps the drawer in the
+        // tab order only while it is on screen, but still holds it visible for
+        // the full 240ms of the slide-out instead of blinking away at frame one.
+        transition: "transform .24s cubic-bezier(.22,.7,.2,1), visibility .24s",
+        boxShadow: open ? "0 0 60px rgba(0,0,0,.35)" : "none",
+        visibility: open ? "visible" : "hidden",
+        // Whole shorthand, not just paddingBottom: React warns (and can drop the
+        // longhand on a rerender) when a style object mixes `padding` with
+        // `paddingBottom`, and the base style below sets the shorthand.
+        padding: "14px 10px calc(14px + env(safe-area-inset-bottom))" }
+    : { position: "sticky", top: 0, width: W, flex: `0 0 ${W}px`,
+        transition: "width .22s ease, flex .22s ease" };
 
   const sectionLabel = (text) => collapsed ? null : (
     <div style={{ fontSize: 10, fontWeight: 700, color: T.sideMuted, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", marginTop: 12 }}>{text}</div>
@@ -184,58 +176,48 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
 
   const renderNav = (it, keyPrefix = "") => {
     const st = statusOf(it.id);
-    const isCapitol = it.id === "capitol_tracker";
-    // Capitol's trade-count pill must not hide the live status dot — show both.
-    const badge = !collapsed && (st || (isCapitol && capitolCount > 0)) ? (
+    const badge = !collapsed && st ? (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-        {isCapitol && capitolCount > 0 &&
-          <span style={{ fontSize: 9.5, fontWeight: 700, background: "#dc262620", color: "#dc2626", padding: "1px 6px", borderRadius: 4, fontFamily: T.mono }}>{capitolCount}</span>}
-        {st && <Dot c={dotColor[st] || "#aeb4bf"} s={6} />}
+        {st && <Dot c={dotColor(st)} s={6} />}
       </span>
     ) : null;
     return <NavItem key={keyPrefix + it.id} item={it} active={tab === it.id} onClick={() => setTab(it.id)} badge={badge} collapsed={collapsed} />;
   };
 
+  // Intentional layout animation, and the one place we keep it. Collapsing the
+  // sidebar reflows the main column and swaps labels for glyphs, so there is no
+  // transform equivalent. It is user-initiated and runs once for 220ms, unlike
+  // the progress bars, which re-animated on every poll and now use scaleX.
   return (
-    <div style={{ width: W, flex: `0 0 ${W}px`, background: T.sidebar, borderRight: `1px solid ${T.sideLine}`, display: "flex", flexDirection: "column", padding: collapsed ? "14px 8px" : "14px 10px", height: "100vh", position: "sticky", top: 0, overflowY: "auto", overflowX: "hidden", transition: "width .22s ease, flex .22s ease" }}>
+    <nav aria-label="Agents" aria-hidden={mobile && !open ? "true" : undefined}
+      style={{ background: T.sidebar, borderRight: `1px solid ${T.sideLine}`, display: "flex", flexDirection: "column",
+        padding: collapsed ? "14px 8px" : "14px 10px",
+        // dvh, not vh: on iOS Safari 100vh is the height with the URL bar
+        // *hidden*, so a 100vh drawer runs its Settings row under the toolbar.
+        minHeight: "100vh", height: "100dvh",
+        overflowY: "auto", overflowX: "hidden", ...shell }}>
 
-      {/* Logo — clicking navigates to Orchestrator */}
-      <div style={{ display: "flex", alignItems: "center", gap: collapsed ? 0 : 10, padding: collapsed ? "2px 0 12px" : "2px 4px 14px", justifyContent: collapsed ? "center" : "space-between" }}>
-        {!collapsed && (
-          <button onClick={() => setTab("orchestrator")} title="Orchestrator" style={{ display: "flex", alignItems: "center", gap: 9, background: tab === "orchestrator" ? T.violet + "18" : "transparent", border: tab === "orchestrator" ? `1px solid ${T.violet}33` : "1px solid transparent", borderRadius: 8, padding: "4px 8px 4px 4px", cursor: "pointer", flex: 1, minWidth: 0 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 14, flex: "0 0 auto" }}>◇</div>
-            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -0.2, lineHeight: 1.1, color: T.sideInk }}>Orchestrator</div>
-              <div style={{ fontSize: 9.5, color: T.sideMuted, fontFamily: T.mono }}>multi-agent</div>
-            </div>
-            <Dot c={anyAlarm ? T.red : online ? T.green : T.amber} s={6} />
-          </button>
-        )}
-        {collapsed && (
-          <button onClick={() => setTab("orchestrator")} title="Orchestrator" style={{ width: 30, height: 30, borderRadius: 8, background: tab === "orchestrator" ? "linear-gradient(135deg,#7c5cf6,#9d7bff)" : "linear-gradient(135deg,#7c5cf6,#9d7bff)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer" }}>◇</button>
-        )}
-        <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} style={{ width: 22, height: 22, borderRadius: 6, background: T.sideBtn, border: `1px solid ${T.sideLine}`, cursor: "pointer", display: "grid", placeItems: "center", fontSize: 11, color: T.sideInk2, flexShrink: 0 }}>
-          {collapsed ? "▶" : "◀"}
+      {/* No brand block and no search button: the sidebar is the agent list and
+          nothing else. Backend health moved to the footer dot (it was duplicated
+          here), and the palette is still ⌘K — it never needed a button. Only the
+          rail/drawer toggle survives, since collapsing has no other control. */}
+      <div style={{ display: "flex", alignItems: "center", padding: collapsed ? "2px 0 8px" : "2px 4px 6px", justifyContent: collapsed ? "center" : "flex-end" }}>
+        {/* Same slot, two jobs: rail toggle on a desktop, dismiss on a phone —
+            where there is no rail to toggle to and the drawer needs a way out
+            that isn't the backdrop. Sized up to a real touch target there. */}
+        <button onClick={mobile ? onClose : () => setCollapsed(!collapsed)}
+          aria-label={mobile ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={mobile ? "Close" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={{ width: mobile ? 34 : 22, height: mobile ? 34 : 22, borderRadius: mobile ? 9 : 6, background: T.sideBtn, border: `1px solid ${T.sideLine}`, cursor: "pointer", display: "grid", placeItems: "center", fontSize: mobile ? 14 : 11, color: T.sideInk2, flexShrink: 0 }}>
+          {mobile ? "✕" : collapsed ? "▶" : "◀"}
         </button>
       </div>
 
-      {/* Cmd+K search */}
-      {!collapsed && (
-        <button onClick={onCmdK} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: T.sideBtn, border: `1px solid ${T.sideLine}`, borderRadius: 8, padding: "6px 10px", marginBottom: 10, cursor: "pointer", fontFamily: T.sans }}>
-          <span style={{ fontSize: 13, color: T.sideMuted }}>⌘</span>
-          <span style={{ fontSize: 12, color: T.sideMuted, flex: 1, textAlign: "left" }}>Search…</span>
-          <span style={{ fontSize: 10, fontFamily: T.mono, color: T.sideMuted, background: T.sideActive, border: `1px solid ${T.sideLine}`, borderRadius: 4, padding: "1px 5px" }}>K</span>
-        </button>
-      )}
-
-      {/* Main agents */}
-      {sectionLabel(demo ? "Agents · demo mode" : "Agents")}
-      {mainList.map((it) => renderNav(it))}
-
-      {/* Alpha Wolf — master agent (header navigates) + expandable pack (hidden in demo) */}
-      {!demo && !collapsed && (
+      {/* Alpha Wolf — master agent (the header itself navigates) + its pack. */}
+      {sectionLabel("Agents")}
+      {!collapsed ? (
         <>
-          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{ flex: 1, minWidth: 0 }}>{renderNav(ALPHA_MASTER)}</div>
             <button onClick={() => setAlphaOpen((o) => !o)} title={alphaOpen ? "Collapse pack" : "Expand pack"} style={{
               width: 24, height: 24, borderRadius: 6, border: `1px solid ${T.sideLine}`, background: T.sideBtn,
@@ -248,10 +230,10 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
             </div>
           )}
         </>
-      )}
-      {!demo && collapsed && (
+      ) : (
+        // The rail has no room for the indent rule or the disclosure toggle, so
+        // the pack simply follows its master as a flat run of glyphs.
         <>
-          <div style={{ height: 1, background: T.sideLine, margin: "10px 8px" }} />
           {renderNav(ALPHA_MASTER)}
           {ALPHA_GROUP.map((it) => renderNav(it, "grp-"))}
         </>
@@ -261,56 +243,119 @@ function Sidebar({ tab, setTab, sys, online, capitolCount, collapsed, setCollaps
       <div style={{ marginTop: "auto", paddingTop: 10, borderTop: `1px solid ${T.sideLine}` }}>
         <NavItem item={SETTINGS_ITEM} active={tab === "settings"} onClick={() => setTab("settings")} collapsed={collapsed} />
         <div style={{ padding: collapsed ? "8px 0" : "8px 4px 2px", fontSize: 10, color: T.sideMuted, fontFamily: T.mono, lineHeight: 1.6, textAlign: collapsed ? "center" : "left" }}>
-          {!collapsed && (res
-            ? <>CPU {Math.round(res.cpu?.v || 0)}% · RAM {Math.round(res.ram?.v || 0)}%<br /></>
-            : <>connecting…<br /></>)}
           <Dot c={online ? T.green : T.amber} s={6} />
-          {!collapsed && " 5174"}
+          {/* The API is same-origin now, so the port to show is this page's. */}
+          {!collapsed && ` ${online ? "live" : "connecting…"} · ${window.location.port || "80"}`}
         </div>
       </div>
-    </div>
+    </nav>
   );
 }
 
 // ── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [tab, setTab]       = useState(() => { const t = localStorage.getItem("om_tab"); return t === "home" ? "orchestrator" : (t || "orchestrator"); });
+  // Validate the persisted tab against the tabs that actually exist, so anyone
+  // whose last session ended on a since-removed agent (options_flow,
+  // earnings_cal, devdaily, cisco_pulse, orchestrator) doesn't reopen the app
+  // onto a dead screen. Any unknown id falls back to Alpha Wolf, the landing tab.
+  const [tab, setTab] = useState(() => {
+    const t = localStorage.getItem("om_tab");
+    return t && (t === "settings" || TABS[t]) ? t : "alpha_wolf";
+  });
   const [mode, setMode]     = useState(() => localStorage.getItem("om_mode") || "light");
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("om_collapsed") === "1");
   const [cmdOpen, setCmdOpen]     = useState(false);
   const [helpOpen, setHelpOpen]   = useState(false);
   applyMode(mode);
 
-  const { state: sys, online, transport } = useSystemState();
-  const { data: capitolData } = useAgentData("capitol_tracker");
-  const capitolCount = capitolData?.tracker?.stats?.total || 0;
+  // Tiled beside a broker window, 232px of sidebar is a third of the workspace
+  // and the labels cost more than they earn. Drop to the icon rail below this
+  // width without touching the stored preference, so the labels come back when
+  // the window widens. Expanding by hand while narrow overrides it.
+  // Two thresholds. Below NARROW the rail is the default but you can override it
+  // by expanding; below TIGHT the labels simply do not fit beside content, so the
+  // rail is forced and the override is ignored until the window widens again.
+  const narrow = useMediaQuery("(max-width: 1080px)");
+  const tight  = useMediaQuery("(max-width: 780px)");
+  // Third and last breakpoint. Below this a rail is no longer a saving — 58px
+  // of a 390px screen is 15% of the viewport spent on navigation you are not
+  // using — so the nav leaves the flow entirely and becomes a drawer.
+  const mobile = useMediaQuery(MOBILE_Q);
+  const [navOpen, setNavOpen] = useState(false);
+  const [expandedByHand, setExpandedByHand] = useState(false);
+  // A deliberate expand lasts until the next breakpoint change, then defers to
+  // the layout again.
+  useEffect(() => { setExpandedByHand(false); }, [narrow, tight]);
+  const railed = collapsed || tight || (narrow && !expandedByHand);
+  const setRailed = useCallback((v) => {
+    setCollapsed(v);
+    if (!v) setExpandedByHand(true);
+  }, []);
 
-  const { toasts, addToast, dismissToast } = useToasts();
-  useAgentToasts(sys, addToast);
+  const { state: sys, online } = useSystemState();
 
   // Persist prefs
   useEffect(() => { localStorage.setItem("om_tab", tab); }, [tab]);
   useEffect(() => { localStorage.setItem("om_collapsed", collapsed ? "1" : "0"); }, [collapsed]);
-  useEffect(() => { localStorage.setItem("om_mode", mode); document.body.style.background = T.bg; document.documentElement.style.colorScheme = T.mode; }, [mode]);
-
-  const navigate = useCallback((id) => setTab(id), []);
-
-  // In demo mode, don't sit on a now-hidden agent tab.
   useEffect(() => {
-    if (sys?.demo && tab !== "orchestrator" && tab !== "settings" && !CORE_AGENTS.includes(tab)) {
-      setTab("orchestrator");
-    }
-  }, [sys?.demo, tab]);
+    localStorage.setItem("om_mode", mode);
+    document.body.style.background = T.bg;
+    document.documentElement.style.colorScheme = T.mode;
+    // Republish the few tokens CSS needs. The focus ring and skip link live in
+    // index.css because :focus-visible cannot be expressed as an inline style,
+    // so they read these vars rather than duplicating the palette.
+    const root = document.documentElement.style;
+    root.setProperty("--focus-ring", T.violet);
+    root.setProperty("--focus-surface", T.card);
+    root.setProperty("--focus-ink", T.ink);
+  }, [mode]);
+
+  const closeNav = useCallback(() => setNavOpen(false), []);
+  const openNav = useCallback(() => setNavOpen(true), []);
+  // Stable object: this sits above every tab, so a fresh identity each render
+  // would invalidate the context for all of them on every poll of system state.
+  const navCtx = useMemo(() => ({ mobile, openNav, goTab: setTab }), [mobile, openNav]);
+
+  // Picking an agent is the drawer's whole purpose, so it dismisses itself on
+  // arrival; and if the window grows back to desktop while it is open, the nav
+  // returns to the flow and a stuck-open flag would re-show it on the next
+  // shrink with no way to tell it had been left open.
+  useEffect(() => { setNavOpen(false); }, [tab, mobile]);
+
+  // Freeze the page behind the drawer — without this a swipe over the backdrop
+  // scrolls the tab underneath while the nav sits still on top of it.
+  useEffect(() => {
+    document.body.classList.toggle("om-navlock", navOpen);
+    return () => document.body.classList.remove("om-navlock");
+  }, [navOpen]);
+
+  // Stable identities: useDialog keys its focus effect on onClose, so an inline
+  // arrow would re-run the effect on every render and keep stealing focus.
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
+  const closeCmd = useCallback(() => setCmdOpen(false), []);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen(true); return; }
-      if (e.key === "Escape") { setCmdOpen(false); setHelpOpen(false); return; }
+      // Never hijack typing — including rich-text/contenteditable surfaces.
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+
+      // ⌘K is the only shortcut allowed to carry a modifier. Without the guard
+      // below, ⌘S opened Settings *and* the browser's save dialog, and ⌘O
+      // opened a file picker over the app.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdOpen(true); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === "Escape") { setCmdOpen(false); setHelpOpen(false); setNavOpen(false); return; }
+
+      // A dialog owns the screen while it is open; single-key shortcuts must
+      // not navigate the app behind it.
+      if (document.querySelector('[role="dialog"]')) return;
+
       if (e.key === "?") { setHelpOpen(true); return; }
-      if (e.key === "o" || e.key === "O") { setTab("orchestrator"); return; }
+      if (e.key === "w" || e.key === "W") { setTab("alpha_wolf"); return; }
       if (e.key === "s" || e.key === "S") { setTab("settings"); return; }
       const num = parseInt(e.key);
       if (num >= 1 && num <= 9 && ORDERED_TABS[num - 1]) setTab(ORDERED_TABS[num - 1]);
@@ -321,38 +366,63 @@ export default function App() {
 
   const agent = sys?.agents?.find((a) => a.id === tab);
   let content;
-  if (tab === "orchestrator") {
-    content = <Orchestrator sys={sys} online={online} onNavigate={navigate} />;
-  } else if (tab === "settings") {
+  if (tab === "settings") {
     content = <Settings mode={mode} setMode={setMode} />;
   } else {
     const TabEl = TABS[tab];
-    if (!TabEl) { content = <div style={{ padding: 40, color: T.ink3 }}>Tab not found: {tab}</div>; }
+    if (!TabEl) {
+      // Reachable if an agent is removed while its tab is open. Recover rather
+      // than leaving a dead end.
+      content = (
+        <div style={{ padding: 40 }}>
+          <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "22px 26px", maxWidth: 560 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>That agent isn't available</div>
+            <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.55, marginBottom: 14 }}>
+              <span style={{ fontFamily: T.mono }}>{tab}</span> isn't one of the agents this platform runs any more.
+            </div>
+            <button type="button" onClick={() => setTab("alpha_wolf")}
+              style={{ padding: "7px 16px", background: T.cardAlt, border: `1px solid ${T.line}`, borderRadius: 8, color: T.ink2, cursor: "pointer", fontSize: 12.5, fontFamily: T.sans, fontWeight: 600 }}>
+              Go to Alpha Wolf
+            </button>
+          </div>
+        </div>
+      );
+    }
     else content = <TabEl key={tab} status={agent?.status} agentError={agent?.error} progress={agent?.progress} result={agent?.result} />;
   }
 
   return (
-    <>
+    <NavContext.Provider value={navCtx}>
+      <a className="om-skip" href="#om-main">Skip to content</a>
       <Aurora />
       <div style={{ display: "flex", minHeight: "100vh", background: "transparent", fontFamily: T.sans, color: T.ink, position: "relative", zIndex: 1 }}>
       <Sidebar
         tab={tab} setTab={setTab}
         sys={sys} online={online}
-        capitolCount={capitolCount}
-        collapsed={collapsed} setCollapsed={setCollapsed}
-        onCmdK={() => setCmdOpen(true)}
+        collapsed={railed} setCollapsed={setRailed}
+        mobile={mobile} open={navOpen} onClose={closeNav}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Backdrop. Kept mounted and faded so the drawer's 240ms slide-out isn't
+          left hanging over a page that already looks dismissed. */}
+      {mobile && (
+        <div onClick={closeNav} aria-hidden="true" style={{
+          position: "fixed", inset: 0, zIndex: 55, background: "rgba(8,10,14,.5)",
+          opacity: navOpen ? 1 : 0, visibility: navOpen ? "visible" : "hidden",
+          transition: "opacity .24s ease, visibility .24s",
+        }} />
+      )}
+      {/* tabIndex -1 so the skip link can move focus here; the sidebar is ~14
+          tab stops deep before the content begins. */}
+      <main id="om-main" tabIndex={-1} style={{ flex: 1, minWidth: 0, outline: "none" }}>
         <TabErrorBoundary key={tab}><div className="om-fade">{content}</div></TabErrorBoundary>
-      </div>
+      </main>
 
       {/* Per-agent AI assistant — every agent tab gets an Ask-Lufi panel */}
-      {TABS[tab] && <AskLufi key={"ai-" + tab} agentId={tab} agentName={agent?.n || tab} color={AGENT_COLOR[tab]} />}
+      {TABS[tab] && <AskLufi key={"ai-" + tab} agentId={tab} agentName={agent?.n || tab} color={AGENT_COLOR[tab]} mobile={mobile} />}
 
-      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
-      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
-      <ToastContainer toasts={toasts} dismiss={dismissToast} />
+      <CommandPalette open={cmdOpen} onClose={closeCmd} onNavigate={(id) => { setTab(id); setCmdOpen(false); }} sys={sys} />
+      {helpOpen && <ShortcutHelp onClose={closeHelp} />}
       </div>
-    </>
+    </NavContext.Provider>
   );
 }

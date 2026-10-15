@@ -14,16 +14,17 @@ import tracing
 
 
 # ── model spec parsing ───────────────────────────────────────────────────────
-def test_parse_model_spec_defaults_to_ollama():
-    assert llm_client.parse_model_spec("qwen3.5:4b") == ("ollama", "qwen3.5:4b")
-    assert llm_client.parse_model_spec("llama3") == ("ollama", "llama3")
+def test_parse_model_spec_defaults_to_local(monkeypatch):
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "google/gemma-test")
+    assert llm_client.parse_model_spec("google/gemma-test") == ("local", "google/gemma-test")
+    assert llm_client.parse_model_spec("") == ("local", "google/gemma-test")
 
 
 def test_parse_model_spec_provider_prefixes():
     assert llm_client.parse_model_spec("anthropic:claude-haiku-4-5") == ("anthropic", "claude-haiku-4-5")
     assert llm_client.parse_model_spec("openai:gpt-4o-mini") == ("openai", "gpt-4o-mini")
     assert llm_client.parse_model_spec("grok:grok-4-fast") == ("grok", "grok-4-fast")
-    assert llm_client.parse_model_spec("ollama:llama3:8b") == ("ollama", "llama3:8b")
+    assert llm_client.parse_model_spec("local:google/gemma-test") == ("local", "google/gemma-test")
 
 
 def test_resolve_model_honors_agent_override(monkeypatch):
@@ -43,32 +44,28 @@ def test_default_model_spec_follows_ai_provider(monkeypatch):
     monkeypatch.setattr(llm_client, "AI_PROVIDER", "local")
     monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "google/gemma-test")
     assert llm_client.default_model_spec() == "local:google/gemma-test"
+    # unrecognized/unset provider → defaults to local
     monkeypatch.setattr(llm_client, "AI_PROVIDER", "")
-    assert llm_client.default_model_spec() == llm_client.LLM_MODEL
-    # provider selected but no model configured → fall back to LLM_MODEL
-    monkeypatch.setattr(llm_client, "AI_PROVIDER", "local")
-    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "")
-    assert llm_client.default_model_spec() == llm_client.LLM_MODEL
+    assert llm_client.default_model_spec() == "local:google/gemma-test"
 
 
 def test_provider_status_shape():
     st = llm_client.provider_status()
-    assert set(st.keys()) == {"ollama", "local", "openai", "anthropic", "grok"}
-    assert st["ollama"]["configured"] is True
+    assert set(st.keys()) == {"local", "openai", "anthropic", "grok"}
     assert st["local"]["needs_key"] is False
 
 
-def test_candidate_chain_degrades_to_local_then_ollama(monkeypatch):
+def test_candidate_chain_degrades_to_local(monkeypatch):
     monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "gemma-test")
     chain = llm_client._candidate_chain("anthropic", "claude-opus-4-8")
-    assert chain == [("anthropic", "claude-opus-4-8"),
-                     ("local", "gemma-test"),
-                     ("ollama", llm_client._ollama_fallback_model())]
-    # local primary skips itself; ollama primary still gets local as a backup
-    assert llm_client._candidate_chain("local", "gemma-test") == [
-        ("local", "gemma-test"), ("ollama", llm_client._ollama_fallback_model())]
-    assert llm_client._candidate_chain("ollama", "qwen3.5:4b") == [
-        ("ollama", "qwen3.5:4b"), ("local", "gemma-test")]
+    assert chain == [("anthropic", "claude-opus-4-8"), ("local", "gemma-test")]
+    # local primary skips itself — no duplicate fallback
+    assert llm_client._candidate_chain("local", "gemma-test") == [("local", "gemma-test")]
+
+
+def test_candidate_chain_skips_local_fallback_when_unconfigured(monkeypatch):
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "")
+    assert llm_client._candidate_chain("anthropic", "claude-opus-4-8") == [("anthropic", "claude-opus-4-8")]
 
 
 # ── API key resolution (Settings UI keys override env, env is fallback) ─────
@@ -155,7 +152,6 @@ def test_generate_completion_routes_to_openai(monkeypatch):
     assert out == "openai says hi"
     assert captured["url"].endswith("/chat/completions")
     assert captured["headers"]["Authorization"] == "Bearer sk-test"
-    assert "/no_think" not in captured["json"]["messages"][1]["content"]
 
 
 def test_generate_completion_routes_to_grok(monkeypatch):
@@ -238,37 +234,37 @@ def test_generate_completion_routes_to_local_endpoint(monkeypatch):
     assert "JSON" in captured["json"]["messages"][0]["content"]
 
 
-def test_generate_completion_ollama_records_tokens_to_trace(monkeypatch):
+def test_generate_completion_records_tokens_to_trace(monkeypatch):
     captured = {}
     _patch_post(monkeypatch, {
-        "message": {"content": "local answer"},
-        "prompt_eval_count": 50, "eval_count": 25, "eval_duration": int(1e9),
+        "choices": [{"message": {"content": "local answer"}}],
+        "usage": {"prompt_tokens": 50, "completion_tokens": 25},
     }, captured)
-    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("ollama", "qwen3.5:4b"))
+    monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("local", "google/gemma-test"))
 
     tracing.start("trace_agent")
     out = asyncio.run(llm_client.generate_completion("hello", agent_id="trace_agent", use_cache=False))
     metrics = tracing.finish("trace_agent")
 
     assert out == "local answer"
-    assert "/no_think" in captured["json"]["messages"][1]["content"]
     assert metrics["llm_calls"] == 1
     assert metrics["tokens_in"] == 50
     assert metrics["tokens_out"] == 25
 
 
-def test_missing_api_key_falls_back_to_ollama(monkeypatch):
+def test_missing_api_key_falls_back_to_local(monkeypatch):
     """A missing Claude key must not error out — the call degrades through the
-    fallback chain (local skipped here — unset) and Ollama answers."""
+    fallback chain to the local endpoint."""
     import database
     monkeypatch.setattr(database, "get_config", lambda key, default=None: default)
     monkeypatch.setattr(llm_client, "ANTHROPIC_API_KEY", "")
-    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "")
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_MODEL", "google/gemma-test")
+    monkeypatch.setattr(llm_client, "LOCAL_LLM_BASE_URL", "http://10.20.1.232:8001/v1")
     monkeypatch.setattr(llm_client, "resolve_model", lambda agent_id=None: ("anthropic", "claude-test"))
     captured = {}
     _patch_post(monkeypatch, {
-        "message": {"content": "ollama caught it"},
-        "prompt_eval_count": 5, "eval_count": 3, "eval_duration": int(1e9),
+        "choices": [{"message": {"content": "local caught it"}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 3},
     }, captured)
 
     slept = {"n": 0}
@@ -278,8 +274,8 @@ def test_missing_api_key_falls_back_to_ollama(monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", count_sleep)
 
     out = asyncio.run(llm_client.generate_completion("hello", use_cache=False))
-    assert out == "ollama caught it"
-    assert captured["url"].endswith("/api/chat")
+    assert out == "local caught it"
+    assert captured["url"] == "http://10.20.1.232:8001/v1/chat/completions"
     assert slept["n"] == 0   # ConfigError skips straight to the next provider
 
 

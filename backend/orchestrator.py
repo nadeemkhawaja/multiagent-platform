@@ -1,61 +1,43 @@
-import psutil
 import asyncio
 import json
 import time
-import random
 from collections import deque
 from datetime import datetime
 from typing import Dict, Any
 
-import httpx
-
 import tracing
-from llm_client import get_llm_state, OLLAMA_BASE_URL
-from database import SessionLocal, ResourceSample, Event, AgentRun, AgentState, init_db, get_config, set_config
+from llm_client import get_llm_state
+from database import SessionLocal, Event, AgentRun, AgentState, init_db, get_config, set_config
 from ws import manager
-
-# Optional NVIDIA GPU telemetry.
-try:
-    import pynvml  # type: ignore
-
-    pynvml.nvmlInit()
-    _NVML = True
-except Exception:
-    _NVML = False
 
 
 AGENT_META = {
-    "ai_times":        {"n": "AI-Times",          "glyph": "▶", "desc": "AI YouTube digest",        "schedule": "Daily · 08:00", "color": "#e5484d"},
-    "mailman":         {"n": "Mailman",            "glyph": "✉", "desc": "Gmail triage",             "schedule": "Every 60 min",  "color": "#2f6feb"},
-    "wallstreet_wolf": {"n": "Wallstreet Wolf",    "glyph": "$", "desc": "Market tracker",           "schedule": "Every 2h",      "color": "#16a34a"},
-    "compass":         {"n": "Wallstreet Compass", "glyph": "◎", "desc": "Bias & key levels",        "schedule": "Every 60 min",  "color": "#f59e0b"},
-    "devdaily":        {"n": "GitHub Trending",    "glyph": "⌥", "desc": "GitHub & Dev.to digest",   "schedule": "Daily · 09:00", "color": "#7c5cf6"},
-    "strategy_scout":  {"n": "Strategy Scout",     "glyph": "✦", "desc": "Top trading strategies",   "schedule": "Daily · 10:00", "color": "#0ea5e9"},
-    "capitol_tracker": {"n": "Capitol Tracker",    "glyph": "🏛", "desc": "Political stock trades",   "schedule": "Daily · 07:00", "color": "#dc2626"},
-    "morning_brief":   {"n": "Morning Brief",      "glyph": "☀", "desc": "Daily personalized digest", "schedule": "Daily · 06:00", "color": "#f59e0b"},
-    "options_flow":    {"n": "Options Flow",       "glyph": "⚡","desc": "Unusual options activity",  "schedule": "Every 2h",      "color": "#7c5cf6"},
-    "earnings_cal":    {"n": "Earnings Calendar",  "glyph": "📅","desc": "Upcoming earnings & IV",    "schedule": "Every 6h",      "color": "#16a34a"},
-    "cisco_pulse":     {"n": "Cisco Pulse",        "glyph": "◈", "desc": "ACI/NDFC/PSIRT intel",     "schedule": "Daily · 07:30", "color": "#0d9488"},
+    "wallstreet_wolf": {"n": "Wallstreet Wolf",    "glyph": "$", "desc": "Tape, regime & key levels", "schedule": "Every 60 min",  "color": "#16a34a"},
+    "technologia":     {"n": "Technologia",        "glyph": "◭", "desc": "VP/VWAP/MFI technical signals", "schedule": "Every 30 min", "color": "#4f46e5"},
     "alpha_wolf":      {"n": "Alpha Wolf",         "glyph": "🐺","desc": "Plans & executes trades",  "schedule": "Daily · 08:30", "color": "#7c3aed"},
 }
 AGENT_ORDER = list(AGENT_META.keys())
 
-# The four graded agents (+ the orchestrator itself). Demo mode hides everything
+# The agent_data key that holds each agent's real output. Freshness of THIS row is
+# what says an agent is working — not its run status, and not a sibling key. Alpha
+# Wolf writes `pulse` and `portfolio` on a 30-minute timer whatever else happens,
+# so watching those would have reported a healthy agent for the entire week its
+# `plan` was stale.
+AGENT_DATA_KEYS = {
+    "wallstreet_wolf": "market_data",
+    "technologia": "signals",
+    "alpha_wolf": "plan",
+}
+
+# The graded agents (+ the orchestrator itself). Demo mode hides everything
 # else so a 10-minute video only has to show — and never risk breaking on — the
 # components the rubric actually scores.
-CORE_AGENTS = ["ai_times", "mailman", "wallstreet_wolf", "devdaily"]
+CORE_AGENTS = ["wallstreet_wolf", "alpha_wolf"]
 
 STATUS_MAP = {
     "running": "running", "idle": "idle", "stopped": "idle", "error": "crashed",
     "crashed": "crashed", "restarting": "queued", "queued": "queued", "failed": "crashed",
 }
-ALARM_ACTIONS = {
-    "cpu":  "Throttle Wolf's 5-min poll and pause non-critical agents until load < 75%.",
-    "ram":  "Flush LLM KV-cache and reduce Qwen3 context window to free memory.",
-    "gpu":  "Queue depth high — serialize inference further and lower batch size.",
-    "disk": "Rotate logs and clear cached thumbnails/emails older than 7 days.",
-}
-ALARM_LABELS = {"cpu": "CPU", "ram": "Memory", "gpu": "GPU", "disk": "Disk"}
 
 
 class Orchestrator:
@@ -70,19 +52,13 @@ class Orchestrator:
         self.MAX_RESTARTS = 3
 
         self._started_at = time.time()
-        self._hist = {k: deque(maxlen=24) for k in ("cpu", "ram", "disk", "gpu", "net")}
         self.events = deque(maxlen=20)
-        self._last = {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "gpu": 0.0, "net": 0.0, "threads": 0}
-        self._net_prev = None        # (bytes_total, monotonic_ts) for throughput delta
-        self._gpu_vram_mb = 0
-        self._spike = None
         self._demo_crashed = set()
         self._open_runs = {}            # agent_id -> AgentRun id
-        self._persist_tick = 0
-        self._sampler_task = None
+        self._broadcast_task = None
         self._watchdog_task = None
+        self._stale_flagged = {}        # agent_id -> already warned about staleness
 
-        psutil.cpu_percent(interval=None)
         init_db()            # ensure tables exist before reading history
         self._load_history()
         self.demo_mode = bool(get_config("demo_mode", False))
@@ -91,10 +67,6 @@ class Orchestrator:
     def _load_history(self):
         try:
             db = SessionLocal()
-            rows = db.query(ResourceSample).order_by(ResourceSample.ts.desc()).limit(24).all()
-            for r in reversed(rows):
-                self._hist["cpu"].append(r.cpu); self._hist["ram"].append(r.ram)
-                self._hist["disk"].append(r.disk); self._hist["gpu"].append(r.gpu)
             evs = db.query(Event).order_by(Event.ts.desc()).limit(20).all()
             for e in evs:
                 self.events.append({"t": e.ts.strftime("%H:%M"), "m": e.message, "c": e.color})
@@ -107,120 +79,20 @@ class Orchestrator:
         except Exception as e:
             print(f"[Orchestrator] history load skipped: {e}")
 
-    # ── GPU / VRAM ───────────────────────────────────────────────────────
-    def _read_gpu(self) -> float:
-        if _NVML:
-            try:
-                h = pynvml.nvmlDeviceGetHandleByIndex(0)
-                return float(pynvml.nvmlDeviceGetUtilizationRates(h).gpu)
-            except Exception:
-                pass
-        active = get_llm_state()["holder"] is not None
-        base = 62 if active else 30
-        prev = self._last.get("gpu", base)
-        return round(min(96, max(8, prev * 0.6 + base * 0.4 + random.uniform(-5, 5))), 1)
-
-    async def _poll_ollama_vram(self):
-        try:
-            async with httpx.AsyncClient(timeout=4) as c:
-                r = await c.get(f"{OLLAMA_BASE_URL}/api/ps")
-                if r.status_code == 200:
-                    models = r.json().get("models", [])
-                    self._gpu_vram_mb = round(sum(m.get("size_vram", 0) for m in models) / (1024 * 1024))
-        except Exception:
-            pass
-
-    # ── network throughput (Mb/s, in + out) ──────────────────────────────
-    def _read_net(self) -> float:
-        try:
-            io = psutil.net_io_counters()
-            total = io.bytes_sent + io.bytes_recv
-            now = time.monotonic()
-            if self._net_prev is None:
-                self._net_prev = (total, now)
-                return 0.0
-            prev_total, prev_ts = self._net_prev
-            dt = now - prev_ts
-            self._net_prev = (total, now)
-            if dt <= 0:
-                return self._last.get("net", 0.0)
-            mbps = (total - prev_total) * 8 / 1e6 / dt   # megabits per second
-            return round(max(0.0, mbps), 1)
-        except Exception:
-            return self._last.get("net", 0.0)
-
-    # ── sampling ─────────────────────────────────────────────────────────
-    def _take_sample(self) -> Dict[str, float]:
-        cpu = psutil.cpu_percent(interval=None)
-        ram = psutil.virtual_memory().percent
-        disk = psutil.disk_usage("/").percent
-        gpu = self._read_gpu()
-        net = self._read_net()
-
-        if self._spike:
-            if time.time() > self._spike["expires"]:
-                self.log_event(f"{ALARM_LABELS[self._spike['resource']]} recovered to normal range", "#16a34a")
-                self._spike = None
-            else:
-                r, val = self._spike["resource"], self._spike["value"]
-                if r == "cpu": cpu = val
-                elif r == "ram": ram = val
-                elif r == "gpu": gpu = val
-                elif r == "disk": disk = val
-
-        threads = psutil.Process().num_threads()
-        self._last = {"cpu": round(cpu, 1), "ram": round(ram, 1), "disk": round(disk, 1),
-                      "gpu": round(gpu, 1), "net": round(net, 1), "threads": threads}
-        for k in ("cpu", "ram", "disk", "gpu", "net"):
-            self._hist[k].append(self._last[k])
-        return self._last
-
-    def _persist_sample(self, s):
-        try:
-            db = SessionLocal()
-            db.add(ResourceSample(cpu=s["cpu"], ram=s["ram"], disk=s["disk"], gpu=s["gpu"], threads=s["threads"]))
-            # prune to last ~1000 rows
-            self._persist_tick += 1
-            if self._persist_tick % 50 == 0:
-                ids = [r.id for r in db.query(ResourceSample.id).order_by(ResourceSample.ts.desc()).offset(1000).all()]
-                if ids:
-                    db.query(ResourceSample).filter(ResourceSample.id.in_(ids)).delete(synchronize_session=False)
-            db.commit(); db.close()
-        except Exception as e:
-            print(f"[Orchestrator] persist sample failed: {e}")
-
-    async def _sampler_loop(self):
+    # ── dashboard state push ─────────────────────────────────────────────
+    # Agent status changes also broadcast on transition (see update_agent_status);
+    # this loop is the periodic backstop that keeps uptime and the LLM panel live.
+    async def _broadcast_loop(self):
         while True:
-            s = self._take_sample()
-            if self._persist_tick % 5 == 0:           # persist every ~10s
-                self._persist_sample(s)
-            else:
-                self._persist_tick += 1
-            if self._persist_tick % 3 == 0:           # refresh VRAM every ~6s
-                await self._poll_ollama_vram()
             try:
                 await manager.broadcast({"type": "state", "data": self.get_state()})
             except Exception:
                 pass
             await asyncio.sleep(2)
 
-    def start_sampler(self):
-        if self._sampler_task is None:
-            self._take_sample()
-            self._sampler_task = asyncio.create_task(self._sampler_loop())
-
-    # ── back-compat: synchronous resource read for /api/system/resources ──
-    def get_system_resources(self) -> Dict[str, Any]:
-        s = self._last if self._last["cpu"] or self._hist["cpu"] else self._take_sample()
-        alarms = []
-        for k in ("cpu", "ram", "disk", "gpu"):
-            if s[k] >= 90:
-                alarms.append({"resource": ALARM_LABELS[k], "value": s[k], "suggestion": ALARM_ACTIONS[k]})
-        return {
-            "cpu_percent": s["cpu"], "ram_percent": s["ram"], "disk_percent": s["disk"],
-            "gpu_percent": s["gpu"], "net_mbps": s.get("net", 0.0), "active_threads": s["threads"],
-            "alarm": len(alarms) > 0, "alarms": alarms,
-        }
+    def start_broadcast(self):
+        if self._broadcast_task is None:
+            self._broadcast_task = asyncio.create_task(self._broadcast_loop())
 
     # ── events ───────────────────────────────────────────────────────────
     def log_event(self, message: str, color: str = "#5b6472"):
@@ -256,7 +128,7 @@ class Orchestrator:
 
     def set_progress(self, agent_name: str, message: str, result: str = None):
         """Live, human-readable progress for the agent's own tab (e.g. 'Curating
-        with Qwen3…'). Pushed to the UI immediately over the WebSocket."""
+        with the local model…'). Pushed to the UI immediately over the WebSocket."""
         if agent_name not in self.agents_status:
             return
         self.agents_status[agent_name]["progress"] = message
@@ -341,11 +213,6 @@ class Orchestrator:
 
     # ── full dashboard state ─────────────────────────────────────────────
     def get_state(self) -> Dict[str, Any]:
-        res = self.get_system_resources()
-
-        def block(k, pct):
-            return {"v": pct, "hist": list(self._hist[k]) or [pct]}
-
         agents = []
         for aid in AGENT_ORDER:
             meta = AGENT_META[aid]
@@ -355,10 +222,6 @@ class Orchestrator:
             agents.append({
                 "id": aid, "n": meta["n"], "glyph": meta["glyph"], "desc": meta["desc"],
                 "color": meta["color"], "status": status,
-                "cpu": random.randint(4, 18) if running else random.randint(0, 3),
-                "mem": {"ai_times": 180, "mailman": 240, "wallstreet_wolf": 210,
-                        "compass": 168, "devdaily": 150, "capitol_tracker": 160,
-                         "morning_brief": 145, "options_flow": 170, "earnings_cal": 155, "cisco_pulse": 148}.get(aid, 140),
                 "schedule": meta["schedule"],
                 "restarts": self._restart_counts.get(aid, 0),
                 "error": self.agents_status[aid].get("error"),
@@ -366,27 +229,16 @@ class Orchestrator:
                 "result": self.agents_status[aid].get("result"),
             })
 
-        alarm = None
-        if res["alarms"]:
-            a = res["alarms"][0]
-            rkey = a["resource"].lower().replace("memory", "ram")
-            alarm = {"resource": rkey, "value": a["value"], "label": a["resource"], "action": a["suggestion"]}
-
-        llm = get_llm_state()
-        llm["vram_mb"] = self._gpu_vram_mb
         return {
             "uptimeS": int(time.time() - self._started_at),
-            "res": {"cpu": block("cpu", res["cpu_percent"]), "ram": block("ram", res["ram_percent"]),
-                    "disk": block("disk", res["disk_percent"]), "gpu": block("gpu", res["gpu_percent"]),
-                    "net": block("net", res["net_mbps"])},
-            "threads": res["active_threads"], "agents": agents, "llm": llm,
-            "events": list(self.events), "alarm": alarm, "demo": self.demo_mode,
+            "agents": agents, "llm": get_llm_state(),
+            "events": list(self.events), "demo": self.demo_mode,
         }
 
     # ── demo controls ────────────────────────────────────────────────────
     def set_demo_mode(self, enabled: bool) -> bool:
         """Toggle demo mode. When on, the dashboard and scheduler focus on the
-        four graded agents only; extras are hidden/paused for a clean demo."""
+        three graded agents only; extras are hidden/paused for a clean demo."""
         self.demo_mode = bool(enabled)
         set_config("demo_mode", self.demo_mode)
         extras = [a for a in AGENT_ORDER if a not in CORE_AGENTS]
@@ -395,13 +247,6 @@ class Orchestrator:
         else:
             self.log_event("Demo mode OFF · full agent fleet active", "#7c5cf6")
         return self.demo_mode
-
-    def spike(self, resource: str = "cpu"):
-        resource = resource if resource in ALARM_ACTIONS else "cpu"
-        value = round(random.uniform(91, 97), 1)
-        self._spike = {"resource": resource, "value": value, "expires": time.time() + 12}
-        self.log_event(f"⚠ {ALARM_LABELS[resource]} exceeded 90% — alarm raised", "#e5484d")
-        return {"resource": resource, "value": value}
 
     async def _demo_recover(self, agent_name: str):
         await asyncio.sleep(4)
@@ -452,10 +297,71 @@ class Orchestrator:
                 except Exception as e:
                     print(f"[Watchdog] Failed to restart '{agent_name}': {e}")
 
+    # How long an agent's stored output may go unrefreshed before it is called
+    # stale, per agent. Generous multiples of each cadence — this is meant to
+    # catch "stopped producing", not a single late tick.
+    STALE_AFTER_HOURS = {"technologia": 24, "wallstreet_wolf": 12, "alpha_wolf": 30}
+
+    def staleness_report(self) -> dict:
+        """Which agents have stopped producing, regardless of how healthy they look.
+
+        The status-based checks above only fire on an in-memory `error`, which
+        misses the failure that actually happened: Alpha Wolf's plan sat seven days
+        old while its pulse and portfolio kept writing fresh rows, so every signal
+        in the UI said the agent was fine. Freshness of OUTPUT is the thing worth
+        watching — an agent that runs on schedule and produces nothing is not
+        healthy, it is broken in a quieter way.
+        """
+        from database import get_agent_data, SessionLocal, AgentData
+
+        out = {}
+        db = SessionLocal()
+        try:
+            for agent_name, limit_h in self.STALE_AFTER_HOURS.items():
+                key = AGENT_DATA_KEYS.get(agent_name)
+                row = (db.query(AgentData)
+                       .filter_by(agent_name=agent_name, key=key)
+                       .order_by(AgentData.updated_at.desc()).first()) if key else None
+                if row is None or row.updated_at is None:
+                    out[agent_name] = {"stale": True, "age_hours": None,
+                                       "why": "has never produced output"}
+                    continue
+                age = (datetime.utcnow() - row.updated_at).total_seconds() / 3600.0
+                out[agent_name] = {
+                    "stale": age > limit_h, "age_hours": round(age, 1),
+                    "limit_hours": limit_h,
+                    "why": (f"{key} last updated {round(age, 1)}h ago, over its {limit_h}h limit"
+                            if age > limit_h else "fresh"),
+                }
+        finally:
+            db.close()
+        return out
+
+    async def _staleness_pass(self):
+        """Surface stale output once per transition, not once per sweep."""
+        try:
+            report = self.staleness_report()
+        except Exception as e:
+            print(f"[Watchdog] staleness check failed: {e}")
+            return
+        for agent_name, info in report.items():
+            was = self._stale_flagged.get(agent_name, False)
+            if info["stale"] and not was:
+                name = AGENT_META.get(agent_name, {}).get("n", agent_name)
+                self.log_event(f"⚠ {name} has produced nothing for "
+                               f"{info['age_hours']}h — check its schedule", "#f59e0b")
+                print(f"[Watchdog] STALE: {agent_name} — {info['why']}")
+            self._stale_flagged[agent_name] = info["stale"]
+
     async def _watchdog_loop(self):
+        ticks = 0
         while True:
             await asyncio.sleep(10)
             await self._watchdog_pass()
+            ticks += 1
+            # Every 30 minutes; the DB read is cheap but pointless at 10s.
+            if ticks % 180 == 0:
+                await self._staleness_pass()
 
     def start_watchdog(self):
         if self._watchdog_task is None:
