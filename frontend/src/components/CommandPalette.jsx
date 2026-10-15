@@ -12,9 +12,9 @@ import { useDialog } from "../theme/ui";
 // palette landed on "Tab not found"; Alpha Wolf — the master agent — was missing
 // from the list entirely and so was unreachable by ⌘K.
 const NAV_ITEMS = [
-  { id: "alpha_wolf",     label: "Alpha Wolf",         glyph: "🐺", type: "tab", desc: "Master strategist · live decisions & paper trades" },
+  { id: "alpha_wolf",     label: "Alpha Wolf",         glyph: "AW", type: "tab", desc: "Master strategist · live decisions & paper trades" },
   { id: "wallstreet_wolf",label: "Wallstreet Wolf",    glyph: "$",  type: "tab", desc: "Tape, regime bias & key levels" },
-  { id: "technologia",    label: "Technologia",        glyph: "◭",  type: "tab", desc: "VP/VWAP/MFI divergence signals" },
+  { id: "technologia",    label: "Technologia",        glyph: "TG",  type: "tab", desc: "VP/VWAP/MFI divergence signals" },
   { id: "settings",       label: "Settings",           glyph: "⚙",  type: "tab", desc: "Schedules & agent config" },
 ];
 

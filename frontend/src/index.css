@@ -40,14 +40,27 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; background: #f6f7f9; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-body { font-family: 'Hanken Grotesk', sans-serif; }
+html, body { margin: 0; background: #e7e4dc; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  /* Every figure in this app is a measurement that re-renders on a poll.
+     Tabular digits only affect numerals, so prose is untouched. */
+  font-variant-numeric: tabular-nums lining-nums; }
 #root { min-height: 100vh; }
 
-::selection { background: #e2d9fb; }
+::selection { background: #cdd8e4; }
+/* The board's own scrollbar: a brass slider on the painted ground. Styled, not
+   reinvented — it keeps native size, track and keyboard behaviour. */
 ::-webkit-scrollbar { width: 11px; height: 11px; }
-::-webkit-scrollbar-thumb { background: #d6d9de; border-radius: 8px; border: 3px solid #f6f7f9; }
-::-webkit-scrollbar-thumb:hover { background: #c2c6cd; }
+::-webkit-scrollbar-thumb { background: #c3bdb0; border-radius: 2px; border: 3px solid #e7e4dc; }
+::-webkit-scrollbar-thumb:hover { background: #a89f8d; }
+html[style*="rgb(16, 19, 21)"] ::selection,
+:root[data-om="dark"] ::selection { background: #26404f; }
+:root[data-om="dark"] ::-webkit-scrollbar-thumb { background: #343b40; border-color: #101315; }
+:root[data-om="dark"] ::-webkit-scrollbar-thumb:hover { background: #454d53; }
+
+/* Tabular figures wherever a number can tick. Prices refresh every few seconds
+   and proportional digits make a whole column jitter on each poll. */
+.om-tnum, table td, table th { font-variant-numeric: tabular-nums lining-nums; }
 
 button { font-family: inherit; }
 input, textarea { font-family: inherit; }

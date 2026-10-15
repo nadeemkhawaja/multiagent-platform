@@ -6,6 +6,7 @@ import { T, AGENT_COLOR } from "../theme/tokens";
 import { Card, Pill, Dot, Btn, SectionTitle, TabHeader, Appearance, gridCols, useMediaQuery, MOBILE_Q } from "../theme/ui";
 import { getConfig, saveConfig, getSchedules, setSchedule, getHealth, getLLMProviders, setAgentModel, setProviderKey,
          getMCP, addMCPServer, removeMCPServer, pingMCPServer, getMCPTools } from "../state/api";
+import { Ico } from "../theme/icons";
 
 // Settings is the one screen built out of fixed multi-track grids (agent |
 // control | value | button). Those tracks have real minimums — a 1.2fr label
@@ -390,7 +391,7 @@ export default function Settings({ mode, setMode }) {
         {saveError && (
           <div role="alert" style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12,
             padding: "11px 16px", display: "flex", alignItems: "center", gap: 11, fontSize: 12.5, color: T.red, fontWeight: 600 }}>
-            <span aria-hidden="true" style={{ fontSize: 16, flex: "0 0 auto" }}>⚠</span>
+            <Ico name="warn" size={15} style={{ marginTop: 1 }} />
             <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{saveError}</span>
             <Btn size="sm" kind="ghost" onClick={() => setSaveError(null)} style={{ flex: "0 0 auto" }}>Dismiss</Btn>
           </div>

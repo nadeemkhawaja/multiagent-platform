@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { T } from "../theme/tokens";
 import { Btn, Card, SectionTitle, useDialog } from "../theme/ui";
 import { emailPreview, stopAgent } from "../state/api";
+import { Ico } from "../theme/icons";
 
 // Collapsible section — persists open/closed per `id` in localStorage so a
 // busy page (e.g. Alpha Wolf) can default secondary detail to collapsed
@@ -190,7 +191,8 @@ export function EmailPreviewButton({ agentId, label = "Preview email" }) {
 export function EmptyState({ icon = "∅", title, hint }) {
   return (
     <Card pad={44} style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 30, opacity: 0.45 }}>{icon}</div>
+      <div style={{ display: "flex", justifyContent: "center", color: T.ink4,
+        fontSize: 30, opacity: 0.5 }}>{icon}</div>
       <div style={{ fontSize: 14, fontWeight: 700, marginTop: 10 }}>{title}</div>
       {hint && <div style={{ fontSize: 12.5, color: T.ink3, marginTop: 5 }}>{hint}</div>}
     </Card>
@@ -205,7 +207,7 @@ export function ErrorBanner({ error, kind = "run", onRetry }) {
   const lead = kind === "data" ? "Couldn't load this agent's data" : "Last run error";
   return (
     <div role="alert" style={{ background: T.redBg, border: `1px solid ${T.red}55`, borderRadius: 12, padding: "11px 16px", display: "flex", alignItems: "center", gap: 11, fontSize: 12.5, color: T.red, fontWeight: 600 }}>
-      <span aria-hidden="true" style={{ fontSize: 16, flex: "0 0 auto" }}>⚠</span>
+      <Ico name="warn" size={15} style={{ marginTop: 1 }} />
       {/* Backend messages can be long single tokens (paths, tracebacks) — let
           them wrap rather than force the whole banner to overflow. */}
       <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{lead}: {error}</span>

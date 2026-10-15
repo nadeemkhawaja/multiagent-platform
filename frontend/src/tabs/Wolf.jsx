@@ -84,7 +84,7 @@ function Freshness({ at }) {
     <Pill mono c={stale ? T.amber : T.ink3} bg={stale ? T.amberBg : undefined}
       style={{ padding: "3px 8px" }}
       title={stale ? "Older than two agent cycles — run the agent for a current tape" : "Time of the last agent fetch"}>
-      {stale ? "⚠ " : ""}{fmtAge(age)}
+      {stale ? "! " : ""}{fmtAge(age)}
     </Pill>
   );
 }

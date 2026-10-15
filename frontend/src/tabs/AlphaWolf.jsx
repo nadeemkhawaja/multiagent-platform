@@ -9,6 +9,7 @@ import { Card, Pill, SectionTitle, TabHeader } from "../theme/ui";
 import { useAgentData, triggerAgent, getWolfPortfolio, setWolfExecution, resetWolfPortfolio, getWolfNow, getWolfJournal, runWolfRiskCheck, cancelWolfPending } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar, Collapsible } from "../components/Common";
 import { stateStyle, stateKey } from "../state/tradeState";
+import { Ico } from "../theme/icons";
 
 // Alpha Wolf is the product's centre, so this tab wears the identity token
 // itself — the highest-chroma colour in the app. Read at call time: T and
@@ -111,7 +112,7 @@ function StaleBanner({ error, onRetry }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12,
       padding: "7px 12px", borderRadius: 8, background: T.amberBg, border: `1px solid ${T.amber}44`,
       fontSize: 11.5, fontWeight: 600, color: T.amber }}>
-      ⚠ Not live — everything below is the last good read. {error.message || String(error)}
+      <Ico name="warn" size={13} style={{ display: "inline", verticalAlign: "-2px", marginRight: 5 }} />Not live — everything below is the last good read. {error.message || String(error)}
       <button onClick={onRetry} style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 6,
         cursor: "pointer", border: `1px solid ${T.amber}66`, background: "transparent", color: T.amber }}>
         Retry
@@ -233,7 +234,7 @@ function LiveStatus({ error, onRetry }) {
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
       fontSize: 12.5, color: error ? T.red : T.ink4, padding: "2px 4px" }}>
       {error ? (<>
-        <span>⚠ Live session data unavailable — {error.message || String(error)}</span>
+        <span><Ico name="warn" size={13} style={{ display: "inline", verticalAlign: "-2px", marginRight: 5 }} />Live session data unavailable — {error.message || String(error)}</span>
         <button onClick={onRetry} style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 6,
           cursor: "pointer", border: `1px solid ${T.line}`, background: T.card, color: T.ink3 }}>Retry</button>
       </>) : <span>Loading the session clock…</span>}
@@ -352,13 +353,34 @@ function RightNowBlock({ now }) {
     (a, b) => stateStyle(stateKey(a)).rank - stateStyle(stateKey(b)).rank);
   if (!now.directive && !ideas.length && !now.pulse?.checked_at) return null;
   const live = ideas.filter((i) => stateStyle(stateKey(i)).rank <= 5);
+  // "Act now" is a different kind of sentence from "market closed" — one is an
+  // instruction, the other is the absence of one. Only the instruction earns
+  // the board scale.
+  const acting = /^ACT NOW/i.test(String(now.directive || ""));
   return (
-    <div style={{ padding: 0, marginTop: 16, borderTop: `1px solid ${T.line}`, paddingTop: 14 }}>
-      <div style={{ fontSize: 14.5, fontWeight: 800, color: purple(), lineHeight: 1.45, marginBottom: ideas.length ? 12 : 0 }}>
-        🐺 {txt(now.directive)}
+    // THE call. This is the one element in the app allowed the board scale, and
+    // it is the reason the app is open: "what do I do right now". It read at
+    // 14.5px — a quarter-step above body copy — so the answer the whole product
+    // exists to produce was the same size as the caveat under it.
+    //
+    // An ACT directive gets the full board figure; everything else (waiting,
+    // closed, market shut) is a statement of fact and steps down to `title`,
+    // because shouting "market closed" at 44px is how a scale stops meaning
+    // anything.
+    <div style={{ padding: 0, marginTop: 18, borderTop: `1px solid ${T.brass}44`, paddingTop: 16 }}>
+      <div style={{
+        fontSize: acting ? T.type.board : T.type.title,
+        fontWeight: acting ? 800 : 600,
+        fontStretch: acting ? "112%" : "100%",
+        letterSpacing: acting ? "-0.025em" : "-0.01em",
+        color: acting ? T.ink : T.ink2,
+        lineHeight: 1.08, marginBottom: ideas.length ? 14 : 0,
+        textWrap: "balance",
+      }}>
+        {txt(now.directive)}
       </div>
       {ideas.length > 0 && (
-        <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ borderTop: `1px solid ${T.line}` }}>
           {ideas.map((i, k) => <ActionRow key={`${i.ticker}-${k}`} idea={i} />)}
         </div>
       )}
@@ -392,14 +414,23 @@ const wrapSt = { overflowX: "auto", maxWidth: "100%", display: "flex", alignItem
 const thSt = (align = "left") => ({ textAlign: align, padding: "3px 7px", fontSize: 9,
   fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: 0.3,
   borderBottom: RULE(), borderRight: RULE(), whiteSpace: "nowrap" });
-function pnlColor(v) { return (v ?? 0) >= 0 ? T.green : T.red; }
+// Flat is not a gain. This returned green for 0, so a fresh account with
+// nothing in it showed UNREALIZED, REALIZED, RETURN and TODAY'S P&L all in
+// profit green — four valence marks carrying no direction at all, which is the
+// colour noise the board palette exists to remove. Valence is for numbers that
+// actually moved; zero and unknown are neutral.
+function pnlColor(v) {
+  if (v == null || Math.abs(v) < 0.005) return T.ink3;
+  return v > 0 ? T.green : T.red;
+}
 const fmt$ = (v) => (v == null ? "—" : `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
 function Stat({ label, value, color }) {
   return (
     <div style={{ minWidth: 110 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: ".5px" }}>{label}</div>
-      <div style={{ fontSize: 17, fontWeight: 800, fontFamily: T.mono, color: color || T.ink, marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: T.type.micro, fontWeight: 700, color: T.ink4, textTransform: "uppercase", letterSpacing: ".6px", fontStretch: "88%" }}>{label}</div>
+      <div style={{ fontSize: 19, fontWeight: 700, fontStretch: "106%", letterSpacing: "-0.015em",
+        color: color || T.ink, marginTop: 3, ...T.tnum }}>{value}</div>
     </div>
   );
 }
@@ -459,7 +490,7 @@ function SyncStrip({ sync, pendingCount }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12, fontSize: 11, color: T.ink4 }}>
       <span style={{ fontWeight: 700, color: drift ? T.amber : T.green }}>
-        {drift ? "⚠ partial sync" : "● in sync"}
+        {drift ? "partial sync" : "in sync"}
       </span>
       <span>equity read live from Alpaca</span>
       {sync.last_check && <span>· last reconcile {sync.last_check}</span>}
@@ -560,9 +591,9 @@ function PortfolioCard({ portfolio, onChanged }) {
   if (settings.configured === false) {
     return (
       <div style={{ padding: 0 }}>
-        <SectionTitle sub="simulated fills via a real Alpaca paper account · live prices">⚡ Paper Trading Portfolio</SectionTitle>
+        <SectionTitle sub="simulated fills via a real Alpaca paper account · live prices">Paper Trading Portfolio</SectionTitle>
         <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: T.amberBg, border: `1px solid ${T.amber}44`, fontSize: 12.5, color: T.ink2, lineHeight: 1.55 }}>
-          ⚠ {note || "Alpaca isn't configured yet."} Sign up free at <a href="https://alpaca.markets" target="_blank" rel="noreferrer" style={{ color: T.amber, fontWeight: 700 }}>alpaca.markets</a>, grab your Paper Trading API keys, and add them to <code>.env</code>.
+          <Ico name="warn" size={13} style={{ display: "inline", verticalAlign: "-2px", marginRight: 5 }} />{note || "Alpaca isn't configured yet."} Sign up free at <a href="https://alpaca.markets" target="_blank" rel="noreferrer" style={{ color: T.amber, fontWeight: 700 }}>alpaca.markets</a>, grab your Paper Trading API keys, and add them to <code>.env</code>.
         </div>
       </div>
     );
@@ -636,7 +667,7 @@ function PortfolioCard({ portfolio, onChanged }) {
           back later. Flattened together they all wore 11px semibold and the
           switch that lets an agent place orders looked like a number field. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <SectionTitle sub="real fills via Alpaca paper trading · virtual capital">⚡ Paper Trading Portfolio</SectionTitle>
+        <SectionTitle sub="real fills via Alpaca paper trading · virtual capital">Paper Trading Portfolio</SectionTitle>
         <div style={{ flex: 1 }} />
         <button onClick={toggle} disabled={busy}
           aria-pressed={!!settings.enabled}
@@ -711,7 +742,7 @@ function PortfolioCard({ portfolio, onChanged }) {
 
       {daily_breaker?.tripped && (
         <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: T.redBg, border: `1px solid ${T.red}44`, fontSize: 12.5, color: T.red, fontWeight: 600, lineHeight: 1.5 }}>
-          🛑 Daily loss circuit breaker tripped — down {daily_breaker.daily_pnl_pct}% today (limit -{daily_breaker.max_daily_loss_pct}%). No new entries until tomorrow; open positions still exit normally on stop/target.
+          <Ico name="stop" size={13} style={{ display: "inline", verticalAlign: "-2px", marginRight: 5 }} />Daily loss circuit breaker tripped — down {daily_breaker.daily_pnl_pct}% today (limit -{daily_breaker.max_daily_loss_pct}%). No new entries until tomorrow; open positions still exit normally on stop/target.
         </div>
       )}
 
@@ -802,7 +833,7 @@ function PerformanceCard({ journal }) {
   if (!stats.trades) {
     return (
       <div>
-        <SectionTitle sub="win rate · profit factor · closed-trade journal">📊 Performance</SectionTitle>
+        <SectionTitle sub="win rate · profit factor · closed-trade journal">Performance</SectionTitle>
         <div style={{ fontSize: 12.5, color: T.ink4, marginTop: 8 }}>
           No closed trades yet — stats appear once positions exit (plan rotation, stop, or target).
         </div>
@@ -813,7 +844,7 @@ function PerformanceCard({ journal }) {
   const exits = s.by_exit || {};
   return (
     <div>
-      <SectionTitle sub="closed paper trades · stops and targets enforced every 10 min in-session">📊 Performance</SectionTitle>
+      <SectionTitle sub="closed paper trades · stops and targets enforced every 10 min in-session">Performance</SectionTitle>
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", margin: "12px 0 14px" }}>
         <Stat label="Closed trades" value={s.trades} />
         <Stat label="Win rate" value={`${s.win_rate}%`} color={s.win_rate >= 50 ? T.green : T.red} />
@@ -829,7 +860,7 @@ function PerformanceCard({ journal }) {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {Object.entries(exits).map(([k, v]) => (
           <span key={k} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, fontWeight: 600, background: T.line2, color: T.ink3 }}>
-            {k === "stop" ? "🛑 stop exits" : k === "target" ? "🎯 target exits" : "🔁 plan rotations"}: {v.n} · <span style={{ fontFamily: T.mono, color: pnlColor(v.pnl) }}>{v.pnl >= 0 ? "+" : ""}{fmt$(v.pnl)}</span>
+            {k === "stop" ? "stop exits" : k === "target" ? "target exits" : "plan rotations"}: {v.n} · <span style={{ fontFamily: T.mono, color: pnlColor(v.pnl) }}>{v.pnl >= 0 ? "+" : ""}{fmt$(v.pnl)}</span>
           </span>
         ))}
       </div>
@@ -927,7 +958,7 @@ function FunnelCards({ funnel }) {
     <Card pad={14}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
         <SectionTitle sub="the same board Technologia shows — and what this plan did with each card">
-          🃏 Funnel cards
+          Funnel cards
         </SectionTitle>
         {/* These four buckets add up to the table below, so a card count that
             disagrees with the Technologia tab always has an answer on screen. */}
@@ -980,7 +1011,7 @@ function FunnelCards({ funnel }) {
                   <td style={{ padding: "3px 7px", borderRight: RULE(), fontSize: 11,
                     color: c.gate ? T.amber : c.in_plan ? T.green : T.ink3,
                     minWidth: 220, whiteSpace: "normal", lineHeight: 1.4 }}>
-                    {c.gate ? "⚠ " : c.in_plan ? "✓ " : "· "}
+                    {c.gate ? "! " : c.in_plan ? "\u2713 " : "\u00b7 "}
                     {txt(c.gate
                       || (c.in_plan ? "in the plan"
                         : c.action === "WAIT" ? "armed — waiting on a trigger"
@@ -1003,7 +1034,7 @@ function FunnelCards({ funnel }) {
       )}
       {(funnel.coverage?.missing || []).length > 0 && (
         <div style={{ fontSize: 11, color: T.amber, marginTop: 8 }}>
-          ⚠ Price data covered {funnel.coverage.returned}/{funnel.coverage.requested} symbols —
+          <Ico name="warn" size={12} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Price data covered {funnel.coverage.returned}/{funnel.coverage.requested} symbols —
           a missing card here may be missing data, not a quiet tape.
         </div>
       )}
@@ -1037,7 +1068,7 @@ function PlanBlock({ title, plan, currentIdx }) {
                   <tr key={i} style={{ borderBottom: RULE() }}>
                     <td style={{ padding: "3px 7px", borderRight: RULE(), fontFamily: T.mono, fontWeight: 800, color: T.ink, verticalAlign: "top" }}>
                       {txt(idea.ticker)}<br/>
-                      {idea.when && <span style={{ fontSize: 9, fontWeight: 700, color: purple(), fontFamily: T.mono, marginTop: 4, display: "inline-block" }}>⏰ {txt(idea.when)}</span>}
+                      {idea.when && <span style={{ fontSize: 9.5, fontWeight: 700, color: T.ink4, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 3 }}><Ico name="clock" size={10} />{txt(idea.when)}</span>}
                     </td>
                     <td style={{ padding: "3px 7px", borderRight: RULE(), verticalAlign: "top" }}>
                       <span style={{ fontSize: 9, fontWeight: 800, color: dc, background: dc + "16", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" }}>{txt(idea.direction) || "n/a"}</span>
@@ -1152,7 +1183,7 @@ export default function AlphaWolf({ status, agentError }) {
 
   return (
     <div>
-      <TabHeader icon="🐺" color={purple()} title="Alpha Wolf"
+      <TabHeader icon={<Ico name="wolf" size={19} />} color={purple()} title="Alpha Wolf"
         sub="Master strategist · fuses the pack into a Daily + Weekly plan and executes it (paper)"
         actions={<>
           <Pill mono c={T.ink3} title="Synthesized once at 08:30 ET, then re-synced with Technologia's cards every 30 min through the session">
@@ -1215,7 +1246,7 @@ export default function AlphaWolf({ status, agentError }) {
             <Card pad={14}>
               {(plan.execution.executed || []).length > 0 && (<>
                 <div style={{ fontSize: 12, fontWeight: 800, color: T.green, marginBottom: 8 }}>
-                  ⚡ Executed {plan.execution.executed.length} trade{plan.execution.executed.length !== 1 ? "s" : ""} on the last run
+                  <Ico name="bolt" size={13} style={{ display: "inline", verticalAlign: "-2px", marginRight: 5 }} />Executed {plan.execution.executed.length} trade{plan.execution.executed.length !== 1 ? "s" : ""} on the last run
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {plan.execution.executed.map((t, i) => (
@@ -1258,7 +1289,7 @@ export default function AlphaWolf({ status, agentError }) {
         )}
 
         {!plan ? (
-          <EmptyState icon="🐺" title="No game-plan yet"
+          <EmptyState icon={<Ico name="wolf" size={26} />} title="No game-plan yet"
             hint="Run the sub-agents (Wolf, Technologia), then click 'Run plan'." />
         ) : (<>
 
@@ -1291,7 +1322,7 @@ export default function AlphaWolf({ status, agentError }) {
 
               {(plan.confluence || []).length > 0 && (
                 <div style={{ marginTop: 16 }}>
-                  <SectionTitle sub="where multiple agents line up — highest conviction">🎯 Confluence</SectionTitle>
+                  <SectionTitle sub="where multiple agents line up — highest conviction">Confluence</SectionTitle>
                   <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: T.ink2, lineHeight: 1.7 }}>
                     {plan.confluence.map((c, i) => <li key={i}>{txt(c)}</li>)}
                   </ul>

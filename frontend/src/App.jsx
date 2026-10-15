@@ -2,7 +2,8 @@
 // App.jsx — shell: collapsible nav, command palette, toasts, keyboard shortcuts
 // ============================================================================
 import { useState, useEffect, useCallback, useMemo, Component } from "react";
-import { T, applyMode, AGENT_COLOR, STAT } from "./theme/tokens";
+import { T, applyMode, AGENT_COLOR, STAT, AGENT_BADGE } from "./theme/tokens";
+import { Badge } from "./theme/icons";
 import { Dot, useDialog, useMediaQuery, NavContext, MOBILE_Q } from "./theme/ui";
 import { useSystemState } from "./state/api";
 import CommandPalette from "./components/CommandPalette";
@@ -112,11 +113,14 @@ function NavItem({ item, active, onClick, badge, collapsed }) {
     return (
       <button onClick={onClick} title={item.label} style={{
         width: 38, height: 38, borderRadius: 10, margin: "1px auto", display: "flex", alignItems: "center", justifyContent: "center",
-        background: active ? col + "1f" : "transparent", border: `1px solid ${active ? col + "44" : "transparent"}`,
+        background: active ? T.sideActive : "transparent",
+        border: `1px solid ${active ? T.sideLine : "transparent"}`,
         color: active ? col : T.sideInk2, fontSize: 15, fontWeight: 700, cursor: "pointer",
-        transition: "all .14s", position: "relative",
+        transition: "all .14s", position: "relative", borderRadius: 3,
       }}>
-        {item.glyph}
+        {AGENT_BADGE[item.id]
+          ? <Badge code={AGENT_BADGE[item.id]} color={active ? col : col + "cc"} size={22} />
+          : item.glyph}
         {badge && <div style={{ position: "absolute", top: 4, right: 4 }}>{badge}</div>}
       </button>
     );
@@ -124,15 +128,17 @@ function NavItem({ item, active, onClick, badge, collapsed }) {
   return (
     <button onClick={onClick} style={{
       display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-      cursor: "pointer", padding: "8px 10px", borderRadius: 10,
+      cursor: "pointer", padding: "7px 9px", borderRadius: 3,
       border: `1px solid ${active ? T.sideLine : "transparent"}`,
       background: active ? T.sideActive : "transparent",
-      boxShadow: active ? T.shadow : "none",
+      boxShadow: "none",
       font: "inherit", transition: "all .14s", marginBottom: 1,
     }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = T.sideBtn; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
-      <span style={{ width: 26, height: 26, borderRadius: 7, background: col + (active ? "1f" : "12"), color: col, display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flex: "0 0 auto" }}>{item.glyph}</span>
+      {AGENT_BADGE[item.id]
+        ? <Badge code={AGENT_BADGE[item.id]} color={active ? col : col + "cc"} size={22} title={item.label} />
+        : <span style={{ width: 22, height: 22, borderRadius: 2, background: col + (active ? "1f" : "12"), color: col, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flex: "0 0 auto" }}>{item.glyph}</span>}
       <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? T.sideInk : T.sideInk2, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
       {badge}
     </button>
@@ -171,7 +177,7 @@ function Sidebar({ tab, setTab, sys, online, collapsed: collapsedProp, setCollap
         transition: "width .22s ease, flex .22s ease" };
 
   const sectionLabel = (text) => collapsed ? null : (
-    <div style={{ fontSize: 10, fontWeight: 700, color: T.sideMuted, textTransform: "uppercase", letterSpacing: 0.6, padding: "0 10px 6px", marginTop: 12 }}>{text}</div>
+    <div style={{ fontSize: 10, fontWeight: 700, color: T.sideMuted, textTransform: "uppercase", letterSpacing: 0.9, fontStretch: "88%", padding: "0 10px 6px", marginTop: 14 }}>{text}</div>
   );
 
   const renderNav = (it, keyPrefix = "") => {

@@ -9,6 +9,7 @@ import { Card, Pill, SectionTitle, TabHeader, DataTable, useNav } from "../theme
 import { useAgentData, triggerAgent, useModelLabel, getWolfNow } from "../state/api";
 import { EmailPreviewButton, ErrorBanner, EmptyState, AgentControls, LufiAvatar, Collapsible } from "../components/Common";
 import { stateStyle, stateKey, statesByTicker } from "../state/tradeState";
+import { Ico } from "../theme/icons";
 
 // Read at call time, never captured: T and AGENT_COLOR are mutated in place by
 // applyMode(), so module-scope copies would freeze this tab in light mode.
@@ -273,7 +274,7 @@ function WolfVerdict({ symbol, states, card }) {
       style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: goTab ? "pointer" : "default",
         background: st.c + "16", border: `1px solid ${st.c}44`, borderRadius: 6, padding: "2px 8px",
         fontFamily: T.sans, fontSize: 10, fontWeight: 800, color: st.c }}>
-      🐺 {st.label}
+      {st.label}
     </button>
   );
 }
@@ -382,7 +383,7 @@ export default function Technologia({ status, agentError }) {
 
   return (
     <div>
-      <TabHeader icon="◭" color={accent()} title="Technologia"
+      <TabHeader icon={<Ico name="profile" size={19} />} color={accent()} title="Technologia"
         sub="VP zones · VWAP · MFI divergence · VSA/CVD (approx) — stocks + /ES + /NQ"
         actions={<>
           <Pill mono c={T.ink3}>every 30 min</Pill>
@@ -395,7 +396,7 @@ export default function Technologia({ status, agentError }) {
         <ErrorBanner error={agentError} />
         <ErrorBanner error={dataError} kind="data" onRetry={refresh} />
         {!s ? (
-          <EmptyState icon="◭" title="No Technologia signals yet"
+          <EmptyState icon={<Ico name="profile" size={26} />} title="No Technologia signals yet"
             hint="Click 'Refresh' to compute VWAP, volume profile, MFI divergence and VSA/CVD approximations across the watchlist plus /ES and /NQ." />
         ) : (<>
 
@@ -412,7 +413,7 @@ export default function Technologia({ status, agentError }) {
               <button type="button" onClick={() => goTab && goTab("alpha_wolf")}
                 style={{ padding: "6px 14px", background: purple(), border: "none", borderRadius: 8,
                   color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: T.sans }}>
-                🐺 Open Alpha Wolf
+                Open Alpha Wolf
               </button>
             </div>
           </Card>
@@ -437,7 +438,7 @@ export default function Technologia({ status, agentError }) {
                 title={funnel.generated_at === s.generated_at
                   ? `Alpha Wolf's plan was built from this exact run (synced ${funnel.synced_at || "—"})`
                   : `Alpha Wolf is still on the ${funnel.generated_at || "—"} run — the next pulse folds these cards in`}>
-                🐺 {funnel.tradeable || 0} in Alpha Wolf's plan
+                {funnel.tradeable || 0} in Alpha Wolf's plan
                 {funnel.generated_at === s.generated_at ? "" : " (syncing)"}
               </Pill>
             )}

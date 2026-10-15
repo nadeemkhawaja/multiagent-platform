@@ -93,9 +93,14 @@ export function Card({ children, style, pad = 12, interactive, className = "", .
     // laid out with alignSelf:"flex-start" so they hug their content, and a card
     // that hugs a 14-column table will happily grow past a phone viewport and
     // take the whole page sideways with it.
+    // A plate on the board. The incumbent was a 14px-radius bordered box with a
+    // shadow, repeated down the page; twelve of those stacked is the "boxy
+    // chrome" that made the app read as containers first and data second. A
+    // plate separates by its own ground and the page gutter, so the 1px lines
+    // stop competing with the figures printed on them.
     <div {...rest} className={(interactive ? "om-lift " : "") + className}
-      style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: pad,
-        boxShadow: T.shadow, maxWidth: "100%", minWidth: 0, ...style }}>
+      style={{ background: T.card, border: "none", borderRadius: 3, padding: pad,
+        boxShadow: "none", maxWidth: "100%", minWidth: 0, ...style }}>
       {children}
     </div>
   );
@@ -103,7 +108,11 @@ export function Card({ children, style, pad = 12, interactive, className = "", .
 
 export function Pill({ children, c = T.ink2, bg, bd, mono, style, title }) {
   return (
-    <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: c, background: bg || T.line2, border: bd ? `1px solid ${bd}` : "none", padding: "5px 10px", borderRadius: 8, fontFamily: mono ? T.mono : T.sans, whiteSpace: "nowrap", ...style }}>
+    <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 6,
+      fontSize: T.type.label, fontWeight: 650, color: c, background: bg || T.line2,
+      border: bd ? `1px solid ${bd}` : "none", padding: "4px 8px", borderRadius: 2,
+      fontFamily: T.sans, fontStretch: mono ? "95%" : "100%", letterSpacing: 0.1,
+      whiteSpace: "nowrap", ...T.tnum, ...style }}>
       {children}
     </span>
   );
@@ -111,13 +120,14 @@ export function Pill({ children, c = T.ink2, bg, bd, mono, style, title }) {
 
 export function Btn({ children, onClick, kind = "default", size = "md", style, disabled }) {
   const base = {
-    fontFamily: T.sans, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", border: "1px solid transparent",
-    borderRadius: 9, display: "inline-flex", alignItems: "center", gap: 7, transition: "all .14s ease",
-    fontSize: size === "sm" ? 12.5 : 13.5, padding: size === "sm" ? "6px 11px" : "9px 15px", opacity: disabled ? 0.55 : 1,
+    fontFamily: T.sans, fontWeight: 650, cursor: disabled ? "not-allowed" : "pointer", border: "1px solid transparent",
+    borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 7, transition: "all .16s ease",
+    fontSize: size === "sm" ? T.type.label : T.type.dense, letterSpacing: 0.15,
+    padding: size === "sm" ? "6px 11px" : "8px 14px", opacity: disabled ? 0.55 : 1,
     whiteSpace: "nowrap", flexShrink: 0,
   };
   const kinds = {
-    default: { background: T.card, borderColor: T.line, color: T.ink },
+    default: { background: T.cardAlt, borderColor: T.line, color: T.ink },
     primary: { background: T.violet, color: T.onAccent },
     ghost: { background: "transparent", color: T.ink2 },
     danger: { background: T.redBg, color: T.red, borderColor: T.red + "55" },
@@ -137,10 +147,15 @@ export function Btn({ children, onClick, kind = "default", size = "md", style, d
 // own <h1>, so this is what gives the app a document outline at all.
 export function SectionTitle({ children, right, sub }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 6 }}>
-      <div>
-        <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: -0.2, margin: 0 }}>{children}</h2>
-        {sub && <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{sub}</div>}
+    // Condensed, tracked, and underscored in brass. The rule is what replaces
+    // the card border it used to sit inside: a section now reads as a region of
+    // the board rather than another container.
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end",
+      marginBottom: 10, paddingBottom: 5, borderBottom: `1px solid ${T.brass}44`, gap: 12 }}>
+      <div style={{ minWidth: 0 }}>
+        <h2 style={{ fontSize: T.type.label, fontWeight: 700, letterSpacing: 0.9,
+          textTransform: "uppercase", fontStretch: "88%", color: T.ink2, margin: 0 }}>{children}</h2>
+        {sub && <div style={{ fontSize: T.type.micro, color: T.ink4, marginTop: 3 }}>{sub}</div>}
       </div>
       {right}
     </div>
@@ -148,13 +163,17 @@ export function SectionTitle({ children, right, sub }) {
 }
 
 export function TabHeader({ icon, color, title, sub, actions }) {
-  // Frosted-glass sticky header: content scrolls under it over the aurora.
-  // The BAR spans full width (so the glass and its rule reach both edges) but
-  // its contents sit in the same centred measure as the body below, otherwise
-  // the title and actions would drift away from the columns they belong to.
+  // The session rail. The BAR spans full width (so the brass edge reaches both
+  // sides) but its contents sit in the same centred measure as the body below,
+  // otherwise the title and actions drift away from the columns they belong to.
+  // `icon` takes a drawn <Ico>, not a glyph.
   const { mobile, openNav } = useNav();
   return (
-    <div style={{ borderBottom: `1px solid ${T.line}`, background: T.card + "c2", backdropFilter: "blur(14px) saturate(1.4)", WebkitBackdropFilter: "blur(14px) saturate(1.4)", position: "sticky", top: 0, zIndex: 5 }}>
+    // Solid, not frosted. Blur-as-decoration reads as a 2020 SaaS tic and, over
+    // a dark board, muddied every figure that scrolled beneath it. The rail is
+    // a brass edge on painted steel.
+    <div style={{ borderBottom: `1px solid ${T.brass}55`, background: T.sidebar,
+      position: "sticky", top: 0, zIndex: 5 }}>
     <div className="om-measure" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 8, padding: "10px var(--om-gutter)" }}>
       {/* minWidth:0 and a shrinkable title block: this was flexShrink:0, so a long
           subtitle (Alpha Wolf's runs to a full sentence) could not wrap and pushed
