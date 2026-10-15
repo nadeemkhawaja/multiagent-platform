@@ -1,81 +1,80 @@
 // ============================================================================
-// icons.jsx — crisp 24×24 stroke icons (inherit color via currentColor).
-// Used by the Orchestrator metric cards and elsewhere.
+// icons.jsx — the app's one icon system.
+//
+// Drawn, not typed. The incumbent used emoji (🐺 🃏 📊 🛑 ⚡ ⚠ 🎯 ⏰ ◭) as
+// iconography, which puts a different illustrator's artwork — in a different
+// style, weight and colour, rendered differently per OS — beside hand-tuned
+// type and a measured palette. On the board, marks are stencilled: one stroke
+// weight, one terminal, one optical size, and they inherit `currentColor` so a
+// mark in an enamel-red alert is enamel red without a second definition.
+//
+// Geometry: 24-unit grid, 1.6 stroke, round caps and joins. Anything added here
+// stays on that grid; a 2px icon beside a 1.6px icon is the tell that an icon
+// set grew by accident rather than by design.
 // ============================================================================
+import { T } from "./tokens";
 
-const base = (size, color, stroke) => ({
-  width: size, height: size, viewBox: "0 0 24 24", fill: "none",
-  stroke: color, strokeWidth: stroke, strokeLinecap: "round", strokeLinejoin: "round",
-  style: { display: "block" },
-});
+const PATHS = {
+  // The pack. A wolf head reduced to the two ears and muzzle that survive at
+  // 14px — the literal animal does not.
+  wolf: <path d="M4 5l3.2 2.2M20 5l-3.2 2.2M4 5l1 7.2a7 7 0 0 0 14 0L20 5M9.5 11.5h.01M14.5 11.5h.01M12 15l-1.4 1.4M12 15l1.4 1.4" />,
+  // Technologia: the auction distribution — a profile built of stacked rows.
+  profile: <><path d="M4 6h8M4 10h13M4 14h10M4 18h6" /></>,
+  // A trade card.
+  card: <><rect x="4" y="4" width="16" height="16" rx="1.5" /><path d="M8.5 9.5h3M8.5 13h7" /></>,
+  // Performance: a closed-trade journal as plotted bars.
+  bars: <><path d="M4 20V11M9.3 20V5M14.7 20v-6M20 20V8" /></>,
+  // Execution.
+  bolt: <path d="M13.5 3L5.5 13.5h5L10 21l8.5-10.5h-5L13.5 3z" />,
+  // A stop: the octagon, the one shape that means this and nothing else.
+  stop: <path d="M8.6 3.5h6.8l4.1 4.1v6.8l-4.1 4.1H8.6l-4.1-4.1V7.6z" />,
+  // A target taken.
+  target: <><circle cx="12" cy="12" r="7.5" /><circle cx="12" cy="12" r="3" /></>,
+  // Rotation out of a position.
+  rotate: <><path d="M20 12a8 8 0 1 1-2.6-5.9" /><path d="M20 4v4.5h-4.5" /></>,
+  // Warning. Not the emoji triangle: same silhouette, this set's stroke.
+  warn: <><path d="M12 4.2L21 19.5H3z" /><path d="M12 10v4M12 17h.01" /></>,
+  clock: <><circle cx="12" cy="12" r="8.2" /><path d="M12 7.2V12l3.2 2" /></>,
+  check: <path d="M4.5 12.5l4.8 4.8L19.5 7" />,
+  // Confluence: independent reads converging on one level.
+  converge: <><path d="M3.5 5.5L12 12M3.5 18.5L12 12M12 12h8.5" /></>,
+  settings: <><circle cx="12" cy="12" r="3.1" /><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3L5.5 5.5" /></>,
+};
 
-export function CpuIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
+/**
+ * One stencil. `size` is the box; the stroke stays 1.6 at every size on
+ * purpose, because scaling the stroke with the box is what makes an icon set
+ * look like three icon sets.
+ */
+export function Ico({ name, size = 15, color, style, title }) {
+  const d = PATHS[name];
+  if (!d) return null;
   return (
-    <svg {...base(size, color, stroke)}>
-      <rect x="6" y="6" width="12" height="12" rx="2.2" />
-      <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
-      <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color || "currentColor"} strokeWidth="1.6"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden={title ? undefined : "true"}
+      role={title ? "img" : undefined}
+      style={{ flex: "0 0 auto", display: "block", ...style }}>
+      {title && <title>{title}</title>}
+      {d}
     </svg>
   );
 }
 
-export function RamIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
+/**
+ * The pit badge: a two-letter acronym on enamel. This is how a floor identifies
+ * a trader at distance, and it is why colour can stay as contained as it is in
+ * this palette — identity lives in a glyph on a 20px chip rather than in a
+ * tinted panel, a coloured border and a matching heading.
+ */
+export function Badge({ code, color, size = 20, title }) {
   return (
-    <svg {...base(size, color, stroke)}>
-      <rect x="2.5" y="8" width="19" height="9" rx="1.6" />
-      <path d="M7 8v5M11 8v5M13 8v5M17 8v5" />
-      <path d="M5 17v2.5M9 17v2.5M15 17v2.5M19 17v2.5" />
-    </svg>
-  );
-}
-
-export function DiskIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
-  return (
-    <svg {...base(size, color, stroke)}>
-      <ellipse cx="12" cy="5.5" rx="8" ry="3" />
-      <path d="M4 5.5v13c0 1.66 3.58 3 8 3s8-1.34 8-3v-13" />
-      <path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" />
-    </svg>
-  );
-}
-
-export function GpuIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
-  return (
-    <svg {...base(size, color, stroke)}>
-      <rect x="2" y="7" width="20" height="10" rx="2.2" />
-      <circle cx="8" cy="12" r="2.4" />
-      <circle cx="15.5" cy="12" r="2.4" />
-      <path d="M5 17v3M19 17v3" />
-    </svg>
-  );
-}
-
-export function NetIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
-  return (
-    <svg {...base(size, color, stroke)}>
-      <path d="M7.5 18V6M7.5 6 4 9.5M7.5 6 11 9.5" />
-      <path d="M16.5 6v12M16.5 18 13 14.5M16.5 18 20 14.5" />
-    </svg>
-  );
-}
-
-export function StrategyIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
-  // candlestick + trend — used by Strategy Scout
-  return (
-    <svg {...base(size, color, stroke)}>
-      <path d="M3 20h18" />
-      <path d="M7 16V8M7 6v2m0 6v2" /><rect x="5.5" y="8" width="3" height="6" rx="0.8" />
-      <path d="M16 14V7M16 5v2m0 7v2" /><rect x="14.5" y="7" width="3" height="7" rx="0.8" />
-      <path d="M4 6l5-3 4 2 7-4" opacity="0.5" />
-    </svg>
-  );
-}
-
-export function ShieldIcon({ size = 18, color = "currentColor", stroke = 1.7 }) {
-  return (
-    <svg {...base(size, color, stroke)}>
-      <path d="M12 3 5 6v5c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z" />
-      <path d="M9.2 12.2 11 14l4-4.2" />
-    </svg>
+    <span title={title} style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: size, height: size, flex: "0 0 auto",
+      background: color, color: T.onAccent, borderRadius: 2,
+      fontFamily: T.sans, fontSize: size * 0.46, fontWeight: 800,
+      fontStretch: "88%", letterSpacing: 0.3, lineHeight: 1,
+    }}>{code}</span>
   );
 }

@@ -21,17 +21,9 @@ def test_health_endpoint():
     assert r.status_code == 200
     body = r.json()
     assert "status" in body
-    assert "ollama" in body
+    assert "local" in body
     assert "database" in body
     assert "llm" in body
-
-
-def test_system_resources_endpoint():
-    r = client.get("/api/system/resources")
-    assert r.status_code == 200
-    body = r.json()
-    for key in ("cpu_percent", "ram_percent", "disk_percent", "gpu_percent", "alarm", "alarms"):
-        assert key in body
 
 
 def test_system_agents_endpoint_lists_all_agents():
@@ -47,7 +39,7 @@ def test_state_endpoint_shape():
     r = client.get("/api/state")
     assert r.status_code == 200
     body = r.json()
-    for key in ("uptimeS", "res", "agents", "events", "demo"):
+    for key in ("uptimeS", "agents", "events", "demo"):
         assert key in body
 
 
@@ -67,7 +59,7 @@ def test_get_config_returns_settings_shape():
     r = client.get("/api/config")
     assert r.status_code == 200
     body = r.json()
-    for key in ("recipient", "key_people", "watchlist", "capitol_politicians", "capitol_months"):
+    for key in ("recipient", "watchlist"):
         assert key in body
 
 
@@ -137,5 +129,5 @@ def test_assist_surfaces_llm_errors(monkeypatch):
         raise RuntimeError("model offline")
 
     monkeypatch.setattr(llm_client, "generate_completion", boom)
-    r = client.post("/api/agent/mailman/assist", json={"prompt": "triage"})
+    r = client.post("/api/agent/wallstreet_wolf/assist", json={"prompt": "triage"})
     assert "model offline" in r.json()["error"]

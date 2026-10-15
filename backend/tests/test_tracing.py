@@ -54,7 +54,7 @@ def test_orchestrator_persists_metrics_onto_agent_run():
     from database import SessionLocal, AgentRun
 
     orch = Orchestrator()
-    agent = "devdaily"
+    agent = "technologia"
     orch.update_agent_status(agent, "running")
     rid = orch._open_runs[agent]
     tracing.record_llm(agent, tokens_in=100, tokens_out=40, ms=900)

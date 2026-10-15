@@ -1,61 +1,23 @@
 """
-Persistent agent memory with semantic recall.
+Persistent agent memory (recency-based).
 
-Agents call remember() after a run to store what they reported, and recall() /
-seen_before() before generating output so the LLM can reference prior context
-("what changed since yesterday") and skip items already reported.
-
-Embeddings come from a local Ollama embedding model (EMBED_MODEL, default
-nomic-embed-text) so everything stays on-machine. Every operation degrades
-gracefully: if the embed model is unavailable, rows are stored without a
-vector and recall() falls back to most-recent-first, so memory can never
-break an agent run.
+Agents call remember() after a run to store what they reported, and recent()
+before generating output so the LLM can reference prior context ("what
+changed since yesterday"). recall() and seen_before() are kept for API
+compatibility but are recency-based, not semantic — there's no local
+embedding model in this stack.
 """
 import os
 import json
-import math
-from datetime import datetime
-
-import httpx
 
 import database
 from database import Memory
-from llm_client import OLLAMA_BASE_URL
 
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 MAX_PER_AGENT = int(os.getenv("MEMORY_MAX_PER_AGENT", "500"))
 
 
-async def embed_text(text: str):
-    """Return an embedding vector for text, or None if the model is unavailable."""
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
-                f"{OLLAMA_BASE_URL}/api/embed",
-                json={"model": EMBED_MODEL, "input": text},
-                timeout=30.0,
-            )
-            r.raise_for_status()
-            vectors = r.json().get("embeddings") or []
-            return vectors[0] if vectors else None
-    except Exception as e:
-        print(f"[Memory] embedding failed ({EMBED_MODEL}): {e}")
-        return None
-
-
-def cosine_similarity(a, b) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
-
-
-def _row_to_dict(row: Memory, sim=None) -> dict:
-    out = {
+def _row_to_dict(row: Memory) -> dict:
+    return {
         "id": row.id,
         "agent_id": row.agent_id,
         "kind": row.kind,
@@ -63,9 +25,6 @@ def _row_to_dict(row: Memory, sim=None) -> dict:
         "meta": json.loads(row.meta) if row.meta else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
-    if sim is not None:
-        out["similarity"] = round(sim, 4)
-    return out
 
 
 def _prune(db, agent_id: str):
@@ -85,8 +44,7 @@ def _prune(db, agent_id: str):
 
 
 async def remember(agent_id: str, text: str, kind: str = "note", meta: dict = None) -> int:
-    """Store a memory (with embedding when available). Returns the row id."""
-    vector = await embed_text(text)
+    """Store a memory. Returns the row id."""
     db = database.SessionLocal()
     try:
         row = Memory(
@@ -94,7 +52,6 @@ async def remember(agent_id: str, text: str, kind: str = "note", meta: dict = No
             kind=kind,
             text=text,
             meta=json.dumps(meta) if meta else None,
-            embedding=json.dumps(vector) if vector else None,
         )
         db.add(row)
         db.flush()  # session has autoflush=False; prune must count the new row
@@ -106,7 +63,7 @@ async def remember(agent_id: str, text: str, kind: str = "note", meta: dict = No
 
 
 def recent(agent_id: str, k: int = 5, kind: str = None) -> list:
-    """Most recent memories for an agent, newest first. No embedding needed."""
+    """Most recent memories for an agent, newest first."""
     db = database.SessionLocal()
     try:
         q = db.query(Memory).filter_by(agent_id=agent_id)
@@ -120,42 +77,15 @@ def recent(agent_id: str, k: int = 5, kind: str = None) -> list:
 
 async def recall(agent_id: str, query: str, k: int = 5, kind: str = None,
                  min_similarity: float = 0.25) -> list:
-    """Memories most similar to query, best first. Falls back to recency when
-    the query can't be embedded or no stored rows have vectors."""
-    query_vec = await embed_text(query)
-    if not query_vec:
-        return recent(agent_id, k=k, kind=kind)
-
-    db = database.SessionLocal()
-    try:
-        q = db.query(Memory).filter_by(agent_id=agent_id)
-        if kind:
-            q = q.filter_by(kind=kind)
-        rows = q.all()
-    finally:
-        db.close()
-
-    scored = []
-    for row in rows:
-        if not row.embedding:
-            continue
-        try:
-            sim = cosine_similarity(query_vec, json.loads(row.embedding))
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if sim >= min_similarity:
-            scored.append((sim, row))
-
-    if not scored and rows:
-        return recent(agent_id, k=k, kind=kind)
-    scored.sort(key=lambda t: t[0], reverse=True)
-    return [_row_to_dict(row, sim) for sim, row in scored[:k]]
+    """Recency-based recall — kept async and signature-compatible with
+    callers/API routes; `query`/`min_similarity` are accepted but unused."""
+    return recent(agent_id, k=k, kind=kind)
 
 
 async def seen_before(agent_id: str, text: str, threshold: float = 0.85,
                       kind: str = None) -> bool:
-    """True if a stored memory is semantically near-identical to text.
-    Used for duplicate suppression. Returns False when embeddings are
-    unavailable (better to repeat an item than to drop a new one)."""
-    matches = await recall(agent_id, text, k=1, kind=kind, min_similarity=threshold)
-    return bool(matches and matches[0].get("similarity") is not None)
+    """Exact-text duplicate check against recent memories. No semantic
+    matching available — near-duplicates with different wording won't be
+    caught, but exact repeats (the common case) are."""
+    recents = recent(agent_id, k=20, kind=kind)
+    return any(r["text"] == text for r in recents)

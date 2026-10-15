@@ -32,10 +32,15 @@ dist-ssr/
 .env
 .env.local
 .env.*.local
+# Timestamped .env backups — these hold real credentials and matched nothing above
+.env.bak*
 
 # Databases
 *.sqlite3
 *.db
+# SQLite WAL sidecars — journal_mode=WAL means these exist whenever the app runs
+*.db-wal
+*.db-shm
 
 # macOS
 .DS_Store
@@ -51,6 +56,9 @@ token.json
 
 # Runtime artifacts
 logs/
+# Reset archives: the pre-reset trade journal, kept locally as evidence
+backend/archive/
+.impeccable/
 backend/email_logs/
 .platform.pids
 

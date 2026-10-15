@@ -1,46 +1,44 @@
 // ============================================================================
-// Aurora.jsx — ambient animated background. Fixed full-viewport layer of soft,
-// slowly-drifting color blobs that sit behind the whole app, so content cards
-// appear to float on a living surface. Theme-aware (calmer in light, richer in
-// dark) and motion is auto-disabled by the prefers-reduced-motion guard in
-// index.css. pointer-events:none so it never blocks clicks.
+// Aurora.jsx — the board's ground.
+//
+// This was four drifting radial-gradient blobs in violet, blue, teal and plum,
+// blurred 70px at 0.5 opacity, animated on a 19-28s loop behind the entire app.
+// In dark mode it swallowed the interface: equity figures, the session rail and
+// the funnel table all sat on a moving coloured cloud, and the one thing a
+// cockpit must never do is make a number hard to read at a glance.
+//
+// A painted board has no aurora. What it has is tooth — the grain of primer and
+// paint under the chalk — so the ground is now a static, nearly invisible
+// texture: a fine diagonal hatch at ~2% contrast, plus a vignette that drops
+// the corners a few percent so the centre of the board reads as lit. No
+// animation, no blur, no hue. The file keeps its name and its single call site
+// in App.jsx; what changed is what it draws.
 // ============================================================================
 import { T } from "../theme/tokens";
 
 export default function Aurora() {
   const dark = T.mode === "dark";
-  // Opacity of each blob — kept low so data stays legible on top.
-  const o = dark ? 0.5 : 0.42;
-  const blobs = [
-    { c: T.violet, top: "-12%", left: "-8%",  size: "46vw", anim: "omDriftA 19s", o },
-    { c: T.blue,   top: "8%",   right: "-10%", size: "42vw", anim: "omDriftB 24s", o: o * 0.95 },
-    { c: T.teal,   bottom: "-16%", left: "12%", size: "40vw", anim: "omDriftC 22s", o: o * 0.85 },
-    { c: dark ? "#3b1d6e" : "#f5b8c8", bottom: "-10%", right: "4%", size: "34vw", anim: "omDriftA 28s", o: o * 0.8 },
-  ];
+  // Paint tooth. Two hairline hatches crossing at 45°, far below the threshold
+  // where they read as a pattern — they read as a surface that isn't flat.
+  const ink = dark ? "#ffffff" : "#1a1d1f";
+  const tooth = dark ? "07" : "06";
   return (
     <div aria-hidden="true" style={{
       position: "fixed", inset: 0, zIndex: 0, overflow: "hidden", pointerEvents: "none",
+      background: T.bg,
     }}>
-      {blobs.map((b, i) => (
-        <div key={i} style={{
-          position: "absolute",
-          top: b.top, left: b.left, right: b.right, bottom: b.bottom,
-          width: b.size, height: b.size, borderRadius: "50%",
-          background: `radial-gradient(circle at 50% 50%, ${b.c}, transparent 68%)`,
-          opacity: b.o,
-          filter: dark ? "blur(70px)" : "blur(80px)",
-          animation: `${b.anim} ease-in-out infinite`,
-          animationDelay: `${i * -4}s`,
-          willChange: "transform",
-        }} />
-      ))}
-      {/* faint dot-grid + vignette to add texture without hurting readability */}
       <div style={{
         position: "absolute", inset: 0,
-        backgroundImage: `radial-gradient(${dark ? "#ffffff0a" : "#1418280a"} 1px, transparent 1px)`,
-        backgroundSize: "26px 26px",
-        maskImage: "radial-gradient(ellipse 90% 80% at 50% 40%, #000 55%, transparent 100%)",
-        WebkitMaskImage: "radial-gradient(ellipse 90% 80% at 50% 40%, #000 55%, transparent 100%)",
+        backgroundImage:
+          `repeating-linear-gradient(45deg, ${ink}${tooth} 0 1px, transparent 1px 7px),` +
+          `repeating-linear-gradient(-45deg, ${ink}${tooth} 0 1px, transparent 1px 11px)`,
+      }} />
+      {/* The board is lit from the front: corners fall off, centre stays open. */}
+      <div style={{
+        position: "absolute", inset: 0,
+        background: dark
+          ? "radial-gradient(ellipse 120% 100% at 50% 32%, transparent 42%, rgba(0,0,0,.42) 100%)"
+          : "radial-gradient(ellipse 120% 100% at 50% 32%, transparent 48%, rgba(26,29,31,.10) 100%)",
       }} />
     </div>
   );

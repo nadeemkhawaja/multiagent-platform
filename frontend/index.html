@@ -7,9 +7,15 @@
     <title>Multi-Agent Auto-Scheduling Platform</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,300..800&display=swap" rel="stylesheet" />
     <script>
-      try { if (localStorage.getItem('om_mode') === 'dark') document.documentElement.style.background = '#0d0f13'; } catch (e) {}
+      // Paint the board ground before first paint, or a dark-mode reload
+      // flashes the light surface for a frame.
+      try {
+        var d = localStorage.getItem('om_mode') === 'dark';
+        document.documentElement.style.background = d ? '#101315' : '#e7e4dc';
+        document.documentElement.style.colorScheme = d ? 'dark' : 'light';
+      } catch (e) {}
     </script>
   </head>
   <body>

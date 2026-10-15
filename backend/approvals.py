@@ -3,7 +3,7 @@ Human-in-the-loop approval primitive.
 
 Any agent can park an action for sign-off instead of executing it:
 
-    approvals.request("mailman", kind="send_email", title=subject, payload={...})
+    approvals.request("some_agent", kind="send_email", title=subject, payload={...})
 
 The user approves or denies from the dashboard/API; approving dispatches the
 action handler registered for that kind. Handlers are registered by the module

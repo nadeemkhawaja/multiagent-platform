@@ -4,86 +4,70 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 import asyncio
 
 import httpx
 
-from database import init_db, SessionLocal, AgentData, AgentRun, get_config, set_config, all_config
+# get_agent_data is aliased: the route handler below is also named
+# get_agent_data, and since Python resolves globals at call time the endpoint
+# shadows the import for every caller inside this module.
+from database import (init_db, SessionLocal, AgentData, AgentRun, get_config, set_config,
+                      all_config, get_agent_data as load_agent_data,
+                      reap_stale_runs, prune_history)
 from orchestrator import orchestrator, AGENT_META, AGENT_ORDER, CORE_AGENTS
-from llm_client import (OLLAMA_BASE_URL, LLM_MODEL, get_llm_state, provider_status,
-                        parse_model_spec, KNOWN_PROVIDERS, SUGGESTED_MODELS)
+from llm_client import (LOCAL_LLM_BASE_URL, LOCAL_LLM_MODEL, get_llm_state, provider_status,
+                        parse_model_spec, default_model_spec,
+                        KNOWN_PROVIDERS, SUGGESTED_MODELS)
 from ws import manager
 import approvals
 import memory
 import mcp_client
-import paper_broker
+import alpaca_broker as broker
 import tools as tool_registry
 
-from agents import agent1_ai_times, agent2_mailman, agent3_wallstreet_wolf
-from agents import agent4_devdaily, agent5_compass as compass_mod
-from agents import agent7_strategy_scout
-from agents import agent8_capitol_tracker
-from agents import agent9_morning_brief
-from agents import agent10_options_flow
-from agents import agent11_earnings_calendar
-from agents import agent12_cisco_pulse
+from agents import agent3_wallstreet_wolf
 from agents import agent13_alpha_wolf
+from agents import agent14_technologia
 
-ai_times_job        = agent1_ai_times.ai_times_job
-mailman_job         = agent2_mailman.mailman_job
 wallstreet_wolf_job = agent3_wallstreet_wolf.wallstreet_wolf_job
-devdaily_job        = agent4_devdaily.devdaily_job
-compass_job         = compass_mod.compass_job
-strategy_scout_job  = agent7_strategy_scout.strategy_scout_job
-capitol_tracker_job = agent8_capitol_tracker.capitol_tracker_job
-morning_brief_job   = agent9_morning_brief.morning_brief_job
-options_flow_job    = agent10_options_flow.options_flow_job
-earnings_cal_job    = agent11_earnings_calendar.earnings_calendar_job
-cisco_pulse_job     = agent12_cisco_pulse.cisco_pulse_job
 alpha_wolf_job      = agent13_alpha_wolf.alpha_wolf_job
+technologia_job     = agent14_technologia.technologia_job
 
-scheduler = AsyncIOScheduler()
+# Market time, not laptop time. An unpinned AsyncIOScheduler uses the host
+# timezone, so alpha_wolf's "08:30" cron fired at 08:30 CDT — 09:30 ET, the
+# opening bell rather than the hour before it — and would silently move again on
+# a machine set to another zone. Every agent already reasons in ET internally
+# (ZoneInfo("America/New_York")); only the scheduler disagreed.
+ET = ZoneInfo("America/New_York")
+scheduler = AsyncIOScheduler(timezone=ET)
 
 JOBS = {
-    "ai_times":        ai_times_job,
-    "mailman":         mailman_job,
     "wallstreet_wolf": wallstreet_wolf_job,
-    "compass":         compass_job,
-    "devdaily":        devdaily_job,
-    "strategy_scout":  strategy_scout_job,
-    "capitol_tracker": capitol_tracker_job,
-    "morning_brief":   morning_brief_job,
-    "options_flow":    options_flow_job,
-    "earnings_cal":    earnings_cal_job,
-    "cisco_pulse":     cisco_pulse_job,
+    "technologia":     technologia_job,
     "alpha_wolf":      alpha_wolf_job,
 }
+# Jobs whose scheduled run self-gates on the clock, so a manual Run must say so.
+FORCEABLE_JOBS = {"technologia"}
+# The three cadences are one design, not three independent ones:
+#   Technologia  every 30 min, 08:00-16:15 ET — computes the cards.
+#   Alpha Wolf   08:30 ET      — synthesizes the master plan ONCE, on cards it
+#                                refreshes first (see ensure_fresh_cards) rather
+#                                than on whatever the last run happened to leave.
+#   Pulse        every 30 min, 08:00-16:30 ET — re-folds the latest cards into
+#                                that same plan, re-prices, re-sizes, executes.
+# The plan is therefore written once a day and kept current all day; a card the
+# funnel produces at 10:40 is in Alpha Wolf's plan by 11:10 at the latest.
 DEFAULT_SCHEDULES = {
-    "ai_times":        {"type": "cron",     "hour": 8,  "minute": 0},
-    "mailman":         {"type": "interval", "minutes": 60},
     "wallstreet_wolf": {"type": "interval", "minutes": 120},
-    "compass":         {"type": "interval", "minutes": 60},
-    "devdaily":        {"type": "cron",     "hour": 9,  "minute": 0},
-    "strategy_scout":  {"type": "cron",     "hour": 10, "minute": 0},
-    "capitol_tracker": {"type": "cron",     "hour": 7,  "minute": 0},
-    "morning_brief":   {"type": "cron",     "hour": 6,  "minute": 0},
-    "options_flow":    {"type": "interval", "minutes": 120},
-    "earnings_cal":    {"type": "interval", "minutes": 360},
-    "cisco_pulse":     {"type": "cron",     "hour": 7,  "minute": 30},
+    "technologia":     {"type": "interval", "minutes": 30},
     "alpha_wolf":      {"type": "cron",     "hour": 8,  "minute": 30},
 }
 PREVIEW = {
-    "ai_times":        agent1_ai_times.email_preview,
-    "mailman":         agent2_mailman.email_preview,
     "wallstreet_wolf": agent3_wallstreet_wolf.email_preview,
-    "compass":         compass_mod.email_preview,
-    "strategy_scout":  agent7_strategy_scout.email_preview,
-    "capitol_tracker": agent8_capitol_tracker.email_preview,
-    "morning_brief":   agent9_morning_brief.email_preview,
-    "options_flow":    agent10_options_flow.email_preview,
-    "earnings_cal":    agent11_earnings_calendar.email_preview,
-    "cisco_pulse":     agent12_cisco_pulse.email_preview,
+    "technologia":     agent14_technologia.email_preview,
     "alpha_wolf":      agent13_alpha_wolf.email_preview,
 }
 
@@ -95,9 +79,64 @@ def _apply_schedule(agent_id: str, cfg: dict):
         pass
     job = JOBS[agent_id]
     if cfg.get("type") == "cron":
-        scheduler.add_job(job, "cron", hour=cfg.get("hour", 8), minute=cfg.get("minute", 0), id=agent_id)
+        # Alpha Wolf places real (paper) orders — never worth running its plan
+        # synthesis on a day the market can't trade anyway. IntervalTrigger has
+        # no day_of_week concept, so this only applies to the cron branch.
+        weekdays_only = {"day_of_week": "mon-fri"} if agent_id == "alpha_wolf" else {}
+        # A once-a-day cron is one minute of exposure per day: if the process is
+        # down, asleep or restarting at 08:30, APScheduler's 1-second default
+        # grace drops the run and the day has no plan at all. That is exactly how
+        # the plan went seven days stale while the agent looked healthy. Two hours
+        # of grace, coalesced so a long outage still produces one run and not a
+        # backlog.
+        scheduler.add_job(job, "cron", hour=cfg.get("hour", 8), minute=cfg.get("minute", 0),
+                          id=agent_id, misfire_grace_time=2 * 60 * 60, coalesce=True,
+                          **weekdays_only)
     else:
-        scheduler.add_job(job, "interval", minutes=cfg.get("minutes", 15), id=agent_id)
+        # Jitter so two interval agents cannot stay phase-locked. Wolf at 120min
+        # and Technologia at 30min were registered in the same startup and landed
+        # in the same second every two hours, doubling the upstream load at the
+        # worst moment.
+        scheduler.add_job(job, "interval", minutes=cfg.get("minutes", 15), id=agent_id,
+                          jitter=90, misfire_grace_time=300, coalesce=True)
+
+
+async def _catch_up_missed_plan():
+    """Run Alpha Wolf's daily plan if today's slot passed without one.
+
+    The plan is the agent's core artifact and it was rebuilt exactly once a day
+    at a fixed minute. Miss that minute — a restart, a closed laptop — and the
+    plan silently stayed as it was: it was seven days old while `pulse` and
+    `portfolio` kept writing fresh rows, so every freshness signal in the UI said
+    the agent was fine.
+    """
+    await asyncio.sleep(5)  # let the event loop and DB settle first
+    try:
+        now = datetime.now(ET)
+        if now.weekday() >= 5:
+            return
+        # The plan run ends in broker.execute_plan(), so this can place
+        # orders — restarting the backend must never do that on its own outside
+        # the session. Inside market hours a missed plan is worth rebuilding;
+        # outside them there is nothing to act on anyway and tomorrow's cron
+        # will handle it.
+        if not broker._market_open_now():
+            return
+        cfg = get_config("schedule_alpha_wolf", DEFAULT_SCHEDULES["alpha_wolf"])
+        if cfg.get("type") != "cron":
+            return
+        slot = now.replace(hour=cfg.get("hour", 8), minute=cfg.get("minute", 30),
+                           second=0, microsecond=0)
+        if now < slot:
+            return  # the scheduler will handle it normally
+        plan = (load_agent_data("alpha_wolf") or {}).get("plan") or {}
+        stamp = str(plan.get("generated_at") or "")
+        if stamp.startswith(now.strftime("%Y-%m-%d")):
+            return  # already ran today
+        orchestrator.log_event("Alpha Wolf plan missing for today — running now", "#f59e0b")
+        await JOBS["alpha_wolf"]()
+    except Exception as e:
+        print(f"[Startup] plan catch-up failed: {e}")
 
 
 @asynccontextmanager
@@ -109,9 +148,23 @@ async def lifespan(app: FastAPI):
         _apply_schedule(aid, cfg)
 
     scheduler.start()
+    # Reap runs abandoned by a previous process. Without this they sit at
+    # status=running forever — 124 of them had accumulated — and any "is this
+    # agent healthy" check reads a dead run as a live one.
+    reap_stale_runs()
+    prune_history()
+    # If today's cron slot has already passed and the plan never ran, run it now.
+    # A daily cron plus an overnight restart meant the day simply had no plan, and
+    # nothing anywhere said so.
+    asyncio.create_task(_catch_up_missed_plan())
     # Alpha Wolf pulse: in-session live check-in every 30 min (self-gates to
-    # market hours) — alerts on slot openings, entry-zone and stop/target hits.
-    scheduler.add_job(agent13_alpha_wolf.pulse_job, "interval", minutes=30, id="alpha_wolf_pulse")
+    # market hours) — syncs Technologia's newest cards into the master plan,
+    # then alerts on new cards, slot openings, entry-zone and stop/target hits.
+    scheduler.add_job(agent13_alpha_wolf.pulse_job, "interval", minutes=30, id="alpha_wolf_pulse",
+                      jitter=60, misfire_grace_time=300, coalesce=True)
+    # Paper-broker risk check: every 10 min during market hours, exit any open
+    # position whose stop-loss or profit target has been crossed.
+    scheduler.add_job(broker.risk_check, "interval", minutes=10, id="alpha_wolf_risk")
     # Demo mode (persisted): pause non-core agents so only the four graded
     # agents are scheduled during a recording — no extras firing mid-demo.
     if orchestrator.demo_mode:
@@ -121,13 +174,16 @@ async def lifespan(app: FastAPI):
                     scheduler.pause_job(aid)
                 except Exception:
                     pass
-    orchestrator.start_sampler()
+    orchestrator.start_broadcast()
     orchestrator.start_watchdog()
     yield
     scheduler.shutdown()
 
 
-app = FastAPI(title="Auto-Scheduling Platform Orchestrator", lifespan=lifespan)
+# Docs live under /api so they reach the browser through the dev server's
+# single proxied prefix — the backend port itself is not exposed.
+app = FastAPI(title="Auto-Scheduling Platform Orchestrator", lifespan=lifespan,
+              docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -147,11 +203,6 @@ async def ws_endpoint(websocket: WebSocket):
 
 
 # ─── System ──────────────────────────────────────────────────────────
-@app.get("/api/system/resources")
-async def get_system_resources():
-    return orchestrator.get_system_resources()
-
-
 @app.get("/api/system/agents")
 async def get_agents_status():
     return orchestrator.get_agents_status()
@@ -164,16 +215,13 @@ async def get_state():
 
 @app.get("/api/health")
 async def health():
-    ollama_ok = False
-    models = []
+    local_ok = False
     try:
         async with httpx.AsyncClient(timeout=4) as c:
-            r = await c.get(f"{OLLAMA_BASE_URL}/api/tags")
-            ollama_ok = r.status_code == 200
-            if ollama_ok:
-                models = [m.get("name") for m in r.json().get("models", [])]
+            r = await c.get(f"{LOCAL_LLM_BASE_URL}/models")
+            local_ok = r.status_code == 200
     except Exception:
-        ollama_ok = False
+        local_ok = False
     db_ok = True
     try:
         SessionLocal().execute  # noqa
@@ -183,38 +231,13 @@ async def health():
     llm = get_llm_state()
     return {
         "status": "ok" if (db_ok) else "degraded",
-        "ollama": {"reachable": ollama_ok, "model": LLM_MODEL, "available": models},
+        "local": {"reachable": local_ok, "model": LOCAL_LLM_MODEL, "base_url": LOCAL_LLM_BASE_URL},
         "database": db_ok,
         "llm": {"calls": llm["calls"], "cache_hits": llm["cache_hits"]},
     }
 
 
 # ─── Demo ────────────────────────────────────────────────────────────
-class SpikeRequest(BaseModel):
-    resource: Optional[str] = "cpu"
-
-
-class CrashRequest(BaseModel):
-    agent_id: Optional[str] = None
-
-
-@app.post("/api/demo/spike")
-async def demo_spike(req: Optional[SpikeRequest] = None):
-    return orchestrator.spike((req.resource if req else None) or "cpu")
-
-
-@app.post("/api/demo/crash")
-async def demo_crash(req: Optional[CrashRequest] = None):
-    import random
-    aid = req.agent_id if req else None
-    if not aid:
-        live = [k for k, v in orchestrator.get_agents_status().items() if v["status"] != "error"]
-        aid = random.choice(live) if live else None
-    if not aid:
-        return {"error": "no agent to crash"}
-    return orchestrator.crash(aid)
-
-
 class DemoModeRequest(BaseModel):
     enabled: bool = False
 
@@ -272,9 +295,6 @@ class AgentTriggerConfig(BaseModel):
     language: Optional[str] = ""
     count: Optional[int] = 5
     topic: Optional[str] = ""
-    key_people: Optional[str] = ""
-    send_email: Optional[bool] = False
-    brand: Optional[str] = ""
 
 
 @app.post("/api/agent/{agent_name}/trigger")
@@ -283,15 +303,13 @@ async def trigger_agent(agent_name: str, config: Optional[AgentTriggerConfig] = 
     if agent_name in running_tasks and not running_tasks[agent_name].done():
         running_tasks[agent_name].cancel()
 
-    if agent_name == "devdaily":
-        task = asyncio.create_task(devdaily_job(language=cfg.language, count=cfg.count, topic=cfg.topic))
-    elif agent_name == "mailman":
-        # An explicit UI trigger with "send email" ticked is a deliberate
-        # "send now" — force past the once-per-day daily-summary guard.
-        task = asyncio.create_task(mailman_job(key_people_override=cfg.key_people,
-                                               send_email=cfg.send_email, force_email=cfg.send_email))
-    elif agent_name in JOBS:
-        task = asyncio.create_task(JOBS[agent_name]())
+    if agent_name in JOBS:
+        # A human pressing Run means it, so bypass any self-gating the job does on
+        # the clock. Without this, triggering Technologia after the close would
+        # look like a no-op button.
+        job = JOBS[agent_name]
+        task = asyncio.create_task(
+            job(force=True) if agent_name in FORCEABLE_JOBS else job())
     else:
         return {"error": "Agent not found"}
 
@@ -328,6 +346,14 @@ async def agent_assist(agent_name: str, body: AssistRequest):
     if body.include_data:
         from database import get_agent_data as load_agent_data
         data = load_agent_data(agent_name) or {}
+        if agent_name == "alpha_wolf":
+            # Stored data can be stale (positions_meta only updates on the next
+            # scheduled run/risk-check) — pull a live-refreshed portfolio view
+            # so Lufi can correctly answer "did X hit target / is it closed".
+            try:
+                data = {**data, "portfolio": await broker.portfolio_view(refresh_prices=True)}
+            except Exception:
+                pass
         context = json.dumps(data, default=str)[:7000]
 
     meta = AGENT_META[agent_name]
@@ -393,19 +419,14 @@ async def get_settings():
     cfg = all_config()
     return {
         "recipient": cfg.get("recipient", os.getenv("DAILY_DIGEST_EMAIL", "")),
-        "key_people": cfg.get("key_people", os.getenv("KEY_PEOPLE", "")),
         "watchlist": cfg.get("watchlist", ""),
-        "capitol_politicians": cfg.get("capitol_politicians", ""),
-        "capitol_months": cfg.get("capitol_months", "2"),
-        "require_email_approval": bool(cfg.get("require_email_approval", False)),
     }
 
 
 @app.post("/api/config")
 async def update_settings(body: Dict[str, Any]):
     for k, v in body.items():
-        if k in ("recipient", "key_people", "watchlist", "capitol_politicians",
-                 "capitol_months", "require_email_approval"):
+        if k in ("recipient", "watchlist"):
             set_config(k, v)
     orchestrator.log_event("Settings updated", "#7c5cf6")
     return await get_settings()
@@ -416,7 +437,7 @@ async def update_settings(body: Dict[str, Any]):
 async def alpha_wolf_portfolio(refresh: bool = False):
     """Portfolio snapshot: settings, equity summary, open positions, trade log.
     refresh=true re-marks positions at live prices before returning."""
-    return await paper_broker.portfolio_view(refresh_prices=refresh)
+    return await broker.portfolio_view(refresh_prices=refresh)
 
 
 class ExecutionSettings(BaseModel):
@@ -424,29 +445,63 @@ class ExecutionSettings(BaseModel):
     capital: Optional[float] = None
     position_pct: Optional[float] = None
     max_positions: Optional[int] = None
+    max_hold_days: Optional[int] = None
+    max_daily_loss_pct: Optional[float] = None
+    risk_pct: Optional[float] = None
+    min_rr: Optional[float] = None
+    one_trade_per_symbol: Optional[bool] = None
+    # The funnel's own grade replaces the LLM's self-rated confidence, which
+    # used to gate execution — see docs/STRATEGY_REVIEW.md.
+    min_grade: Optional[str] = None
+    allow_shorts: Optional[bool] = None
+    max_new_trades_per_day: Optional[int] = None
 
 
 @app.post("/api/alpha-wolf/execution")
 async def alpha_wolf_execution(body: ExecutionSettings):
-    settings = paper_broker.save_settings(body.enabled, body.capital,
-                                          body.position_pct, body.max_positions)
+    settings = broker.save_settings(body.enabled, body.capital,
+                                          body.position_pct, body.max_positions, body.max_hold_days,
+                                          body.max_daily_loss_pct, risk_pct=body.risk_pct,
+                                          min_rr=body.min_rr,
+                                          one_trade_per_symbol=body.one_trade_per_symbol,
+                                          min_grade=body.min_grade,
+                                          allow_shorts=body.allow_shorts,
+                                          max_new_trades_per_day=body.max_new_trades_per_day)
     if body.enabled is not None:
         orchestrator.log_event(
             f"Alpha Wolf paper-trade execution {'enabled' if settings['enabled'] else 'disabled'}", "#7c3aed")
+    if body.allow_shorts:
+        orchestrator.log_event("Alpha Wolf: SHORTS re-enabled — the short side lost "
+                               "$2,160 of the first account's $2,331", "#dc2626")
     return {"status": "saved", "settings": settings}
 
 
 @app.post("/api/alpha-wolf/portfolio/reset")
-async def alpha_wolf_portfolio_reset():
-    out = paper_broker.reset_portfolio()
-    orchestrator.log_event("Alpha Wolf paper portfolio reset to starting capital", "#7c3aed")
+async def alpha_wolf_portfolio_reset(local_only: bool = True):
+    """Start over.
+
+    `local_only` (the default) wipes everything this app stores about trading —
+    portfolio, journal, trade log, position metadata, working orders, the plan
+    and the risk baselines — and re-baselines return% against whatever the
+    connected Alpaca account currently holds. It does NOT place or cancel a
+    single order, which is what you want when the account itself is new or was
+    replaced.
+
+    `local_only=false` additionally asks Alpaca to cancel all open orders and
+    close all open positions first. That submits real (paper) orders, so it is
+    opt-in rather than the default.
+    """
+    out = await broker.reset_state(close_at_broker=not local_only)
+    orchestrator.log_event(
+        "Alpha Wolf reset — local trading state cleared"
+        + ("" if local_only else " and broker positions flattened"), "#7c3aed")
     return out
 
 
 @app.get("/api/alpha-wolf/now")
 async def alpha_wolf_now():
-    """Live decision snapshot: market clock, active timeline slot, and each
-    daily idea scored against live quotes (WAIT / ACT / STOPPED / TARGET_HIT)."""
+    """Live decision snapshot: market clock, the entry window, and each funnel
+    card scored against live quotes (WAIT / ACT / STOPPED / TARGET_HIT)."""
     return await agent13_alpha_wolf.decision_now()
 
 
@@ -454,6 +509,27 @@ async def alpha_wolf_now():
 async def alpha_wolf_pulse(email: bool = True):
     """Run the in-session pulse check now (bypasses the market-hours gate)."""
     return await agent13_alpha_wolf.pulse_job(force=True, send_email=email)
+
+
+@app.get("/api/alpha-wolf/journal")
+async def alpha_wolf_journal(limit: int = 100):
+    """Closed-trade journal + performance stats (win rate, profit factor,
+    avg win/loss, P&L by exit reason)."""
+    return broker.journal_view(limit=limit)
+
+
+@app.post("/api/alpha-wolf/risk-check")
+async def alpha_wolf_risk_check():
+    """Run the stop/target enforcement pass now (bypasses the market-hours gate)."""
+    return await broker.risk_check(force=True)
+
+
+@app.delete("/api/alpha-wolf/pending/{order_id}")
+async def alpha_wolf_cancel_pending(order_id: str):
+    """Cancel one working entry order (a limit/stop entry that hasn't filled)."""
+    out = await broker.cancel_pending(order_id)
+    orchestrator.log_event("Alpha Wolf: working entry order cancelled from the UI", "#7c3aed")
+    return out
 
 
 # ─── Run history & metrics ───────────────────────────────────────────
@@ -514,8 +590,10 @@ async def get_metrics(window: int = 50):
 # ─── LLM providers & per-agent models ────────────────────────────────
 @app.get("/api/llm/providers")
 async def llm_providers():
+    spec = default_model_spec()
     return {
-        "default_model": LLM_MODEL,
+        "default_model": spec,
+        "default_provider": parse_model_spec(spec)[0],
         "providers": provider_status(),
         "agent_models": get_config("agent_models", {}) or {},
         "suggested_models": SUGGESTED_MODELS,
@@ -524,7 +602,7 @@ async def llm_providers():
 
 class AgentModelUpdate(BaseModel):
     agent_id: str
-    model: str = ""    # "provider:model" or bare ollama model; empty clears the override
+    model: str = ""    # "provider:model" or a bare model name (local); empty clears the override
 
 
 @app.post("/api/llm/models")
@@ -553,7 +631,7 @@ class ProviderKeyUpdate(BaseModel):
 @app.post("/api/llm/keys")
 async def set_provider_key(body: ProviderKeyUpdate):
     prov = body.provider.lower().strip()
-    if prov not in ("openai", "anthropic", "grok"):
+    if prov not in ("openai", "anthropic", "grok", "local"):
         return {"error": f"unknown provider '{body.provider}'"}
     keys = get_config("provider_keys", {}) or {}
     if body.api_key.strip():
@@ -704,28 +782,6 @@ async def mcp_call(body: MCPCallRequest):
 
 
 # ─── Stress Test ─────────────────────────────────────────────────────
-@app.post("/api/stress-test")
-async def stress_test():
-    """Trigger all agents simultaneously for load testing."""
-    triggered = []
-    for agent_name, job in JOBS.items():
-        try:
-            if agent_name in running_tasks and not running_tasks[agent_name].done():
-                running_tasks[agent_name].cancel()
-            if agent_name == "devdaily":
-                task = asyncio.create_task(devdaily_job())
-            elif agent_name == "mailman":
-                task = asyncio.create_task(mailman_job())
-            else:
-                task = asyncio.create_task(job())
-            running_tasks[agent_name] = task
-            triggered.append(agent_name)
-        except Exception as e:
-            print(f"[StressTest] Failed to trigger {agent_name}: {e}")
-    orchestrator.log_event(f"🔥 Stress test: {len(triggered)} agents triggered simultaneously", "#dc2626")
-    return {"status": "stress_test_started", "triggered": triggered}
-
-
 # ─── LLM test ────────────────────────────────────────────────────────
 from llm_client import generate_completion
 
@@ -741,4 +797,6 @@ async def test_llm(request: PromptRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=5174, reload=True)
+    # Loopback only: the dev server proxies to it, so the API never needs to be
+    # reachable from the network on a port of its own.
+    uvicorn.run("main:app", host="127.0.0.1", port=5174, reload=True)

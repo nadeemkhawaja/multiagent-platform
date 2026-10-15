@@ -7,31 +7,43 @@ import httpx
 import os
 from dotenv import load_dotenv
 
+import anthropic as anthropic_sdk
+
 import tracing
 
 load_dotenv()
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.5:4b")
+# ── Providers ─────────────────────────────────────────────────────────────────
+# The platform speaks to four backends. AI_PROVIDER picks the global default;
+# individual agents can be routed anywhere via the "agent_models" config
+# ({"agent_id": "anthropic:claude-opus-4-8"} / {"agent_id": "local:gemma..."}).
+#   local     — any OpenAI-compatible server (vLLM, LM Studio…) at LOCAL_LLM_BASE_URL
+#   anthropic — Claude via the official Anthropic SDK
+#   openai / grok — OpenAI-compatible cloud APIs
+AI_PROVIDER = os.getenv("AI_PROVIDER", "").strip().lower()
 
-# Frontier providers are opt-in: configure a key and route an agent to them via
-# the "agent_models" config ({"agent_id": "anthropic:claude-haiku-4-5"}).
-# Local Ollama stays the default for everything else.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
 GROK_API_KEY = os.getenv("XAI_API_KEY", os.getenv("GROK_API_KEY", ""))
 GROK_BASE_URL = os.getenv("GROK_BASE_URL", "https://api.x.ai/v1")
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4-fast")
+LOCAL_LLM_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8001/v1")
+LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "")
+LOCAL_LLM_API_KEY = os.getenv("LOCAL_LLM_API_KEY", "")
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "16000"))
 
-KNOWN_PROVIDERS = ("ollama", "openai", "anthropic", "grok")
+KNOWN_PROVIDERS = ("local", "openai", "anthropic", "grok")
 
 # Dropdown suggestions for the Settings UI — any model name works via the API.
 SUGGESTED_MODELS = {
-    "grok": ["grok-4-fast", "grok-3-mini"],
+    "anthropic": ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+    "local": [LOCAL_LLM_MODEL] if LOCAL_LLM_MODEL else [],
     "openai": ["gpt-4o-mini", "gpt-4o"],
-    "anthropic": ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    "grok": ["grok-4-fast", "grok-3-mini"],
 }
 
 
@@ -40,13 +52,23 @@ class ConfigError(Exception):
 
 
 def parse_model_spec(spec: str):
-    """'anthropic:claude-haiku-4-5' → ('anthropic', 'claude-haiku-4-5');
-    bare model names ('qwen3.5:4b') default to ollama."""
+    """'anthropic:claude-opus-4-8' → ('anthropic', 'claude-opus-4-8');
+    bare model names default to the local endpoint."""
     if spec and ":" in spec:
         head, rest = spec.split(":", 1)
         if head in KNOWN_PROVIDERS and rest:
             return head, rest
-    return "ollama", spec
+    return "local", spec or LOCAL_LLM_MODEL
+
+
+def default_model_spec() -> str:
+    """Global default 'provider:model'. AI_PROVIDER selects the provider and the
+    per-provider model env picks the model; defaults to the local endpoint
+    when AI_PROVIDER is unset or unrecognized."""
+    prov = AI_PROVIDER if AI_PROVIDER in KNOWN_PROVIDERS else "local"
+    model = {"anthropic": ANTHROPIC_MODEL, "local": LOCAL_LLM_MODEL,
+             "openai": OPENAI_MODEL, "grok": GROK_MODEL}[prov]
+    return f"{prov}:{model}"
 
 
 def resolve_model(agent_id: str = None):
@@ -59,7 +81,7 @@ def resolve_model(agent_id: str = None):
             spec = overrides.get(agent_id)
         except Exception:
             spec = None
-    return parse_model_spec(spec or LLM_MODEL)
+    return parse_model_spec(spec or default_model_spec())
 
 
 def _ui_keys() -> dict:
@@ -71,27 +93,37 @@ def _ui_keys() -> dict:
         return {}
 
 
+_ENV_KEYS = {"openai": lambda: OPENAI_API_KEY, "anthropic": lambda: ANTHROPIC_API_KEY,
+             "grok": lambda: GROK_API_KEY, "local": lambda: LOCAL_LLM_API_KEY}
+
+
 def get_api_key(provider: str) -> str:
     """Settings-UI key first, then environment — so keys pasted in the
     dashboard take effect immediately without a backend restart."""
-    env = {"openai": OPENAI_API_KEY, "anthropic": ANTHROPIC_API_KEY, "grok": GROK_API_KEY}
-    return _ui_keys().get(provider) or env.get(provider, "")
+    env = _ENV_KEYS.get(provider)
+    return _ui_keys().get(provider) or (env() if env else "")
 
 
 def provider_status() -> dict:
-    """Which providers are usable right now (key presence, not reachability)."""
+    """Which providers are usable right now (key/endpoint presence, not reachability)."""
     ui = _ui_keys()
-    env = {"openai": OPENAI_API_KEY, "anthropic": ANTHROPIC_API_KEY, "grok": GROK_API_KEY}
+    default_prov, default_model = parse_model_spec(default_model_spec())
+    out = {
+        "local": {"configured": bool(LOCAL_LLM_MODEL), "base_url": LOCAL_LLM_BASE_URL,
+                  "source": "env" if LOCAL_LLM_MODEL else None,
+                  "model": LOCAL_LLM_MODEL, "needs_key": False},
+    }
     bases = {"openai": OPENAI_BASE_URL, "anthropic": ANTHROPIC_BASE_URL, "grok": GROK_BASE_URL}
-    out = {"ollama": {"configured": True, "base_url": OLLAMA_BASE_URL, "source": "local"}}
-    for prov in ("openai", "anthropic", "grok"):
-        key = ui.get(prov) or env.get(prov, "")
+    for prov in ("anthropic", "openai", "grok"):
+        key = get_api_key(prov)
         out[prov] = {
             "configured": bool(key),
             "base_url": bases[prov],
-            "source": "ui" if ui.get(prov) else ("env" if env.get(prov) else None),
+            "source": "ui" if ui.get(prov) else ("env" if _ENV_KEYS[prov]() else None),
             "key_hint": f"…{key[-4:]}" if key else "",
         }
+    for prov in out:
+        out[prov]["is_default"] = prov == default_prov
     return out
 
 # Single-permit semaphore: only one agent calls the model at a time → fully
@@ -101,7 +133,7 @@ llm_semaphore = asyncio.Semaphore(1)
 # Live semaphore state surfaced on the Orchestrator dashboard.
 llm_state = {
     "holder": None, "queue": [], "tokens": 0, "rate": 0, "_t0": None,
-    "model": LLM_MODEL, "calls": 0, "cache_hits": 0,
+    "model": default_model_spec(), "calls": 0, "cache_hits": 0, "fallbacks": 0,
 }
 
 # Small in-process response cache (identical prompts within TTL skip the model).
@@ -116,7 +148,7 @@ def get_llm_state():
     return {
         "holder": s["holder"], "queue": list(s["queue"]), "tokens": s["tokens"],
         "rate": s["rate"], "heldS": held, "model": s["model"],
-        "calls": s["calls"], "cache_hits": s["cache_hits"],
+        "calls": s["calls"], "cache_hits": s["cache_hits"], "fallbacks": s["fallbacks"],
     }
 
 
@@ -126,63 +158,47 @@ def _cache_key(model, system, prompt, json_mode):
 
 
 def strip_think(text: str) -> str:
-    """Remove Qwen <think>…</think> blocks from a response."""
+    """Remove <think>…</think> reasoning blocks some local models emit."""
     return re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL).strip()
 
 
 # ── Provider backends — each returns (content, tokens_in, tokens_out, rate) ──
-async def _call_ollama(client, model, system_prompt, prompt, json_mode):
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False,
-        # Disable Qwen3's hidden <think> reasoning block. The inline
-        # "/no_think" hint is unreliable on this model; this Ollama flag
-        # actually suppresses it, cutting ~100–1300 wasted tokens per call.
-        "think": False,
-    }
-    if json_mode:
-        payload["format"] = "json"
-    r = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=300.0)
-    r.raise_for_status()
-    data = r.json()
-    tokens_in = int(data.get("prompt_eval_count", 0) or 0)
-    tokens_out = int(data.get("eval_count", 0) or 0)
-    dur_ns = int(data.get("eval_duration", 0) or 0)
-    rate = round(tokens_out / (dur_ns / 1e9), 1) if dur_ns else 0
-    content = strip_think(data.get("message", {}).get("content", ""))
-    return content, tokens_in, tokens_out, rate
-
-
 async def _call_openai_compatible(client, base_url, api_key, key_name,
-                                  model, system_prompt, prompt, json_mode):
-    """Shared caller for OpenAI-API-compatible providers (OpenAI, Grok/xAI)."""
-    if not api_key:
+                                  model, system_prompt, prompt, json_mode,
+                                  require_key=True, json_via_prompt=False):
+    """Shared caller for OpenAI-API-compatible providers (OpenAI, Grok/xAI,
+    and any local vLLM/LM Studio-style server)."""
+    if require_key and not api_key:
         raise ConfigError(f"{key_name} not set — add a key in Settings → AI models or .env")
+    system = system_prompt
+    if json_mode and json_via_prompt:
+        # Local servers don't all support response_format — ask in the prompt.
+        system += " Respond with valid JSON only — no prose, no code fences."
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
         "max_tokens": LLM_MAX_TOKENS,
     }
-    if json_mode:
+    if json_mode and not json_via_prompt:
         payload["response_format"] = {"type": "json_object"}
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     r = await client.post(
         f"{base_url}/chat/completions",
         json=payload,
-        headers={"Authorization": f"Bearer {api_key}"},
-        timeout=120.0,
+        headers=headers,
+        # tight connect timeout so an unreachable endpoint fails over to the
+        # next provider in seconds, not after a full TCP timeout
+        timeout=httpx.Timeout(300.0, connect=8.0),
     )
     r.raise_for_status()
     data = r.json()
-    usage = data.get("usage", {})
+    usage = data.get("usage", {}) or {}
     content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
-    return content.strip(), int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), 0
+    return (strip_think(content), int(usage.get("prompt_tokens", 0) or 0),
+            int(usage.get("completion_tokens", 0) or 0), 0)
 
 
 async def _call_openai(client, model, system_prompt, prompt, json_mode):
@@ -195,6 +211,20 @@ async def _call_grok(client, model, system_prompt, prompt, json_mode):
                                          "XAI_API_KEY", model, system_prompt, prompt, json_mode)
 
 
+async def _call_local(client, model, system_prompt, prompt, json_mode):
+    if not LOCAL_LLM_BASE_URL:
+        raise ConfigError("LOCAL_LLM_BASE_URL not set — point it at an OpenAI-compatible server in .env")
+    return await _call_openai_compatible(client, LOCAL_LLM_BASE_URL, get_api_key("local"),
+                                         "LOCAL_LLM_API_KEY", model, system_prompt, prompt,
+                                         json_mode, require_key=False, json_via_prompt=True)
+
+
+def _supports_adaptive_thinking(model: str) -> bool:
+    """Adaptive thinking is the recommended mode on Opus 4.6+/Sonnet 4.6+/
+    Fable-class models; Haiku-tier models reject it."""
+    return "haiku" not in model.lower()
+
+
 async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
     api_key = get_api_key("anthropic")
     if not api_key:
@@ -202,27 +232,42 @@ async def _call_anthropic(client, model, system_prompt, prompt, json_mode):
     system = system_prompt
     if json_mode:
         system += " Respond with valid JSON only — no prose, no code fences."
-    payload = {
-        "model": model,
-        "max_tokens": LLM_MAX_TOKENS,
-        "system": system,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    r = await client.post(
-        f"{ANTHROPIC_BASE_URL}/v1/messages",
-        json=payload,
-        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-        timeout=120.0,
-    )
-    r.raise_for_status()
-    data = r.json()
-    usage = data.get("usage", {})
-    content = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-    return content.strip(), int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)), 0
+    kwargs = {}
+    if _supports_adaptive_thinking(model):
+        kwargs["thinking"] = {"type": "adaptive"}
+    # max_retries=0 — generate_completion owns the retry/backoff/fallback loop.
+    sdk = anthropic_sdk.AsyncAnthropic(api_key=api_key, base_url=ANTHROPIC_BASE_URL,
+                                       max_retries=0)
+    try:
+        msg = await sdk.messages.create(
+            model=model,
+            max_tokens=LLM_MAX_TOKENS,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+            **kwargs,
+        )
+    finally:
+        await sdk.close()
+    if msg.stop_reason == "refusal":
+        raise ConfigError(f"Claude declined this request (refusal): {model}")
+    content = "".join(b.text for b in msg.content if b.type == "text")
+    usage = msg.usage
+    return (content.strip(), int(usage.input_tokens or 0),
+            int(usage.output_tokens or 0), 0)
 
 
-_PROVIDER_CALLS = {"ollama": _call_ollama, "openai": _call_openai,
+_PROVIDER_CALLS = {"openai": _call_openai, "local": _call_local,
                    "anthropic": _call_anthropic, "grok": _call_grok}
+
+
+def _candidate_chain(provider: str, model: str) -> list:
+    """(provider, model) candidates in order: the resolved primary, then the
+    local endpoint — a missing key or cloud outage degrades to the local
+    model instead of surfacing an error string to the agent."""
+    chain = [(provider, model)]
+    if provider != "local" and LOCAL_LLM_MODEL:
+        chain.append(("local", LOCAL_LLM_MODEL))
+    return chain
 
 
 async def generate_completion(
@@ -233,13 +278,10 @@ async def generate_completion(
     use_cache: bool = True,
 ) -> str:
     """Call the agent's resolved LLM through the single-permit semaphore, with
-    cache + retry. Provider/model come from the agent_models config; default is
-    local Ollama. Token usage is recorded against the agent's open run trace."""
+    cache + retry + provider fallback. Provider/model come from the agent_models
+    config; the global default is AI_PROVIDER. Token usage is recorded against
+    the agent's open run trace."""
     provider, model = resolve_model(agent_id)
-
-    # `/no_think` keeps Qwen3 fast for structured/utility prompts (Ollama only).
-    if provider == "ollama" and "/no_think" not in prompt:
-        prompt = prompt + "\n/no_think"
 
     key = _cache_key(f"{provider}:{model}", system_prompt, prompt, json_mode)
     if use_cache:
@@ -257,35 +299,41 @@ async def generate_completion(
         llm_state["_t0"] = time.time()
         llm_state["tokens"] = 0
         llm_state["calls"] += 1
-        llm_state["model"] = f"{provider}:{model}" if provider != "ollama" else model
         try:
             last_err = None
-            for attempt in range(3):  # retry with backoff on transient errors
-                t0 = time.time()
-                try:
-                    async with httpx.AsyncClient() as client:
-                        content, tokens_in, tokens_out, rate = await _PROVIDER_CALLS[provider](
-                            client, model, system_prompt, prompt, json_mode
-                        )
-                    llm_state["tokens"] = tokens_out
-                    if rate:
-                        llm_state["rate"] = rate
-                    if agent_id:
-                        tracing.record_llm(agent_id, tokens_in, tokens_out,
-                                           int((time.time() - t0) * 1000))
-                    if use_cache:
-                        if len(_CACHE) >= _CACHE_MAX:
-                            _CACHE.pop(next(iter(_CACHE)))
-                        _CACHE[key] = (time.time(), content)
-                    return content
-                except ConfigError as e:
-                    # Misconfiguration won't fix itself — fail fast, no retries.
-                    print(f"LLM provider misconfigured: {e}")
-                    return f"Error: {e}"
-                except Exception as e:
-                    last_err = e
-                    await asyncio.sleep(0.6 * (attempt + 1))
-            print(f"Error calling LLM after retries: {last_err}")
+            for ci, (prov, mdl) in enumerate(_candidate_chain(provider, model)):
+                llm_state["model"] = f"{prov}:{mdl}"
+                if ci > 0:
+                    llm_state["fallbacks"] += 1
+                    print(f"LLM fallback: {provider}:{model} unavailable → trying {prov}:{mdl} ({last_err})")
+                attempts = 3 if ci == 0 else 2  # retry the primary harder than fallbacks
+                for attempt in range(attempts):
+                    t0 = time.time()
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            content, tokens_in, tokens_out, rate = await _PROVIDER_CALLS[prov](
+                                client, mdl, system_prompt, prompt, json_mode
+                            )
+                        llm_state["tokens"] = tokens_out
+                        if rate:
+                            llm_state["rate"] = rate
+                        if agent_id:
+                            tracing.record_llm(agent_id, tokens_in, tokens_out,
+                                               int((time.time() - t0) * 1000))
+                        if use_cache:
+                            if len(_CACHE) >= _CACHE_MAX:
+                                _CACHE.pop(next(iter(_CACHE)))
+                            _CACHE[key] = (time.time(), content)
+                        return content
+                    except ConfigError as e:
+                        # Misconfiguration won't fix itself — skip straight to
+                        # the next provider in the chain, no retries.
+                        last_err = e
+                        break
+                    except Exception as e:
+                        last_err = e
+                        await asyncio.sleep(0.6 * (attempt + 1))
+            print(f"Error calling LLM after retries + fallbacks: {last_err}")
             return f"Error: {last_err}"
         finally:
             llm_state["holder"] = None

@@ -16,30 +16,14 @@ cd "$ROOT"
 NO_TABS=true
 [[ "${1:-}" == "--tabs" ]] && NO_TABS=false
 
-# ── 1. Ollama check ───────────────────────────────────────────────────────────
-OLLAMA_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
-TAGS=$(curl -s --max-time 3 "$OLLAMA_URL/api/tags" 2>/dev/null)
-if [ -z "$TAGS" ]; then
-  echo "⚠  WARNING: Ollama not reachable at $OLLAMA_URL"
-  echo "   Start it with:  ollama serve"
+# ── 1. Local LLM endpoint check ────────────────────────────────────────────────
+LOCAL_LLM_URL=$(grep -E '^LOCAL_LLM_BASE_URL=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d ' ')
+LOCAL_LLM_URL="${LOCAL_LLM_URL:-http://localhost:8001/v1}"
+if ! curl -s --max-time 3 "$LOCAL_LLM_URL/models" >/dev/null 2>&1; then
+  echo "⚠  WARNING: Local LLM endpoint not reachable at $LOCAL_LLM_URL"
+  echo "   Point LOCAL_LLM_BASE_URL in .env at a running OpenAI-compatible server (vLLM/LM Studio),"
+  echo "   or set AI_PROVIDER to anthropic/openai/grok and add the matching API key."
   echo ""
-else
-  # A model missing from Ollama surfaces later as an opaque 404 on /api/chat,
-  # so verify the configured LLM_MODEL is actually pulled before launching.
-  MODEL=$(grep -E '^LLM_MODEL=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d ' ')
-  MODEL="${MODEL:-qwen3.5:4b}"
-  case "$MODEL" in
-    openai:*|anthropic:*|grok:*) ;;  # hosted provider — nothing to pull locally
-    *)
-      if ! printf '%s' "$TAGS" | grep -q "\"name\":\"$MODEL\""; then
-        echo "⚠  WARNING: LLM_MODEL '$MODEL' is not installed in Ollama."
-        echo "   Pull it with:   ollama pull $MODEL"
-        echo "   Or set LLM_MODEL in .env to one of:"
-        printf '%s' "$TAGS" | python3 -c "import json,sys; [print('     -', m['name']) for m in json.load(sys.stdin).get('models', [])]" 2>/dev/null
-        echo ""
-      fi
-      ;;
-  esac
 fi
 
 # ── 2. Python venv ────────────────────────────────────────────────────────────
@@ -88,11 +72,11 @@ APPLESCRIPT
   echo ""
   echo "============================================================"
   echo "  Two Terminal tabs opened:"
-  echo "    Tab 1 → Backend  (python main.py)  port 5174"
-  echo "    Tab 2 → Frontend (npm run dev)      port 5173"
+  echo "    Tab 1 → Backend  (python main.py)  127.0.0.1:5174, proxied"
+  echo "    Tab 2 → Frontend (npm run dev)      port 5173 — the only open port"
   echo ""
   echo "  Dashboard: http://localhost:5173"
-  echo "  API docs:  http://localhost:5174/docs"
+  echo "  API docs:  http://localhost:5173/api/docs"
   echo "============================================================"
   echo ""
   echo "  Opening dashboard in 8 seconds..."
@@ -141,7 +125,8 @@ echo ""
 echo "============================================================"
 echo "  Dashboard (local):   http://localhost:5173"
 echo "  Dashboard (network): http://$LOCAL_IP:5173"
-echo "  API (local):         http://localhost:5174/docs"
+echo "  API (proxied):       http://localhost:5173/api/docs"
+echo "  (the backend listens on 127.0.0.1:5174 only — 5173 is the one open port)"
 echo "  Logs: tail -f logs/backend.log  /  tail -f logs/frontend.log"
 echo "  Press Ctrl+C to stop both."
 echo "============================================================"
