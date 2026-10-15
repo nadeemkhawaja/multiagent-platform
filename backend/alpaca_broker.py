@@ -141,17 +141,35 @@ def _today() -> str:
     return datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
 
 
-def _daily_breaker_status(equity: float, settings: dict) -> dict:
+def _daily_breaker_status(equity: float, settings: dict, account_id: str = None) -> dict:
     """Compares live equity to the equity recorded at the start of today's
     session (ET). The baseline resets automatically on the first check of
-    each new trading day, so this never needs a manual daily reset."""
+    each new trading day, so this never needs a manual daily reset.
+
+    It also resets when the ACCOUNT changes, which the date alone cannot catch.
+    Swapping to a new set of API keys mid-session left the previous account's
+    equity standing as today's baseline: a $99,012 baseline against a fresh
+    $10,000 account read as -89.9% on the day, tripped the breaker, and would
+    have blocked every entry until midnight — on an account that had never
+    traded. The baseline is only meaningful against the account it was measured
+    on, so it is keyed to both.
+    """
     today = _today()
     baseline_date = get_config("alpha_wolf_daily_baseline_date", None)
-    if baseline_date != today:
+    baseline_account = get_config("alpha_wolf_daily_baseline_account", None)
+    stale_account = account_id and baseline_account and baseline_account != account_id
+    if baseline_date != today or stale_account:
+        if stale_account:
+            log.info(f"daily baseline re-cut: account changed "
+                     f"{baseline_account} -> {account_id}")
         set_config("alpha_wolf_daily_baseline_date", today)
         set_config("alpha_wolf_daily_baseline_equity", equity)
+        if account_id:
+            set_config("alpha_wolf_daily_baseline_account", account_id)
         baseline = equity
     else:
+        if account_id and not baseline_account:
+            set_config("alpha_wolf_daily_baseline_account", account_id)
         baseline = float(get_config("alpha_wolf_daily_baseline_equity", equity))
     daily_pnl = equity - baseline
     daily_pnl_pct = (daily_pnl / baseline * 100.0) if baseline else 0.0
@@ -167,7 +185,8 @@ async def daily_breaker_status() -> dict:
         return {"tripped": False, "note": NOT_CONFIGURED_NOTE}
     settings = get_settings()
     account = await _account()
-    return _daily_breaker_status(float(account["equity"]), settings)
+    return _daily_breaker_status(float(account["equity"]), settings,
+                                 account.get("account_number"))
 
 
 # ── Raw Alpaca REST calls ─────────────────────────────────────────────────
@@ -620,7 +639,8 @@ async def execute_plan(plan: dict) -> dict:
         orders = [o for o in orders if o not in dupes]
 
     account_for_breaker = await _account()
-    breaker = _daily_breaker_status(float(account_for_breaker["equity"]), settings)
+    breaker = _daily_breaker_status(float(account_for_breaker["equity"]), settings,
+                                    account_for_breaker.get("account_number"))
     if breaker["tripped"]:
         for o in [o for o in orders if o["action"] == "open"]:
             skipped.append({**o, "why": f"daily loss circuit breaker tripped "
@@ -1071,6 +1091,7 @@ async def cancel_pending(order_id: str) -> dict:
 RESET_CONFIG_KEYS = (
     "alpha_wolf_baseline_equity", "alpha_wolf_created_at",
     "alpha_wolf_daily_baseline_date", "alpha_wolf_daily_baseline_equity",
+    "alpha_wolf_daily_baseline_account",
     "alpha_wolf_position_pct", "alpha_wolf_risk_pct", "alpha_wolf_max_positions",
     "alpha_wolf_max_new_trades_per_day", "alpha_wolf_max_hold_days",
     "alpha_wolf_max_daily_loss_pct", "alpha_wolf_min_rr", "alpha_wolf_min_grade",
@@ -1131,6 +1152,7 @@ async def reset_state(close_at_broker: bool = False) -> dict:
     # the morning's equity as today's starting point.
     set_config("alpha_wolf_daily_baseline_date", _today())
     set_config("alpha_wolf_daily_baseline_equity", equity)
+    set_config("alpha_wolf_daily_baseline_account", account.get("account_number"))
     portfolio = await _snapshot_portfolio({})
     settings = get_settings()
     return {
